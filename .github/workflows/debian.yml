@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     
     - name: Install Debian packaging tools
       run: |
@@ -28,7 +28,7 @@ jobs:
       run: ./build.sh --force
       
     - name: Upload Debian package
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: debian-package
         path: |

@@ -6,7 +6,8 @@ use log::debug;
 /// Extracts cover art from music files in a directory
 pub fn extract_cover_from_music_files(dir_path: &str) -> Option<(Vec<u8>, String)> {
     use walkdir::WalkDir;
-    use lofty::{Probe, TaggedFileExt};
+    use lofty::probe::Probe;
+    use lofty::prelude::TaggedFileExt;
     
     debug!("Searching for music files with embedded cover art in: {}", dir_path);
     
@@ -54,19 +55,11 @@ pub fn extract_cover_from_music_files(dir_path: &str) -> Option<(Vec<u8>, String
                 debug!("Found embedded cover art in file: {}", path.display());
                 
                 // Determine MIME type
-                let mime_type = if let Some(mime) = picture.mime_type() {
-                    match mime {
-                        lofty::MimeType::Jpeg => "image/jpeg",
-                        lofty::MimeType::Png => "image/png",
-                        lofty::MimeType::Gif => "image/gif",
-                        lofty::MimeType::Tiff => "image/tiff",
-                        lofty::MimeType::Bmp => "image/bmp",
-                        lofty::MimeType::Unknown(_) => "application/octet-stream",
-                        _ => "application/octet-stream",
-                    }
-                } else {
-                    "application/octet-stream"
-                }.to_string();
+                let mime_type = picture
+                    .mime_type()
+                    .map(|mime| mime.as_str())
+                    .unwrap_or("application/octet-stream")
+                    .to_string();
 
                 // Get the image data
                 let data = picture.data().to_vec();
