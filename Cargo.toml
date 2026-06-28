@@ -40,7 +40,7 @@ strsim = "0.11.1"
 # For in-memory cache with expiry
 moka = { version = "0.12", features = ["sync"] }
 # LRU cache for fast access to frequently used data
-lru = "0.12"
+lru = "0.16"
 # For WebSocket support
 rocket_ws = "0.1.0"
 # For command line argument parsing
