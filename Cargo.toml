@@ -46,7 +46,7 @@ rocket_ws = "0.1.0"
 # For command line argument parsing
 clap = { version = "4.5", features = ["derive"] }
 # For calculating MD5 hashes (Last.fm API signing)
-md5 = "0.7.0"
+md5 = "0.8.0"
 thiserror = "2.0"
 mac_address = "1.1.8"
 get_if_addrs = "0.5.3"
@@ -94,7 +94,7 @@ alsa = { version = "0.9", optional = true }
 # Build dependencies
 [build-dependencies]
 base64 = "0.21.0"
-md5 = "0.7.0"
+md5 = "0.8.0"
 
 # Development dependencies for testing
 [dev-dependencies]
