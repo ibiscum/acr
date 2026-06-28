@@ -328,10 +328,10 @@
                     
                     // Decode HTML entities in the URL if present
                     let spotifyUrl = loginData.message
-                        .replace(/&amp;/g, '&')
                         .replace(/&quot;/g, '"')
                         .replace(/&lt;/g, '<')
-                        .replace(/&gt;/g, '>');
+                        .replace(/&gt;/g, '>')
+                        .replace(/&amp;/g, '&');
                     
                     // Save the current URL to construct the callback URL
                     let currentUrl = window.location.href.split('?')[0]; // Remove any existing query params
