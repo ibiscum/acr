@@ -931,7 +931,7 @@ function createPlayerWebSocket(options) {
                     
                     // Handle welcome message and subscription updates
                     if (data.type === 'welcome' || data.type === 'subscription_updated') {
-                        console.log(`WebSocket ${data.type} message:`, data.message);
+                        console.log('WebSocket %s message:', data.type, data.message);
                         return;
                     }
                     
