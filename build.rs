@@ -10,9 +10,6 @@ fn main() {
     println!("cargo:rerun-if-changed=config/secrets.txt");
     println!("cargo:rerun-if-changed=../secrets.txt");
 
-    // Log all secrets found during build
-    println!("cargo:warning=SECRETS FOUND DURING BUILD:");
-
     let mut secrets = HashMap::new();
     // Check for secrets in various possible locations
     check_secrets_file("secrets.txt", &mut secrets);
@@ -21,6 +18,13 @@ fn main() {
 
     // Look for environment variables with secret-like names
     check_environment_secrets(&mut secrets);
+
+    if !secrets.is_empty() {
+        println!(
+            "cargo:warning=Embedding {} configured secret value(s) during build",
+            secrets.len()
+        );
+    }
 
     // Generate Rust code with the secrets
     generate_secrets_file(&secrets);
@@ -99,11 +103,8 @@ fn generate_secrets_file(secrets: &HashMap<String, String>) {
     }
     
     if !should_generate {
-        println!("cargo:warning=Secrets file up to date, skipping generation");
         return;
     }
-    
-    println!("cargo:warning=Generating secrets file...");
     
     let mut content = String::new();
     content.push_str("// AUTO-GENERATED FILE - DO NOT EDIT\n");

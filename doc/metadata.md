@@ -643,7 +643,15 @@ Understanding the cache key patterns helps identify specific types of cached met
 audiocontrol_dump_cache | grep "artist::metadata::The Beatles"
 
 # Output example:
-# artist::metadata::The Beatles|{"name":"The Beatles","mbid":["b10bbbfc-cf9e-42e0-be17-e2c3e1d2600d"],"genres":["Rock","Pop Rock","Psychedelic Rock"],"biography":"The Beatles were an English rock band formed in Liverpool in 1960...","thumb_url":["https://theaudiodb.com/images/media/artist/thumb/rvvnvv1347913617.jpg"],"banner_url":["https://fanart.tv/fanart/music/b10bbbfc-cf9e-42e0-be17-e2c3e1d2600d/artistbackground/the-beatles-5018a594a0a4c.jpg"],"fanart_url":["https://fanart.tv/fanart/music/b10bbbfc-cf9e-42e0-be17-e2c3e1d2600d/artistbackground/the-beatles-5018a594a0a4c.jpg"]}
+# artist::metadata::The Beatles|{
+#   "name":"The Beatles",
+#   "mbid":["b10bbbfc-cf9e-42e0-be17-e2c3e1d2600d"],
+#   "genres":["Rock","Pop Rock","Psychedelic Rock"],
+#   "biography":"The Beatles were an English rock band formed in Liverpool in 1960...",
+#   "thumb_url":["https://theaudiodb.com/images/media/artist/thumb/rvvnvv1347913617.jpg"],
+#   "banner_url":["https://fanart.tv/fanart/music/b10bbbfc-cf9e-42e0-be17-e2c3e1d2600d/artistbackground/the-beatles-5018a594a0a4c.jpg"],
+#   "fanart_url":["https://fanart.tv/fanart/music/b10bbbfc-cf9e-42e0-be17-e2c3e1d2600d/artistbackground/the-beatles-5018a594a0a4c.jpg"]
+# }
 ```
 
 #### 2. Find MusicBrainz IDs for Artists

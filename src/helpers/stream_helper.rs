@@ -32,17 +32,28 @@ pub enum StreamWrapper {
 }
 
 /// A trait combining Read and Write
-pub trait ReadWrite: Read + Write {}
+pub trait ReadWrite: Read + Write {
+    fn as_read(&mut self) -> &mut dyn Read;
+    fn as_write(&mut self) -> &mut dyn Write;
+}
 
 // Implement ReadWrite for types that implement both Read and Write
-impl<T: Read + Write + ?Sized> ReadWrite for T {}
+impl<T: Read + Write> ReadWrite for T {
+    fn as_read(&mut self) -> &mut dyn Read {
+        self
+    }
+
+    fn as_write(&mut self) -> &mut dyn Write {
+        self
+    }
+}
 
 impl StreamWrapper {
     /// Convert the wrapper to a readable stream
     pub fn as_reader(&mut self) -> io::Result<&mut dyn Read> {
         match self {
             StreamWrapper::ReadOnly(reader) => Ok(reader.as_mut()),
-            StreamWrapper::ReadWrite(stream) => Ok(stream.as_mut()),
+            StreamWrapper::ReadWrite(stream) => Ok(stream.as_read()),
             StreamWrapper::WriteOnly(_) => Err(io::Error::new(
                 io::ErrorKind::PermissionDenied, 
                 "Stream is write-only"
@@ -54,7 +65,7 @@ impl StreamWrapper {
     pub fn as_writer(&mut self) -> io::Result<&mut dyn Write> {
         match self {
             StreamWrapper::WriteOnly(writer) => Ok(writer.as_mut()),
-            StreamWrapper::ReadWrite(stream) => Ok(stream.as_mut()),
+            StreamWrapper::ReadWrite(stream) => Ok(stream.as_write()),
             StreamWrapper::ReadOnly(_) => Err(io::Error::new(
                 io::ErrorKind::PermissionDenied, 
                 "Stream is read-only"

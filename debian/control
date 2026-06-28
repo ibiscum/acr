@@ -2,8 +2,9 @@ Source: hifiberry-audiocontrol
 Section: utils
 Priority: optional
 Maintainer: HiFiBerry <info@hifiberry.com>
-Build-Depends: debhelper-compat (= 13), curl, ca-certificates, pkgconf, libssl-dev, libdbus-1-dev, libasound2-dev
-Standards-Version: 4.5.1
+Build-Depends: debhelper-compat (= 13), cargo, rustc, pkgconf, libssl-dev, libdbus-1-dev, libasound2-dev
+Standards-Version: 4.7.2
+Rules-Requires-Root: no
 Homepage: https://github.com/hifiberry/acr
 
 Package: hifiberry-audiocontrol
@@ -30,4 +31,3 @@ Description: HiFiBerry AudioControl/Rust application
  .
  The audiocontrol_nowplaying client requires Python 3 and optionally
  python3-websocket for WebSocket support.
- 

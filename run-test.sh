@@ -25,7 +25,7 @@ else
 fi
 
 # Ensure we're in the correct directory
-cd "$(dirname "$0")"
+cd "$(dirname "$0")" || exit 1
 
 # Kill any existing audiocontrol processes before starting
 echo "[CLEANUP] Cleaning up any existing audiocontrol processes..."
@@ -42,7 +42,7 @@ sleep 1
 
 # Integration tests have been migrated to Python
 echo "[INFO] Integration tests have been migrated to Python"
-echo "[INFO] To run integration tests, use: python tests/run_tests.py"
+echo "[INFO] To run integration tests, use: python integration_test/run_tests.py"
 echo ""
 
 if [ -z "$TEST_ARGS" ]; then
@@ -62,12 +62,12 @@ else
     #         exit 1
     #     fi
     #     echo "[PASS] Test $test_name passed"
-        echo ""
-    done
+    #     echo ""
+    # done
 fi
 
-# Capture the exit code
-TEST_EXIT_CODE=$?
+# Tests are skipped, so set exit code to 0 explicitly
+TEST_EXIT_CODE=0
 
 # Additional cleanup after tests
 echo ""
