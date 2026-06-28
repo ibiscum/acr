@@ -1,4 +1,3 @@
 var/lib/audiocontrol
 etc/audiocontrol
-usr/share/hifiberry-audiocontrol
 etc/nginx/hifiberry-api.d

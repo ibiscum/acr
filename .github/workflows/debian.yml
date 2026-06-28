@@ -1,7 +1,12 @@
 name: Build Debian Package
 
 on:
-  workflow_dispatch:  # Only manual triggering allowed
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+  release:
+    types: [published]
 
 env:
   CARGO_TERM_COLOR: always
@@ -11,26 +16,41 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    - uses: actions/checkout@v7
+    - uses: actions/checkout@v4
     
     - name: Install Debian packaging tools
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential debhelper devscripts
+        sudo apt-get install -y build-essential debhelper devscripts lintian pkg-config libssl-dev libdbus-1-dev libasound2-dev
 
     - name: Setup Rust
       uses: dtolnay/rust-toolchain@stable
       
-    - name: Make build script executable
-      run: chmod +x build.sh
-      
     - name: Build Debian package
-      run: ./build.sh --force
+      run: dpkg-buildpackage -us -uc -b
+
+    - name: Lintian gate (errors and warnings only)
+      run: |
+        lintian --fail-on error,warning ../*.changes
+
+    - name: Lintian informational report (non-blocking)
+      continue-on-error: true
+      run: |
+        lintian -E -I --pedantic ../*.changes | tee lintian-report.txt
       
-    - name: Upload Debian package
-      uses: actions/upload-artifact@v7
-      with:
-        name: debian-package
-        path: |
-          *.deb
-        if-no-files-found: error
+    # - name: Upload Debian package
+    #   uses: actions/upload-artifact@v4
+    #   with:
+    #     name: debian-package
+    #     path: |
+    #       ../*.deb
+    #       ../*.changes
+    #       ../*.buildinfo
+    #     if-no-files-found: error
+
+    # - name: Upload lintian report
+    #   uses: actions/upload-artifact@v4
+    #   with:
+    #     name: lintian-report
+    #     path: lintian-report.txt
+    #     if-no-files-found: warn

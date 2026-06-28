@@ -1,4 +1,4 @@
-hifiberry-audiocontrol (0.7.13) stable; urgency=medium
+hifiberry-audiocontrol (0.7.13) trixie; urgency=medium
 
   * Bluetooth: fix the auto-discover player never becoming the active player.
     The controller registered (and was looked up by ActiveMonitor) under the

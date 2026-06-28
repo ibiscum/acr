@@ -2,11 +2,13 @@
 
 export DH_VERBOSE=1
 export SKIP_BUILD
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
 
 # Optimize Rust compilation for space efficiency
 export CARGO_BUILD_JOBS = 1
 export CARGO_INCREMENTAL = 0
 export RUST_BACKTRACE = 0
+export RUSTFLAGS = -C link-arg=-Wl,-z,relro -C link-arg=-Wl,-z,now
 
 %:
 	dh $@
@@ -37,7 +39,6 @@ override_dh_auto_build:
 override_dh_auto_install:
 	# Create required directories
 	mkdir -p debian/hifiberry-audiocontrol/usr/bin
-	mkdir -p debian/hifiberry-audiocontrol/usr/share/hifiberry-audiocontrol
 	mkdir -p debian/hifiberry-audiocontrol/etc/audiocontrol
 	# Debug: List target directory contents
 	echo "Contents of target/release directory:"; \

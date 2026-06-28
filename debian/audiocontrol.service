@@ -1,5 +1,6 @@
 [Unit]
 Description=HiFiBerry AudioControl - Audio Player Management Service
+Documentation=https://github.com/hifiberry/acr https://github.com/hifiberry/acr/blob/main/doc/README.md
 After=network.target sound.target alsa-state.service pulseaudio.service pipewire.service config-server.service
 After=raat.service shairport-sync.service librespot.service mpd.service
 Wants=sound.target alsa-state.service
@@ -20,11 +21,22 @@ SupplementaryGroups=audio
 WorkingDirectory=/etc/audiocontrol
 RuntimeDirectory=audiocontrol
 RuntimeDirectoryMode=0755
-PIDFile=/var/run/audiocontrol/audiocontrol.pid
 
 # Environment for audio system access
 Environment="PULSE_RUNTIME_PATH=/run/pulse"
 Environment="XDG_RUNTIME_DIR=/run/audiocontrol"
+
+# Basic service hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ProtectControlGroups=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+LockPersonality=true
+RestrictRealtime=true
+ReadWritePaths=/var/lib/audiocontrol /run/audiocontrol
 
 # Timeout and kill settings
 TimeoutStopSec=10

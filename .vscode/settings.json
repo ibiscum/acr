@@ -5,5 +5,13 @@
   "search.exclude": {
     "**/target": true
   },
-  "rust-analyzer.files.excludeDirs": ["target"]
+  "rust-analyzer.files.excludeDirs": [
+    "target"
+  ],
+  "chat.tools.terminal.autoApprove": {
+    "/^man sbuild\\.conf \\| col -b \\| grep -ni \"check_space\\\\\\|space\" \\| head -n 60$/": {
+      "approve": true,
+      "matchCommandLine": true
+    }
+  }
 }

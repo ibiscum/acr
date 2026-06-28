@@ -1,0 +1,7 @@
+# Rust binary includes generated/third-party strings; this specific token pair is a false positive.
+hifiberry-audiocontrol: spelling-error-in-binary Nam Name [usr/bin/audiocontrol]
+
+# Pure Rust binaries are commonly reported without glibc _FORTIFY_SOURCE instrumentation.
+hifiberry-audiocontrol: hardening-no-fortify-functions [usr/bin/audiocontrol]
+hifiberry-audiocontrol: hardening-no-fortify-functions [usr/bin/audiocontrol_dump_cache]
+hifiberry-audiocontrol: hardening-no-fortify-functions [usr/bin/audiocontrol_dump_store]
