@@ -18,7 +18,7 @@ use aes_gcm::{
     Aes256Gcm, Key, Nonce
 };
 use base64::{engine::general_purpose::STANDARD, Engine};
-use rand::{rngs::OsRng, RngCore};
+use rand::random;
 
 // Compiled from secrets.txt at build time
 #[cfg(not(test))]
@@ -144,9 +144,7 @@ impl SecurityStore {
 
     // Generate a random nonce for AES-GCM
     fn generate_nonce(&self) -> [u8; 12] {
-        let mut nonce = [0u8; 12];
-        OsRng.fill_bytes(&mut nonce);
-        nonce
+        random()
     }
 
     // Initialize the security store with the given encryption key

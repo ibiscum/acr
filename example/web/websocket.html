@@ -476,9 +476,9 @@
             logItem.className = 'log-item';
             const timeSpan = document.createElement('span');
             timeSpan.className = 'log-time';
-            timeSpan.textContent = `[${time}]`;
+            timeSpan.textContent = `[${time}] `;
             logItem.appendChild(timeSpan);
-            logItem.appendChild(document.createTextNode(` ${message}`));
+            logItem.appendChild(document.createTextNode(String(message)));
             logContainer.appendChild(logItem);
             
             // Scroll to bottom
