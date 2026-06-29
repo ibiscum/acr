@@ -3,7 +3,7 @@ name = "audiocontrol"
 version = "0.7.13"
 authors = ["HiFiBerry <support@hifiberry.com>"]
 edition = "2021"
-rust-version = "1.85"
+rust-version = "1.85.0"
 description = "AudioControl server"
 homepage = "https://www.hifiberry.com"
 repository = "https://github.com/hifiberry/hifiberry-os"
@@ -35,7 +35,7 @@ reqwest = { version = "0.13.4", features = ["json", "blocking"] }
 bytes = "1.4"
 # SQLite database for attribute cache and settings database
 rusqlite = { version = "0.32", features = ["bundled"] }
-# For transliterating non-ASCII characters to ASCII 
+# For transliterating non-ASCII characters to ASCII
 deunicode = "1.4.1"
 strsim = "0.11.1"
 # For in-memory cache with expiry

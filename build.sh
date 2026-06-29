@@ -142,3 +142,12 @@ sbuild --chroot-mode=unshare \
        --verbose \
        "${SBUILD_EXTRA_ARGS[@]}" \
        "$DIST_ARG"
+
+echo "Cleaning up build artifacts..."
+cd ..
+rm -f -- *.build *.changes *.dsc *.tar.xz *.buildinfo
+echo "Build artifacts cleaned up"
+
+echo "Package built successfully"
+echo "Built packages:"
+ls -la -- *.deb 2>/dev/null

@@ -66,7 +66,7 @@ pub struct ErrorResponse {
 }
 
 /// Get all currently running background jobs
-/// 
+///
 /// This endpoint retrieves information about all background jobs currently
 /// running in the system, including their progress and timing information.
 #[get("/jobs")]
@@ -76,12 +76,12 @@ pub fn get_background_jobs() -> Json<BackgroundJobsResponse> {
     match get_all_jobs() {
         Ok(jobs) => {
             debug!("Successfully retrieved {} background jobs", jobs.len());
-            
+
             let job_infos: Vec<BackgroundJobInfo> = jobs
                 .into_iter()
                 .map(BackgroundJobInfo::from)
                 .collect();
-            
+
             Json(BackgroundJobsResponse {
                 success: true,
                 jobs: Some(job_infos),
@@ -100,7 +100,7 @@ pub fn get_background_jobs() -> Json<BackgroundJobsResponse> {
 }
 
 /// Get information about a specific background job by ID
-/// 
+///
 /// This endpoint retrieves detailed information about a specific background job.
 #[get("/jobs/<job_id>")]
 pub fn get_background_job(job_id: String) -> Json<BackgroundJobsResponse> {
@@ -109,9 +109,9 @@ pub fn get_background_job(job_id: String) -> Json<BackgroundJobsResponse> {
     match crate::helpers::backgroundjobs::get_job(&job_id) {
         Ok(Some(job)) => {
             debug!("Successfully retrieved background job: {}", job_id);
-            
+
             let job_info = BackgroundJobInfo::from(job);
-            
+
             Json(BackgroundJobsResponse {
                 success: true,
                 jobs: Some(vec![job_info]),
