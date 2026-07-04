@@ -1,6 +1,6 @@
 [package]
 name = "audiocontrol"
-version = "0.7.13"
+version = "0.7.14"
 authors = ["HiFiBerry <support@hifiberry.com>"]
 edition = "2021"
 description = "AudioControl server"
@@ -120,7 +120,7 @@ name = "audiocontrol_dump_store"
 path = "src/tools/acr_dump_store.rs"
 
 [[bin]]
-name = "acr_dump_cache"
+name = "audiocontrol_dump_cache"
 path = "src/tools/acr_dump_cache.rs"
 
 [[bin]]

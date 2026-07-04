@@ -16,9 +16,9 @@ else
     DIST_ARG=""
 fi
 
-if [ -f target ]; then
+if [ -e target ]; then
     echo "Removing previous build target"
-    rm -f target
+    rm -rf target
 fi
 
 sbuild --chroot-mode=unshare \

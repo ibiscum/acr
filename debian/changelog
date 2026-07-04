@@ -7,6 +7,7 @@ hifiberry-audiocontrol (0.7.14) stable; urgency=medium
     instead of using a stale hardcoded list.
   * Build script: downgrade secrets generation status output from cargo warnings
     to informational log lines.
+  * Documentation: clarify Librespot player controller implementation notes.
 
  -- HiFiBerry <info@hifiberry.com>  Sat, 04 Jul 2026 02:30:00 +0000
 

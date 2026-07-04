@@ -9,8 +9,13 @@ use parking_lot::RwLock;
 use log::{debug, info, warn, error, trace};
 use std::any::Any;
 
-/// Librespot player controller implementation
-/// This controller interfaces with Spotify/librespot via API endpoints
+/// Librespot player controller implementation.
+///
+/// This controller is API-event driven: runtime state is updated from
+/// audiocontrol_notify_librespot events, while playback commands are sent via
+/// Spotify Web API when a valid access token is available. If no token is
+/// available, only limited capabilities remain and pause/stop can fall back to
+/// configured legacy behavior.
 pub struct LibrespotPlayerController {
     /// Base controller
     base: BasePlayerController,
