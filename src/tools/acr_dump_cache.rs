@@ -1,14 +1,14 @@
+use audiocontrol::helpers::artistsplitter::ARTIST_SPLIT_CACHE_PREFIX;
+use audiocontrol::helpers::attributecache::{self, AttributeCache};
+use audiocontrol::helpers::image_meta::IMAGE_META_CACHE_PREFIX;
+use audiocontrol::helpers::musicbrainz::{ARTIST_MBID_CACHE_PREFIX, ARTIST_NOT_FOUND_CACHE_PREFIX};
+use chrono::DateTime;
 use clap::{Parser, Subcommand};
 use log::{info, warn};
-use audiocontrol::helpers::attributecache::{self, AttributeCache};
-use audiocontrol::helpers::artistsplitter::ARTIST_SPLIT_CACHE_PREFIX;
-use audiocontrol::helpers::musicbrainz::{ARTIST_MBID_CACHE_PREFIX, ARTIST_NOT_FOUND_CACHE_PREFIX};
-use audiocontrol::helpers::image_meta::IMAGE_META_CACHE_PREFIX;
 use std::path::PathBuf;
-use chrono::DateTime;
 
 #[derive(Parser)]
-#[command(name = "audiocontrol_dump_cache")]
+#[command(name = "acr_dump_cache")]
 #[command(about = "A tool to manage AudioControl cache database")]
 #[command(long_about = None)]
 struct Cli {
@@ -27,7 +27,7 @@ enum Commands {
         /// Filter entries by prefix (e.g., "artist::", "theaudiodb::")
         #[arg(short, long)]
         prefix: Option<String>,
-        
+
         /// Show detailed information including size and timestamps
         #[arg(short, long)]
         detailed: bool,
@@ -57,7 +57,7 @@ enum Commands {
         /// Remove entries matching this prefix
         #[arg(short, long)]
         prefix: Option<String>,
-        
+
         /// Remove all entries (use with caution!)
         #[arg(long)]
         all: bool,
@@ -94,25 +94,44 @@ enum Commands {
     },
 }
 
-fn determine_prefix(prefix: Option<&str>, artistmbid: bool, imagemeta: bool, artistsplit: bool, artistnotfound: bool) -> Result<Option<String>, Box<dyn std::error::Error>> {
-    let shortcut_count = [artistmbid, imagemeta, artistsplit, artistnotfound].iter().filter(|&&x| x).count();
-    
+fn determine_prefix(
+    prefix: Option<&str>,
+    artistmbid: bool,
+    imagemeta: bool,
+    artistsplit: bool,
+    artistnotfound: bool,
+) -> Result<Option<String>, Box<dyn std::error::Error>> {
+    let shortcut_count = [artistmbid, imagemeta, artistsplit, artistnotfound]
+        .iter()
+        .filter(|&&x| x)
+        .count();
+
     if shortcut_count > 1 {
         return Err("Cannot specify multiple shortcut options (--artistmbid, --imagemeta, --artistsplit, --artistnotfound) at once".into());
     }
-    
+
     if prefix.is_some() && shortcut_count > 0 {
         return Err("Cannot specify both --prefix and shortcut options (--artistmbid, --imagemeta, --artistsplit, --artistnotfound)".into());
     }
-    
+
     if artistmbid {
-        Ok(Some(ARTIST_MBID_CACHE_PREFIX.trim_end_matches("::").to_string()))
+        Ok(Some(
+            ARTIST_MBID_CACHE_PREFIX.trim_end_matches("::").to_string(),
+        ))
     } else if imagemeta {
-        Ok(Some(IMAGE_META_CACHE_PREFIX.trim_end_matches("::").to_string()))
+        Ok(Some(
+            IMAGE_META_CACHE_PREFIX.trim_end_matches("::").to_string(),
+        ))
     } else if artistsplit {
-        Ok(Some(ARTIST_SPLIT_CACHE_PREFIX.trim_end_matches("::").to_string()))
+        Ok(Some(
+            ARTIST_SPLIT_CACHE_PREFIX.trim_end_matches("::").to_string(),
+        ))
     } else if artistnotfound {
-        Ok(Some(ARTIST_NOT_FOUND_CACHE_PREFIX.trim_end_matches("::").to_string()))
+        Ok(Some(
+            ARTIST_NOT_FOUND_CACHE_PREFIX
+                .trim_end_matches("::")
+                .to_string(),
+        ))
     } else {
         Ok(prefix.map(|s| s.to_string()))
     }
@@ -132,13 +151,47 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     match &cli.command {
-        Commands::List { prefix, detailed, limit, artistmbid, imagemeta, artistsplit, artistnotfound } => {
-            let effective_prefix = determine_prefix(prefix.as_deref(), *artistmbid, *imagemeta, *artistsplit, *artistnotfound)?;
+        Commands::List {
+            prefix,
+            detailed,
+            limit,
+            artistmbid,
+            imagemeta,
+            artistsplit,
+            artistnotfound,
+        } => {
+            let effective_prefix = determine_prefix(
+                prefix.as_deref(),
+                *artistmbid,
+                *imagemeta,
+                *artistsplit,
+                *artistnotfound,
+            )?;
             list_cache_entries(effective_prefix.as_deref(), *detailed, *limit)?;
         }
-        Commands::Clean { prefix, all, older_than_days, dry_run, artistmbid, imagemeta, artistsplit, artistnotfound } => {
-            let effective_prefix = determine_prefix(prefix.as_deref(), *artistmbid, *imagemeta, *artistsplit, *artistnotfound)?;
-            clean_cache_entries(effective_prefix.as_deref(), *all, *older_than_days, *dry_run)?;
+        Commands::Clean {
+            prefix,
+            all,
+            older_than_days,
+            dry_run,
+            artistmbid,
+            imagemeta,
+            artistsplit,
+            artistnotfound,
+        } => {
+            let effective_prefix = determine_prefix(
+                prefix.as_deref(),
+                *artistmbid,
+                *imagemeta,
+                *artistsplit,
+                *artistnotfound,
+            )?;
+            clean_cache_entries(
+                effective_prefix.as_deref(),
+                *all,
+                *older_than_days,
+                *dry_run,
+            )?;
         }
         Commands::Stats { by_prefix } => {
             show_cache_stats(*by_prefix)?;
@@ -148,7 +201,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn list_cache_entries(prefix: Option<&str>, detailed: bool, limit: Option<usize>) -> Result<(), Box<dyn std::error::Error>> {
+fn list_cache_entries(
+    prefix: Option<&str>,
+    detailed: bool,
+    limit: Option<usize>,
+) -> Result<(), Box<dyn std::error::Error>> {
     if detailed {
         let entries = attributecache::list_entries(prefix)?;
         let entries_to_show = if let Some(limit) = limit {
@@ -158,38 +215,49 @@ fn list_cache_entries(prefix: Option<&str>, detailed: bool, limit: Option<usize>
         };
 
         if entries_to_show.is_empty() {
-            info!("No cache entries found{}", 
-                  prefix.map(|p| format!(" with prefix '{}'", p)).unwrap_or_default());
+            info!(
+                "No cache entries found{}",
+                prefix
+                    .map(|p| format!(" with prefix '{}'", p))
+                    .unwrap_or_default()
+            );
             return Ok(());
         }
 
-        println!("Cache Entries ({}{})", 
-                 entries_to_show.len(),
-                 if entries.len() > entries_to_show.len() { 
-                     format!(" of {} total", entries.len()) 
-                 } else { 
-                     String::new() 
-                 });
+        println!(
+            "Cache Entries ({}{})",
+            entries_to_show.len(),
+            if entries.len() > entries_to_show.len() {
+                format!(" of {} total", entries.len())
+            } else {
+                String::new()
+            }
+        );
         println!("{:-<120}", "");
-        println!("{:<60} {:>10} {:>20} {:>20}", "Key", "Size", "Created", "Updated");
+        println!(
+            "{:<60} {:>10} {:>20} {:>20}",
+            "Key", "Size", "Created", "Updated"
+        );
         println!("{:-<120}", "");
 
         for entry in entries_to_show {
             let created = DateTime::from_timestamp(entry.created_at, 0)
                 .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
                 .unwrap_or_else(|| "Unknown".to_string());
-            
+
             let updated = DateTime::from_timestamp(entry.updated_at, 0)
                 .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
                 .unwrap_or_else(|| "Unknown".to_string());
 
             let size_str = format_size(entry.size_bytes);
-            
-            println!("{:<60} {:>10} {:>20} {:>20}", 
-                     truncate_key(&entry.key, 60), 
-                     size_str, 
-                     created, 
-                     updated);
+
+            println!(
+                "{:<60} {:>10} {:>20} {:>20}",
+                truncate_key(&entry.key, 60),
+                size_str,
+                created,
+                updated
+            );
         }
     } else {
         let keys = attributecache::list_keys(prefix)?;
@@ -200,18 +268,24 @@ fn list_cache_entries(prefix: Option<&str>, detailed: bool, limit: Option<usize>
         };
 
         if keys_to_show.is_empty() {
-            info!("No cache entries found{}", 
-                  prefix.map(|p| format!(" with prefix '{}'", p)).unwrap_or_default());
+            info!(
+                "No cache entries found{}",
+                prefix
+                    .map(|p| format!(" with prefix '{}'", p))
+                    .unwrap_or_default()
+            );
             return Ok(());
         }
 
-        println!("Cache Keys ({}{})", 
-                 keys_to_show.len(),
-                 if keys.len() > keys_to_show.len() { 
-                     format!(" of {} total", keys.len()) 
-                 } else { 
-                     String::new() 
-                 });
+        println!(
+            "Cache Keys ({}{})",
+            keys_to_show.len(),
+            if keys.len() > keys_to_show.len() {
+                format!(" of {} total", keys.len())
+            } else {
+                String::new()
+            }
+        );
         println!("{:-<80}", "");
 
         for key in keys_to_show {
@@ -222,7 +296,12 @@ fn list_cache_entries(prefix: Option<&str>, detailed: bool, limit: Option<usize>
     Ok(())
 }
 
-fn clean_cache_entries(prefix: Option<&str>, all: bool, older_than_days: Option<u64>, dry_run: bool) -> Result<(), Box<dyn std::error::Error>> {
+fn clean_cache_entries(
+    prefix: Option<&str>,
+    all: bool,
+    older_than_days: Option<u64>,
+    dry_run: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
     if all && prefix.is_some() {
         return Err("Cannot specify both --all and --prefix options".into());
     }
@@ -247,7 +326,11 @@ fn clean_cache_entries(prefix: Option<&str>, all: bool, older_than_days: Option<
     if let Some(prefix) = prefix {
         if dry_run {
             let entries = attributecache::list_entries(Some(prefix))?;
-            println!("Would delete {} cache entries with prefix '{}' (dry run)", entries.len(), prefix);
+            println!(
+                "Would delete {} cache entries with prefix '{}' (dry run)",
+                entries.len(),
+                prefix
+            );
             for entry in &entries[..entries.len().min(10)] {
                 println!("  - {}", entry.key);
             }
@@ -265,7 +348,10 @@ fn clean_cache_entries(prefix: Option<&str>, all: bool, older_than_days: Option<
     if let Some(days) = older_than_days {
         // For now, we'll use the cleanup function which removes entries older than the configured max age
         // In the future, we could add a custom cleanup function that takes days as parameter
-        warn!("Cleaning entries older than {} days using cache cleanup function", days);
+        warn!(
+            "Cleaning entries older than {} days using cache cleanup function",
+            days
+        );
         let deleted = attributecache::cleanup()?;
         info!("Deleted {} old cache entries", deleted);
         return Ok(());
@@ -276,7 +362,7 @@ fn clean_cache_entries(prefix: Option<&str>, all: bool, older_than_days: Option<
 
 fn show_cache_stats(by_prefix: bool) -> Result<(), Box<dyn std::error::Error>> {
     let entries = attributecache::list_entries(None)?;
-    
+
     if entries.is_empty() {
         info!("Cache is empty");
         return Ok(());
@@ -289,10 +375,10 @@ fn show_cache_stats(by_prefix: bool) -> Result<(), Box<dyn std::error::Error>> {
     println!("{:-<50}", "");
     println!("Total entries: {}", total_count);
     println!("Total size: {}", format_size(total_size));
-    
+
     if let (Some(oldest), Some(newest)) = (
         entries.iter().min_by_key(|e| e.created_at),
-        entries.iter().max_by_key(|e| e.created_at)
+        entries.iter().max_by_key(|e| e.created_at),
     ) {
         let oldest_date = DateTime::from_timestamp(oldest.created_at, 0)
             .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
@@ -300,14 +386,14 @@ fn show_cache_stats(by_prefix: bool) -> Result<(), Box<dyn std::error::Error>> {
         let newest_date = DateTime::from_timestamp(newest.created_at, 0)
             .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
             .unwrap_or_else(|| "Unknown".to_string());
-        
+
         println!("Oldest entry: {}", oldest_date);
         println!("Newest entry: {}", newest_date);
     }
 
     if by_prefix {
         let mut prefix_stats = std::collections::HashMap::new();
-        
+
         for entry in &entries {
             let prefix = extract_prefix(&entry.key);
             let stats = prefix_stats.entry(prefix).or_insert((0, 0));
