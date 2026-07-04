@@ -89,7 +89,7 @@ named_pipe = "0.4"
 # For D-Bus communication and custom MPRIS implementation (Linux/Unix only)
 dbus = "0.9"
 # For ALSA audio system volume control (Linux only) - optional
-alsa = { version = "0.9", optional = true }
+alsa = { version = "0.11", optional = true }
 
 # Build dependencies
 [build-dependencies]
