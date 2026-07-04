@@ -1,5 +1,5 @@
 debian/man/audiocontrol.1
-debian/man/audiocontrol_dump_cache.1
+debian/man/acr_dump_cache.1
 debian/man/audiocontrol_dump_store.1
 debian/man/audiocontrol_favourites.1
 debian/man/audiocontrol_get_mpris_state.1

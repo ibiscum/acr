@@ -1,9 +1,10 @@
 {
   "files.exclude": {
-    "**/target": true
+    "**/target": false
   },
   "search.exclude": {
     "**/target": true
   },
-  "rust-analyzer.files.excludeDirs": ["target"]
+  "rust-analyzer.files.excludeDirs": ["target"],
+  "explorer.excludeGitIgnored": false
 }

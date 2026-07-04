@@ -14,6 +14,7 @@ hifiberry-audiocontrol (0.7.14) stable; urgency=medium
     tarball generation.
   * Tool naming: normalize src/tools source filenames to acr_* while keeping
     installed CLI binaries on audiocontrol_* names.
+  * Documentation: clarify Librespot player controller implementation notes.
 
  -- HiFiBerry <info@hifiberry.com>  Sat, 04 Jul 2026 02:30:00 +0000
 

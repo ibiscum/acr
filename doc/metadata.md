@@ -575,21 +575,21 @@ Enable debug logging for both core and enriched metadata operations:
 
 AudioControl provides command line tools to inspect cached metadata, which is useful for debugging and understanding the current state of the metadata system.
 
-### Dump Cache Tool (`audiocontrol_dump_cache`)
+### Dump Cache Tool (`acr_dump_cache`)
 
-The primary tool for inspecting the metadata cache is `audiocontrol_dump_cache`, which displays all cached key-value pairs in a readable format.
+The primary tool for inspecting the metadata cache is `acr_dump_cache`, which displays all cached key-value pairs in a readable format.
 
 #### Basic Usage
 
 ```bash
 # Dump all cache contents (uses default path)
-audiocontrol_dump_cache
+acr_dump_cache
 
 # Dump cache from specific path
-audiocontrol_dump_cache /custom/path/to/cache/attributes
+acr_dump_cache /custom/path/to/cache/attributes
 
 # Show help
-audiocontrol_dump_cache --help
+acr_dump_cache --help
 ```
 
 #### Output Format
@@ -640,7 +640,7 @@ Understanding the cache key patterns helps identify specific types of cached met
 
 ```bash
 # Look for specific artist metadata
-audiocontrol_dump_cache | grep "artist::metadata::The Beatles"
+acr_dump_cache | grep "artist::metadata::The Beatles"
 
 # Output example:
 # artist::metadata::The Beatles|{"name":"The Beatles","mbid":["b10bbbfc-cf9e-42e0-be17-e2c3e1d2600d"],"genres":["Rock","Pop Rock","Psychedelic Rock"],"biography":"The Beatles were an English rock band formed in Liverpool in 1960...","thumb_url":["https://theaudiodb.com/images/media/artist/thumb/rvvnvv1347913617.jpg"],"banner_url":["https://fanart.tv/fanart/music/b10bbbfc-cf9e-42e0-be17-e2c3e1d2600d/artistbackground/the-beatles-5018a594a0a4c.jpg"],"fanart_url":["https://fanart.tv/fanart/music/b10bbbfc-cf9e-42e0-be17-e2c3e1d2600d/artistbackground/the-beatles-5018a594a0a4c.jpg"]}
@@ -650,7 +650,7 @@ audiocontrol_dump_cache | grep "artist::metadata::The Beatles"
 
 ```bash
 # Search for MBID cache entries
-audiocontrol_dump_cache | grep "artist::mbid::"
+acr_dump_cache | grep "artist::mbid::"
 
 # Output example:
 # artist::mbid::The Beatles|["b10bbbfc-cf9e-42e0-be17-e2c3e1d2600d"]
@@ -662,7 +662,7 @@ audiocontrol_dump_cache | grep "artist::mbid::"
 
 ```bash
 # Check TheAudioDB cache entries
-audiocontrol_dump_cache | grep "theaudiodb::"
+acr_dump_cache | grep "theaudiodb::"
 
 # Output example:
 # theaudiodb::mbid::b10bbbfc-cf9e-42e0-be17-e2c3e1d2600d|{"artists":[{"strArtist":"The Beatles","strBiographyEN":"The Beatles were an English rock band...","strArtistThumb":"https://theaudiodb.com/images/media/artist/thumb/rvvnvv1347913617.jpg"}]}
@@ -674,7 +674,7 @@ audiocontrol_dump_cache | grep "theaudiodb::"
 
 ```bash
 # Find failed lookups that are cached to avoid retries
-audiocontrol_dump_cache | grep "not_found\|no_thumbnail"
+acr_dump_cache | grep "not_found\|no_thumbnail"
 
 # Output example:
 # theaudiodb::not_found::invalid-mbid-123|true
@@ -685,7 +685,7 @@ audiocontrol_dump_cache | grep "not_found\|no_thumbnail"
 
 ```bash
 # Find all cache entries for a specific artist
-audiocontrol_dump_cache | grep -i "beatles"
+acr_dump_cache | grep -i "beatles"
 
 # Output example:
 # artist::metadata::The Beatles|{...}
@@ -699,16 +699,16 @@ audiocontrol_dump_cache | grep -i "beatles"
 ```bash
 # Count different types of cache entries
 echo "Artist metadata entries:"
-audiocontrol_dump_cache | grep -c "artist::metadata::"
+acr_dump_cache | grep -c "artist::metadata::"
 
 echo "MusicBrainz ID entries:"
-audiocontrol_dump_cache | grep -c "artist::mbid::"
+acr_dump_cache | grep -c "artist::mbid::"
 
 echo "TheAudioDB entries:"
-audiocontrol_dump_cache | grep -c "theaudiodb::"
+acr_dump_cache | grep -c "theaudiodb::"
 
 echo "Failed lookup entries:"
-audiocontrol_dump_cache | grep -c "not_found"
+acr_dump_cache | grep -c "not_found"
 ```
 
 ### Filtering and Analysis
@@ -717,13 +717,13 @@ audiocontrol_dump_cache | grep -c "not_found"
 
 ```bash
 # Extract and pretty-print JSON for specific artist
-audiocontrol_dump_cache | grep "artist::metadata::The Beatles" | cut -d'|' -f2 | jq '.'
+acr_dump_cache | grep "artist::metadata::The Beatles" | cut -d'|' -f2 | jq '.'
 
 # Extract all artist names with metadata
-audiocontrol_dump_cache | grep "artist::metadata::" | cut -d'|' -f1 | sed 's/artist::metadata:://'
+acr_dump_cache | grep "artist::metadata::" | cut -d'|' -f1 | sed 's/artist::metadata:://'
 
 # Extract all cached MBIDs
-audiocontrol_dump_cache | grep "artist::mbid::" | cut -d'|' -f2 | jq -r '.[]'
+acr_dump_cache | grep "artist::mbid::" | cut -d'|' -f2 | jq -r '.[]'
 ```
 
 #### Monitor Cache for Debugging
@@ -732,7 +732,7 @@ audiocontrol_dump_cache | grep "artist::mbid::" | cut -d'|' -f2 | jq -r '.[]'
 # Watch cache changes (if running during active metadata updates)
 while true; do
     echo "=== $(date) ==="
-    audiocontrol_dump_cache | wc -l
+    acr_dump_cache | wc -l
     echo "Total cache entries"
     sleep 5
 done
@@ -753,7 +753,7 @@ stat /var/lib/audiocontrol/cache/attributes
 whoami
 
 # If permission issues, run with sudo (if appropriate)
-sudo audiocontrol_dump_cache
+sudo acr_dump_cache
 ```
 
 ### Performance Considerations
@@ -762,13 +762,13 @@ For large caches, consider filtering output:
 
 ```bash
 # Count total entries without displaying all content
-audiocontrol_dump_cache | wc -l
+acr_dump_cache | wc -l
 
 # Search for specific patterns only
-audiocontrol_dump_cache | grep "artist::metadata::" | head -10
+acr_dump_cache | grep "artist::metadata::" | head -10
 
 # Export cache for analysis
-audiocontrol_dump_cache > /tmp/audiocontrol_cache_dump.txt
+acr_dump_cache > /tmp/audiocontrol_cache_dump.txt
 ```
 
 ### Integration with Other Tools
@@ -777,10 +777,10 @@ The cache dump output can be integrated with other analysis tools:
 
 ```bash
 # Convert to CSV for spreadsheet analysis
-audiocontrol_dump_cache | sed 's/|/,/' > cache_data.csv
+acr_dump_cache | sed 's/|/,/' > cache_data.csv
 
 # Extract specific data for reporting
-audiocontrol_dump_cache | grep "artist::metadata::" | while IFS='|' read -r key value; do
+acr_dump_cache | grep "artist::metadata::" | while IFS='|' read -r key value; do
     artist=$(echo "$key" | sed 's/artist::metadata:://')
     genre=$(echo "$value" | jq -r '.genres[0] // "Unknown"')
     echo "$artist: $genre"
@@ -791,6 +791,6 @@ done
 
 The AudioControl metadata system provides comprehensive artist information by intelligently combining data from multiple authoritative sources. The system handles artist name complexity, respects service limitations through rate limiting, and provides robust caching for optimal performance.
 
-The command line tools, particularly `audiocontrol_dump_cache`, provide powerful ways to inspect and debug the metadata cache, helping administrators and developers understand the current state of the metadata system and troubleshoot issues.
+The command line tools, particularly `acr_dump_cache`, provide powerful ways to inspect and debug the metadata cache, helping administrators and developers understand the current state of the metadata system and troubleshoot issues.
 
 For questions or issues related to metadata, consult the service-specific documentation and ensure proper configuration according to this guide.
