@@ -33,22 +33,28 @@ This document describes the REST API endpoints available in the Audio Control RE
   - [List Available Plugins](#list-available-plugins)
   - [Get Plugin Information](#get-plugin-information)
 - [Library API](#library-api)
+  - [List All Players with Library Information](#list-all-players-with-library-information)
   - [Get Library Information](#get-library-information)
-  - [Search Library](#search-library)
-  - [Browse Artists](#browse-artists)
-  - [Browse Albums](#browse-albums)
-  - [Browse Album Tracks](#browse-album-tracks)
-  - [Browse Tracks](#browse-tracks)
-  - [Browse Playlists](#browse-playlists)
-  - [Browse Playlist Tracks](#browse-playlist-tracks)
+  - [Get Player Albums](#get-player-albums)
+  - [Get Player Artists](#get-player-artists)
+  - [Get Album by ID](#get-album-by-id)
+  - [Get Artist by Name](#get-artist-by-name)
+  - [Get Artist by ID](#get-artist-by-id)
+  - [Get Artist by MusicBrainz ID](#get-artist-by-musicbrainz-id)
+  - [Get Albums by Artist Name](#get-albums-by-artist-name)
+  - [Get Albums by Artist ID](#get-albums-by-artist-id)
   - [Browse Genres](#browse-genres)
-  - [Browse Files](#browse-files)
-  - [Get Library Statistics](#get-library-statistics)
+  - [Browse Albums by Genre](#browse-albums-by-genre)
+  - [Browse Artists by Genre](#browse-artists-by-genre)
+  - [Refresh Player Library](#refresh-player-library)
+  - [Update Player Library Media Database](#update-player-library-media-database)
+  - [Get Library Metadata](#get-library-metadata)
+  - [Get Specific Library Metadata Key](#get-specific-library-metadata-key)
+  - [Get Image from Library](#get-image-from-library)
 - [External Services API](#external-services-api)
-  - [MusicBrainz Integration](#musicbrainz-integration)
-  - [TheAudioDB Integration](#theaudiodb-integration)
+  - [TheAudioDB Integration](#theaudiodb-lookup)
   - [Last.fm Integration](#lastfm-integration)
-  - [Favourites Management](#favourites-management)
+  - [Favourites Management](#favourites-api)
 - [Lyrics API](#lyrics-api)
   - [Get Lyrics by Song ID](#get-lyrics-by-song-id)
   - [Get Lyrics by Metadata](#get-lyrics-by-metadata)
@@ -1431,7 +1437,7 @@ Triggers a scan for new files in the underlying system. This is different from r
 the backend system (e.g., MPD server) to look for new files on disk.
 
 - **Endpoint**: `/api/library/<player-name>/update`
-- **Method**: GET
+- **Method**: POST
 - **Path Parameters**:
   - `player-name` (string): The name of the player
 - **Response**:
@@ -1445,7 +1451,7 @@ the backend system (e.g., MPD server) to look for new files on disk.
 
 #### Example
 ```bash
-curl http://<device-ip>:1080/api/library/mpd/update
+curl -X POST http://<device-ip>:1080/api/library/mpd/update
 ```
 
 ### Get Library Metadata
@@ -1513,6 +1519,101 @@ Retrieves an image (such as album art) from a player's library.
 #### Example
 ```bash
 curl http://<device-ip>:1080/api/library/mpd/image/album:12345 --output cover.jpg
+```
+
+### Browse Genres
+
+Retrieves the list of all genres available in a player's library. By default, genres are cleaned and normalized using the genre cleanup rules. Pass `?raw=true` to get the raw, unprocessed genre values.
+
+- **Endpoint**: `/api/library/<player-name>/genres`
+- **Method**: GET
+- **Path Parameters**:
+  - `player-name` (string): The name of the player
+- **Query Parameters**:
+  - `raw` (boolean, optional): If `true`, returns unprocessed raw genre values (default: false)
+- **Response**:
+  ```json
+  {
+    "player_name": "player-name",
+    "count": 12,
+    "genres": ["Classical", "Jazz", "Rock", "Electronic"]
+  }
+  ```
+- **Error Response** (404 Not Found): String error message
+
+#### Examples
+```bash
+# Get normalized genres for MPD player
+curl http://<device-ip>:1080/api/library/mpd/genres
+
+# Get raw (unnormalized) genres
+curl "http://<device-ip>:1080/api/library/mpd/genres?raw=true"
+```
+
+### Browse Albums by Genre
+
+Retrieves all albums that match a specific genre (case-insensitive).
+
+- **Endpoint**: `/api/library/<player-name>/albums/by-genre/<genre>`
+- **Method**: GET
+- **Path Parameters**:
+  - `player-name` (string): The name of the player
+  - `genre` (string): The genre to filter by (case-insensitive)
+- **Response**:
+  ```json
+  {
+    "player_name": "player-name",
+    "count": 5,
+    "albums": [
+      // Album objects matching the genre
+    ]
+  }
+  ```
+- **Error Response** (404 Not Found): String error message
+
+#### Examples
+```bash
+# Get all Jazz albums from MPD library
+curl http://<device-ip>:1080/api/library/mpd/albums/by-genre/Jazz
+
+# Genre matching is case-insensitive
+curl http://<device-ip>:1080/api/library/mpd/albums/by-genre/rock
+```
+
+### Browse Artists by Genre
+
+Retrieves all artists associated with a specific genre (case-insensitive), with their album counts.
+
+- **Endpoint**: `/api/library/<player-name>/artists/by-genre/<genre>`
+- **Method**: GET
+- **Path Parameters**:
+  - `player-name` (string): The name of the player
+  - `genre` (string): The genre to filter by (case-insensitive)
+- **Response**:
+  ```json
+  {
+    "player_name": "player-name",
+    "genre": "Rock",
+    "count": 8,
+    "artists": [
+      {
+        "id": "12345678",
+        "name": "Pink Floyd",
+        "is_multi": false,
+        "albums_count": 12
+      }
+    ]
+  }
+  ```
+- **Error Response** (404 Not Found): String error message
+
+#### Examples
+```bash
+# Get all Rock artists from MPD library
+curl http://<device-ip>:1080/api/library/mpd/artists/by-genre/Rock
+
+# Get Classical artists from LMS library
+curl http://<device-ip>:1080/api/library/lms/artists/by-genre/Classical
 ```
 
 ## External Services API
@@ -1623,6 +1724,198 @@ curl http://<device-ip>:1080/api/audiodb/mbid/53b106e7-0cc6-42cc-ac95-ed8d30a3a9
 - Validating artist MusicBrainz ID mappings
 - Testing external service rate limiting
 - Debugging TheAudioDB API configuration
+
+### Last.fm Integration
+
+The Last.fm Integration API provides endpoints to authenticate and manage a Last.fm account connection. Once authenticated, the system can scrobble tracks, update "now playing" status, and sync favourites with Last.fm.
+
+**Base path**: `/api/lastfm`
+
+#### Get Last.fm Authentication Status
+
+Retrieves the current Last.fm authentication state.
+
+- **Endpoint**: `/api/lastfm/status`
+- **Method**: GET
+- **Response**:
+  ```json
+  {
+    "authenticated": true,
+    "username": "my_lastfm_user",
+    "error": null,
+    "error_description": null
+  }
+  ```
+- **Response (not authenticated)**:
+  ```json
+  {
+    "authenticated": false,
+    "username": null,
+    "error": null,
+    "error_description": null
+  }
+  ```
+- **Response (client not initialized)**:
+  ```json
+  {
+    "authenticated": false,
+    "username": null,
+    "error": "ClientNotInitialized",
+    "error_description": "Last.fm client has not been initialized."
+  }
+  ```
+
+##### Example
+```bash
+curl http://<device-ip>:1080/api/lastfm/status
+```
+
+#### Get Last.fm Authentication URL
+
+Initiates the Last.fm OAuth flow by requesting a temporary token from Last.fm and constructing the user authorization URL. The user must visit this URL to authorize the application. Store the returned `request_token` — it is needed in the next step.
+
+- **Endpoint**: `/api/lastfm/auth`
+- **Method**: GET
+- **Response**:
+  ```json
+  {
+    "url": "https://www.last.fm/api/auth/?api_key=...&token=abc123",
+    "request_token": "abc123",
+    "error": null
+  }
+  ```
+
+##### Example
+```bash
+curl http://<device-ip>:1080/api/lastfm/auth
+```
+
+#### Prepare Complete Authentication
+
+Stores the temporary request token on the backend so it can be exchanged for a permanent session key. Call this after the user has authorized the application on Last.fm, passing the `request_token` received from the `/auth` endpoint.
+
+- **Endpoint**: `/api/lastfm/prepare_complete_auth`
+- **Method**: POST
+- **Content-Type**: `application/json`
+- **Request Body**:
+  ```json
+  {
+    "token": "abc123"
+  }
+  ```
+- **Response** (success):
+  ```json
+  {
+    "success": true,
+    "error": null
+  }
+  ```
+- **Response** (error):
+  ```json
+  {
+    "success": false,
+    "error": "Failed to set token: ..."
+  }
+  ```
+
+##### Example
+```bash
+curl -X POST http://<device-ip>:1080/api/lastfm/prepare_complete_auth \
+  -H "Content-Type: application/json" \
+  -d '{"token": "abc123"}'
+```
+
+#### Complete Authentication
+
+Exchanges the stored temporary request token for a permanent Last.fm session key. Call this after `/prepare_complete_auth`. On success the user is authenticated and scrobbling can begin.
+
+- **Endpoint**: `/api/lastfm/complete_auth`
+- **Method**: GET
+- **Response** (success):
+  ```json
+  {
+    "authenticated": true,
+    "username": "my_lastfm_user",
+    "error": null,
+    "error_description": null
+  }
+  ```
+- **Response** (token not authorized yet):
+  ```json
+  {
+    "authenticated": false,
+    "username": null,
+    "error": "TokenNotAuthorized",
+    "error_description": "Unauthorized Token - This token has not been authorized"
+  }
+  ```
+
+##### Example
+```bash
+curl http://<device-ip>:1080/api/lastfm/complete_auth
+```
+
+#### Disconnect from Last.fm
+
+Clears the stored Last.fm session key and username, logging the user out of Last.fm within the service.
+
+- **Endpoint**: `/api/lastfm/disconnect`
+- **Method**: POST
+- **Response**:
+  ```json
+  {
+    "authenticated": false,
+    "username": null,
+    "error": null,
+    "error_description": null
+  }
+  ```
+
+##### Example
+```bash
+curl -X POST http://<device-ip>:1080/api/lastfm/disconnect
+```
+
+#### Last.fm Authentication Flow
+
+The complete authentication sequence is:
+
+```bash
+# Step 1: Get the authorization URL and request token
+RESPONSE=$(curl -s http://<device-ip>:1080/api/lastfm/auth)
+AUTH_URL=$(echo $RESPONSE | python3 -c "import sys,json; print(json.load(sys.stdin)['url'])")
+TOKEN=$(echo $RESPONSE | python3 -c "import sys,json; print(json.load(sys.stdin)['request_token'])")
+
+# Step 2: Direct the user to $AUTH_URL to authorize in their browser
+echo "Please visit: $AUTH_URL"
+
+# Step 3: After user authorizes, store the token on the backend
+curl -X POST http://<device-ip>:1080/api/lastfm/prepare_complete_auth \
+  -H "Content-Type: application/json" \
+  -d "{\"token\": \"$TOKEN\"}"
+
+# Step 4: Complete authentication to get the session key
+curl http://<device-ip>:1080/api/lastfm/complete_auth
+
+# Step 5: Verify authentication status
+curl http://<device-ip>:1080/api/lastfm/status
+```
+
+**Configuration Requirements**: Last.fm must be configured with an API key and secret:
+
+```json
+{
+  "services": {
+    "lastfm": {
+      "enable": true,
+      "api_key": "your_lastfm_api_key",
+      "api_secret": "your_lastfm_api_secret",
+      "now_playing_enabled": true,
+      "scrobble": true
+    }
+  }
+}
+```
 
 ### Favourites API
 
@@ -2978,7 +3271,7 @@ Retrieves comprehensive statistics about the current cache state, including memo
 
 **Example Request**:
 ```bash
-curl -X GET "http://localhost:8080/api/cache/stats"
+curl http://<device-ip>:1080/api/cache/stats
 ```
 
 **Example Response**:
@@ -3069,7 +3362,7 @@ Retrieves a list of all background jobs (both running and finished) with their p
 
 **Example Request**:
 ```bash
-curl -X GET "http://localhost:8080/api/background/jobs"
+curl http://<device-ip>:1080/api/background/jobs
 ```
 
 **Example Response (No Jobs Running)**:
@@ -3164,7 +3457,7 @@ Retrieves detailed information about a specific background job by its unique ide
 
 **Example Request**:
 ```bash
-curl -X GET "http://localhost:8080/api/background/jobs/artist_metadata_update_1640995200"
+curl http://<device-ip>:1080/api/background/jobs/artist_metadata_update_1640995200
 ```
 
 **Example Response (Job Found)**:
