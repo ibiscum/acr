@@ -70,3 +70,4 @@ audiocontrol.json
 audiocontrol.dev.json
 audiocontrol.log
 CODE_QUALITY_TODO.md
+__pycache__/

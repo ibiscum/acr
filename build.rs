@@ -10,8 +10,8 @@ fn main() {
     println!("cargo:rerun-if-changed=config/secrets.txt");
     println!("cargo:rerun-if-changed=../secrets.txt");
 
-    // Log all secrets found during build
-    println!("cargo:warning=SECRETS FOUND DURING BUILD:");
+    eprintln!("info: scanning secrets during build");
+
 
     let mut secrets = HashMap::new();
     // Check for secrets in various possible locations
@@ -99,11 +99,12 @@ fn generate_secrets_file(secrets: &HashMap<String, String>) {
     }
     
     if !should_generate {
-        println!("cargo:warning=Secrets file up to date, skipping generation");
+        eprintln!("info: secrets file up to date, skipping generation");
         return;
     }
     
-    println!("cargo:warning=Generating secrets file...");
+    eprintln!("info: generating secrets file");
+
     
     let mut content = String::new();
     content.push_str("// AUTO-GENERATED FILE - DO NOT EDIT\n");
