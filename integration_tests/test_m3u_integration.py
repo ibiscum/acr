@@ -3,6 +3,7 @@
 Integration tests for M3U playlist parsing API
 """
 
+import venv_bootstrap
 import pytest
 import tempfile
 import time

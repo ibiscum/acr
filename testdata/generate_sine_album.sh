@@ -9,7 +9,7 @@ ALBUM="Frequency Test Album"
 YEAR="2025"
 GENRE="Test tone"
 
-cd "$(dirname "$0")"
+cd "$(dirname "$0")" || exit
 
 echo "Generating 20 sine wave tracks with embedded cover art..."
 

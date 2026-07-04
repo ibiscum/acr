@@ -1,9 +1,10 @@
 #!/bin/bash
 
-cd `dirname $0`
+cd "$(dirname "$0")" || exit
 
 # Enable cross-compile support if configured
 _CC_ENV="$(dirname "$0")/../../../scripts/cross-compile-env.sh"
+# shellcheck source=/dev/null
 if [ -f "$_CC_ENV" ]; then source "$_CC_ENV"; else echo "Not using cross-compilation (${_CC_ENV} does not exist)"; fi
 
 # Check if DIST is set by environment variable
@@ -23,4 +24,4 @@ fi
 sbuild --chroot-mode=unshare \
        --enable-network \
        --no-clean-source \
-       $DIST_ARG
+       "$DIST_ARG"

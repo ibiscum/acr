@@ -36,7 +36,7 @@
             "image_cache_path": "/tmp/test_cache/images"
         },
         "settingsdb": {
-            "path": "/tmp/test_db"
+            "path": "/tmp/test.db"
         },
         "security_store": {
             "path": "/tmp/test_security_store.json"

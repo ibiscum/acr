@@ -4,6 +4,7 @@ Volume Control API integration tests for AudioControl system
 These tests use the dummy volume control to test all volume endpoints and event handling
 """
 
+import venv_bootstrap
 import pytest
 import json
 import time

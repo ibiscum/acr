@@ -30,7 +30,7 @@
             "image_cache_path": "/tmp/test_cache_activemonitor/images"
         },
         "settingsdb": {
-            "path": "/tmp/test_db_activemonitor"
+            "path": "/tmp/test_activemonitor.db"
         },
         "security_store": {
             "path": "/tmp/test_security_store_activemonitor.json"

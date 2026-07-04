@@ -3,6 +3,7 @@
 Librespot integration tests for AudioControl system
 """
 
+import venv_bootstrap
 import pytest
 import time
 

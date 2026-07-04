@@ -5,6 +5,7 @@ This module tests that the MPD library loader properly registers and tracks
 background jobs during library loading operations.
 """
 
+import venv_bootstrap
 import pytest
 import time
 

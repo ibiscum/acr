@@ -28,7 +28,7 @@
       "image_cache_path": "/tmp/test_cache_fanarttv/images"
     },
     "settingsdb": {
-      "path": "/tmp/test_db_fanarttv"
+      "path": "/tmp/test_fanarttv.db"
     },
     "security_store": {
       "path": "/tmp/test_security_store_fanarttv.json"

@@ -28,7 +28,7 @@
             "image_cache_path": "/tmp/test_cache_theaudiodb/images"
         },
         "settingsdb": {
-            "path": "/tmp/test_db_theaudiodb"
+            "path": "/tmp/test_theaudiodb.db"
         },
         "security_store": {
             "path": "/tmp/test_security_store_theaudiodb.json"

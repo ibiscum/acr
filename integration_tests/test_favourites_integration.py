@@ -4,6 +4,7 @@ Integration tests for Favourites API
 These tests verify the favourites functionality using the settingsdb provider
 """
 
+import venv_bootstrap
 import pytest
 import json
 import time

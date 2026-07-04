@@ -1,3 +1,15 @@
+hifiberry-audiocontrol (0.7.14) stable; urgency=medium
+
+  * Integration tests: bootstrap and use integration_tests/.venv automatically
+    in run_tests.py so required Python packages are available without manual
+    activation.
+  * Integration tests: discover test_*.py files dynamically in run_tests.py
+    instead of using a stale hardcoded list.
+  * Build script: downgrade secrets generation status output from cargo warnings
+    to informational log lines.
+
+ -- HiFiBerry <info@hifiberry.com>  Sat, 04 Jul 2026 02:30:00 +0000
+
 hifiberry-audiocontrol (0.7.13) stable; urgency=medium
 
   * Bluetooth: fix the auto-discover player never becoming the active player.

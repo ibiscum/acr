@@ -53,12 +53,15 @@ secrets/security_store.json
 # Test related temporary files
 # test_config_*.json - commented out so integration test configs are tracked
 output.txt
-integration_test/__pycache__/*
+__pycache__/
+.pytest_cache/
+integration_tests/.tmp/
+.venv/
+
 test_cache_1080/*
-integration_test/test_librespot_event_1080
-integration_test/test_cache_1080
-test_librespot_event_1080
-test_cache_18080/attributes/db
+test_librespot_event_1080/
+test_cache_1080/
+test_librespot_event_1080/
 debian/hifiberry-audiocontrol/*
 debian/rustup_home/*
 debian/cargo_home/*
@@ -70,4 +73,3 @@ audiocontrol.json
 audiocontrol.dev.json
 audiocontrol.log
 CODE_QUALITY_TODO.md
-__pycache__/
