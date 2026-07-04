@@ -3,43 +3,38 @@
 Integration tests for M3U playlist parsing API
 """
 
-import venv_bootstrap
-import pytest
-import tempfile
-import time
+from pathlib import Path
 import threading
+import time
 from http.server import HTTPServer, SimpleHTTPRequestHandler
-import os
+
+import pytest
+import venv_bootstrap
+
+TESTDATA_DIR = Path(__file__).parent / "testdata" / "m3u"
+
 
 class M3UTestServer:
     """Test HTTP server for serving M3U playlist files."""
-    
+
     def __init__(self, port=8123):
         self.port = port
         self.server = None
         self.thread = None
-        self.temp_dir = None
-        
+
     def start(self):
         """Start the test server."""
-        # Create temporary directory for test files
-        self.temp_dir = tempfile.mkdtemp()
-        
-        # Create test M3U files
-        self._create_test_files()
-        
-        # Start HTTP server with custom handler that serves from temp_dir
-        temp_dir = self.temp_dir  # Capture for closure
-        
+        directory = str(TESTDATA_DIR)
+
         class Handler(SimpleHTTPRequestHandler):
             def __init__(self, *args, **kwargs):
-                super().__init__(*args, directory=temp_dir, **kwargs)
-        
-        self.server = HTTPServer(('localhost', self.port), Handler)
+                super().__init__(*args, directory=directory, **kwargs)
+
+        self.server = HTTPServer(("localhost", self.port), Handler)
         self.thread = threading.Thread(target=self.server.serve_forever)
         self.thread.daemon = True
         self.thread.start()
-        
+
     def stop(self):
         """Stop the test server."""
         if self.server:
@@ -47,37 +42,10 @@ class M3UTestServer:
             self.server.server_close()
         if self.thread:
             self.thread.join(timeout=1)
-        if self.temp_dir:
-            import shutil
-            shutil.rmtree(self.temp_dir)
-    
+
     def get_file_url(self, filename):
         """Get the URL for a test file."""
         return f"http://localhost:{self.port}/{filename}"
-    
-    def _create_test_files(self):
-        """Create test M3U files."""
-        # Simple M3U file
-        simple_m3u = """http://example.com/song1.mp3
-http://example.com/song2.mp3
-http://example.com/song3.mp3"""
-        
-        with open(os.path.join(self.temp_dir, "simple.m3u"), "w") as f:
-            f.write(simple_m3u)
-        
-        # Extended M3U file  
-        extended_m3u = """#EXTM3U
-#EXTINF:180,Artist 1 - Song 1
-http://example.com/song1.mp3
-#EXTINF:240,Artist 2 - Song 2
-http://example.com/song2.mp3
-#EXTINF:-1,Live Stream
-http://example.com/stream.m3u8
-#EXTINF:200,
-http://example.com/song_no_title.mp3"""
-
-        with open(os.path.join(self.temp_dir, "extended.m3u"), "w") as f:
-            f.write(extended_m3u)
 
 @pytest.fixture
 def m3u_server():

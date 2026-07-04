@@ -41,6 +41,14 @@ static THEAUDIODB_CONFIG: Lazy<Mutex<TheAudioDBConfig>> = Lazy::new(|| {
     Mutex::new(TheAudioDBConfig::default())
 });
 
+fn is_placeholder_api_key(api_key: &str) -> bool {
+    let trimmed = api_key.trim();
+    trimmed.is_empty()
+        || trimmed == "YOUR_API_KEY_HERE"
+        || trimmed == "unknown"
+        || trimmed == "test_api_key"
+}
+
 /// Initialize TheAudioDB module from configuration
 pub fn initialize_from_config(config: &serde_json::Value) {    
     if let Some(audiodb_config) = get_service_config(config, "theaudiodb") {
@@ -63,7 +71,7 @@ pub fn initialize_from_config(config: &serde_json::Value) {
                        });
 
                 config.api_key = api_key.to_string();
-                if !api_key.is_empty() {
+                if !is_placeholder_api_key(api_key) {
                     info!("TheAudioDB API key configured");
                 } else {
                     // Try to load from the default key (secrets.txt)
@@ -75,7 +83,7 @@ pub fn initialize_from_config(config: &serde_json::Value) {
                                 "Not available".to_string()
                             });
 
-                    if default_key != "YOUR_API_KEY_HERE" {
+                    if !is_placeholder_api_key(&default_key) {
                         info!("Using default TheAudioDB API key");
                     } else {
                         warn!("Empty TheAudioDB API key provided");
@@ -113,11 +121,11 @@ pub fn is_enabled() -> bool {
 /// Get the configured API key
 pub fn get_api_key() -> Option<String> {
     let config = THEAUDIODB_CONFIG.lock();
-    if config.api_key.is_empty() {
+    if is_placeholder_api_key(&config.api_key) {
         // If no API key is configured in audiocontrol.json, use the default from secrets.txt
         let default_key = default_theaudiodb_api_key();
 
-        if default_key != "YOUR_API_KEY_HERE" {
+        if !is_placeholder_api_key(&default_key) {
             info!("Using default secret for TheAudioDB");
             return Some(default_key.to_string());
         }

@@ -86,8 +86,8 @@ pub fn parse_m3u_playlist(
             error!("Failed to parse M3U playlist from {}: {}", url, e);
             
             let error_message = match e {
-                M3UError::DownloadError(ref reqwest_err) => {
-                    format!("Failed to download playlist: {}", reqwest_err)
+                M3UError::DownloadError(ref msg) => {
+                    format!("Failed to download playlist: {}", msg)
                 }
                 M3UError::InvalidUrl(ref msg) => {
                     format!("Invalid URL: {}", msg)

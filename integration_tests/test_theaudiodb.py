@@ -14,6 +14,13 @@ from conftest import AudioControlTestServer, TEST_PORTS
 # Test configuration for TheAudioDB
 TEST_CONFIG_PATH = Path(__file__).parent / "test_config_theaudiodb.json"
 
+
+def _has_real_theaudiodb_api_key() -> bool:
+    config = json.loads(TEST_CONFIG_PATH.read_text())
+    api_key = config.get("services", {}).get("theaudiodb", {}).get("api_key", "")
+    api_key = api_key.strip()
+    return bool(api_key) and api_key not in {"YOUR_API_KEY_HERE", "unknown", "test_api_key"}
+
 @pytest.fixture
 def theaudiodb_server():
     """Fixture for TheAudioDB integration tests"""
@@ -71,6 +78,9 @@ def test_theaudiodb_server_startup(theaudiodb_server):
 
 def test_theaudiodb_mbid_endpoint(theaudiodb_server):
     """Test the TheAudioDB MBID lookup endpoint"""
+    if not _has_real_theaudiodb_api_key():
+        pytest.skip("TheAudioDB integration test requires a real API key")
+
     # Test with John Williams' MBID
     mbid = "53b106e7-0cc6-42cc-ac95-ed8d30a3a98e"
     
@@ -250,6 +260,9 @@ def test_theaudiodb_rate_limiting(theaudiodb_server):
     
 def test_theaudiodb_endpoint_integration(theaudiodb_server):
     """Integration test for TheAudioDB endpoint functionality"""
+    if not _has_real_theaudiodb_api_key():
+        pytest.skip("TheAudioDB integration test requires a real API key")
+
     # Test the full flow: request -> processing -> response
     mbid = "53b106e7-0cc6-42cc-ac95-ed8d30a3a98e"
     
