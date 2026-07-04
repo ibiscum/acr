@@ -210,7 +210,7 @@ pub fn update_data_for_artist(mut artist: Artist) -> Artist {
         let cache_key = format!("artist::metadata::{}", artist.name);
         
         // Store the metadata in the attribute cache
-        match crate::helpers::attributecache::set(&cache_key, metadata) {
+        match crate::helpers::attribute_cache::set(&cache_key, metadata) {
             Ok(_) => debug!("Stored metadata for artist {} in attribute cache", artist.name),
             Err(e) => warn!("Failed to store metadata for artist {} in attribute cache: {}", artist.name, e),
         }
@@ -218,7 +218,7 @@ pub fn update_data_for_artist(mut artist: Artist) -> Artist {
         // If the artist has MusicBrainz IDs, store them separately for faster lookup
         if !metadata.mbid.is_empty() {
             let mbid_key = format!("artist::mbid::{}", artist.name);
-            if let Err(e) = crate::helpers::attributecache::set(&mbid_key, &metadata.mbid) {
+            if let Err(e) = crate::helpers::attribute_cache::set(&mbid_key, &metadata.mbid) {
                 warn!("Failed to store MusicBrainz IDs for artist {} in attribute cache: {}", artist.name, e);
             }
         }
@@ -247,7 +247,7 @@ pub fn update_library_artists_metadata_in_background(
         let job_name = "Artist Metadata Update".to_string();
         
         // Register the background job
-        if let Err(e) = crate::helpers::backgroundjobs::register_job(job_id.clone(), job_name) {
+        if let Err(e) = crate::helpers::background_jobs::register_job(job_id.clone(), job_name) {
             warn!("Failed to register background job: {}", e);
             return;
         }
@@ -265,7 +265,7 @@ pub fn update_library_artists_metadata_in_background(
         info!("Processing metadata for {} artists", total);
         
         // Update the job with total count
-        if let Err(e) = crate::helpers::backgroundjobs::update_job(
+        if let Err(e) = crate::helpers::background_jobs::update_job(
             &job_id,
             Some(format!("Starting metadata update for {} artists", total)),
             Some(0),
@@ -281,7 +281,7 @@ pub fn update_library_artists_metadata_in_background(
             // Update progress in background job
             let completed = index;
             let progress_message = format!("Processing artist: {}", artist_name);
-            if let Err(e) = crate::helpers::backgroundjobs::update_job(
+            if let Err(e) = crate::helpers::background_jobs::update_job(
                 &job_id,
                 Some(progress_message),
                 Some(completed),
@@ -333,7 +333,7 @@ pub fn update_library_artists_metadata_in_background(
                 info!("Processed {}/{} artists for metadata", count, total);
                 
                 // Update background job with milestone progress
-                if let Err(e) = crate::helpers::backgroundjobs::update_job(
+                if let Err(e) = crate::helpers::background_jobs::update_job(
                     &job_id,
                     Some(format!("Processed {}/{} artists", count, total)),
                     Some(count),
@@ -350,7 +350,7 @@ pub fn update_library_artists_metadata_in_background(
         info!("Artist metadata update process completed");
         
         // Complete and remove the background job
-        if let Err(e) = crate::helpers::backgroundjobs::complete_job(&job_id) {
+        if let Err(e) = crate::helpers::background_jobs::complete_job(&job_id) {
             warn!("Failed to complete background job: {}", e);
         }
     });

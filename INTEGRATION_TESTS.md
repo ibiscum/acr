@@ -34,6 +34,24 @@ run-test.bat test_librespot_api_events test_generic_player_becomes_active_on_pla
 ./run-test.sh test_librespot_api_events test_generic_player_becomes_active_on_playing
 ```
 
+### Run a standalone integration test file (Python)
+
+Use the bundled bootstrap flow so the project test virtual environment is
+prepared consistently before executing a specific file.
+
+```bash
+$USER/data/acr/integration_tests/.venv/bin/python integration_tests/venv_bootstrap.py
+$USER/data/acr/integration_tests/.venv/bin/python -m pytest integration_tests/test_coverart_integration.py -v
+```
+
+### Last.fm credential requirement
+
+The Last.fm-specific coverart integration test requires real credentials.
+Without valid credentials, that test is skipped by design.
+
+- `LASTFM_API_KEY`
+- `LASTFM_API_SECRET`
+
 ### Available tests
 
 - `test_full_integration_state_change`

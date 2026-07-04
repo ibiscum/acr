@@ -5,8 +5,8 @@ use std::time::Instant;
 use log::{debug, info, warn, error};
 use crate::data::{Album, AlbumArtists, Artist, LibraryError, LibraryInterface};
 use crate::helpers::http_client;
-use crate::players::lms::jsonrps::LmsRpcClient;
-use crate::players::lms::lmsaudio::lms_image_url;
+use crate::players::lms::json_rps::LmsRpcClient;
+use crate::players::lms::lms_audio::lms_image_url;
 
 /// LMS library interface that provides access to albums and artists
 #[derive(Clone)]
@@ -155,7 +155,7 @@ impl LMSLibrary {
             
             // Try to load metadata from the attribute cache
             let mut artist_with_metadata = artist;
-            match crate::helpers::attributecache::get::<crate::data::ArtistMeta>(&cache_key) {
+            match crate::helpers::attribute_cache::get::<crate::data::ArtistMeta>(&cache_key) {
                 Ok(Some(cached_metadata)) => {
                     debug!("Loaded metadata for artist {} from attribute cache", artist_name);
                     artist_with_metadata.metadata = Some(cached_metadata);
@@ -344,7 +344,7 @@ impl LibraryInterface for LMSLibrary {
         let start_time = Instant::now();
         
         // Use our LMSLibraryLoader to load albums
-        let loader = super::libraryloader::LMSLibraryLoader::new(
+        let loader = super::library_loader::LMSLibraryLoader::new(
             self.client.clone()
         );
         
@@ -392,7 +392,7 @@ impl LibraryInterface for LMSLibrary {
                 // Start background update of artist metadata now that the library is fully loaded
                 if self.enhance_metadata {
                     info!("Starting background metadata update for artists");
-                    crate::helpers::artistupdater::update_library_artists_metadata_in_background(
+                    crate::helpers::artist_updater::update_library_artists_metadata_in_background(
                         self.artists.clone()
                     );
                 }
@@ -434,8 +434,8 @@ impl LibraryInterface for LMSLibrary {
     fn update_artist_metadata(&self) {
         if self.enhance_metadata {
             info!("Starting background metadata update for LMSLibrary artists");
-            // Use the generic function from artistupdater with only the artists collection
-            crate::helpers::artistupdater::update_library_artists_metadata_in_background(self.artists.clone());
+            // Use the generic function from artist_updater with only the artists collection
+            crate::helpers::artist_updater::update_library_artists_metadata_in_background(self.artists.clone());
         }
     }
     

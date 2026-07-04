@@ -4,7 +4,7 @@ use std::any::Any;
 use crate::data::PlayerEvent;
 use crate::plugins::plugin::Plugin;
 use crate::audiocontrol::AudioController;
-use crate::audiocontrol::eventbus::EventBus;
+use crate::audiocontrol::event_bus::EventBus;
 use log;
 
 /// A plugin that can respond to events from an AudioController

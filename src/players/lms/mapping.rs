@@ -10,7 +10,7 @@ use crate::data::album::Album as AcrAlbum;
 use crate::data::artist::Artist as AcrArtist;
 use crate::data::track::Track as AcrTrack;
 
-use super::jsonrps::{Album as LmsAlbum, Artist as LmsArtist, Track as LmsTrack};
+use super::json_rps::{Album as LmsAlbum, Artist as LmsArtist, Track as LmsTrack};
 
 /// Maps an LMS Album to the application's Album structure
 pub fn map_album(lms_album: &LmsAlbum) -> Option<AcrAlbum> {

@@ -1,10 +1,10 @@
 use audiocontrol::api::server;
 use audiocontrol::config::{get_service_config, merge_player_includes};
-use audiocontrol::helpers::imagecache::ImageCache;
+use audiocontrol::helpers::image_cache::ImageCache;
 use audiocontrol::helpers::lastfm;
 use audiocontrol::helpers::musicbrainz;
 use audiocontrol::helpers::security_store::SecurityStore;
-use audiocontrol::helpers::settingsdb::SettingsDb;
+use audiocontrol::helpers::settings_db::SettingsDb;
 use audiocontrol::helpers::spotify;
 use audiocontrol::helpers::theaudiodb;
 use audiocontrol::helpers::fanarttv;
@@ -14,7 +14,7 @@ use audiocontrol::secrets;
 use audiocontrol::AudioController;
 // Import LMS modules to ensure they're included in the build
 #[allow(unused_imports)]
-use audiocontrol::players::lms::lmsaudio::LMSAudioController;
+use audiocontrol::players::lms::lms_audio::LMSAudioController;
 use log::{debug, error, info, warn};
 use std::env;
 use std::fs;
@@ -175,19 +175,19 @@ fn main() {
 
         // Initialize using the new configuration method that supports both old and new formats
         if let Some(cache_config) = attribute_cache_config {
-            match audiocontrol::helpers::attributecache::AttributeCache::initialize_from_config(cache_config) {
+            match audiocontrol::helpers::attribute_cache::AttributeCache::initialize_from_config(cache_config) {
                 Ok(_) => info!("Attribute cache initialized from configuration"),
                 Err(e) => {
                     error!("Failed to initialize attribute cache from config: {}", e);
                     // Fall back to old method
-                    if let Err(e) = audiocontrol::helpers::attributecache::AttributeCache::initialize_global(&cache_path) {
+                    if let Err(e) = audiocontrol::helpers::attribute_cache::AttributeCache::initialize_global(&cache_path) {
                         error!("Failed to initialize attribute cache with fallback method: {}", e);
                     }
                 }
             }
         } else {
             // No configuration, use default
-            if let Err(e) = audiocontrol::helpers::attributecache::AttributeCache::initialize_global(&cache_path) {
+            if let Err(e) = audiocontrol::helpers::attribute_cache::AttributeCache::initialize_global(&cache_path) {
                 error!("Failed to initialize attribute cache with defaults: {}", e);
             }
         }
@@ -203,7 +203,7 @@ fn main() {
         );
         
         // Initialize with defaults
-        if let Err(e) = audiocontrol::helpers::attributecache::AttributeCache::initialize_global(&default_path) {
+        if let Err(e) = audiocontrol::helpers::attribute_cache::AttributeCache::initialize_global(&default_path) {
             error!("Failed to initialize attribute cache with defaults: {}", e);
         }
         
@@ -241,7 +241,7 @@ fn main() {
 
     // Get the settings database path from configuration
     let settingsdb_path =
-        if let Some(settingsdb_config) = get_service_config(&controllers_config, "settingsdb") {
+        if let Some(settingsdb_config) = get_service_config(&controllers_config, "settings_db") {
             if let Some(db_path) = settingsdb_config
                 .get("path")
                 .and_then(|p| p.as_str())
@@ -251,7 +251,7 @@ fn main() {
             } else {
                 let default_path = "/var/lib/audiocontrol/db".to_string();
                 info!(
-                    "No path specified in settingsdb configuration, using default path: {}",
+                    "No path specified in settings_db configuration, using default path: {}",
                     default_path
                 );
                 default_path
@@ -259,7 +259,7 @@ fn main() {
         } else {
             let default_path = "/var/lib/audiocontrol/db".to_string();
             info!(
-                "No settingsdb configuration found, using default path: {}",
+                "No settings_db configuration found, using default path: {}",
                 default_path
             );
             default_path

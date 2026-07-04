@@ -146,7 +146,7 @@ fn lastfm_worker(
                                     song: updated_song_partial.clone()
                                 };
                                 debug!("LastFMWorker: Publishing SongInformationUpdate to event bus with partial data: {:?}", updated_song_partial);
-                                crate::audiocontrol::eventbus::EventBus::instance().publish(event);
+                                crate::audiocontrol::event_bus::EventBus::instance().publish(event);
 
                                 merge_song_updates(original_song_details_ref, &updated_song_partial);
                                 debug!("LastFMWorker: Merged partial song info. New song_details: {:?}", track_data.song_details);

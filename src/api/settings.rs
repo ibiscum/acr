@@ -2,7 +2,7 @@ use rocket::serde::json::Json;
 use rocket::post;
 use serde::{Deserialize, Serialize};
 use log::{debug, warn, error};
-use crate::helpers::settingsdb;
+use crate::helpers::settings_db;
 
 /// Request structure for getting a setting value
 #[derive(Deserialize, Serialize)]
@@ -51,7 +51,7 @@ pub fn get_setting(request: Json<GetSettingRequest>) -> Json<serde_json::Value> 
     debug!("Getting setting for key: {}", request.key);
     
     // Try to get the value from the settings database
-    match settingsdb::get::<serde_json::Value>(&request.key) {
+    match settings_db::get::<serde_json::Value>(&request.key) {
         Ok(value_opt) => {
             let exists = value_opt.is_some();
             let response = GetSettingResponse {
@@ -90,7 +90,7 @@ pub fn set_setting(request: Json<SetSettingRequest>) -> Json<serde_json::Value> 
     debug!("Setting value for key: {} = {:?}", request.key, request.value);
     
     // First, try to get the current value to return as previous_value
-    let previous_value = match settingsdb::get::<serde_json::Value>(&request.key) {
+    let previous_value = match settings_db::get::<serde_json::Value>(&request.key) {
         Ok(value_opt) => value_opt,
         Err(e) => {
             warn!("Could not retrieve previous value for key '{}': {}", request.key, e);
@@ -99,7 +99,7 @@ pub fn set_setting(request: Json<SetSettingRequest>) -> Json<serde_json::Value> 
     };
     
     // Try to set the new value
-    match settingsdb::set(&request.key, &request.value) {
+    match settings_db::set(&request.key, &request.value) {
         Ok(()) => {
             debug!("Successfully set setting '{}' to {:?}", request.key, request.value);
             let response = SetSettingResponse {
@@ -133,7 +133,7 @@ mod tests {
     use serde_json::json;
     use serial_test::serial;
     use tempfile::TempDir;
-    use crate::helpers::settingsdb;
+    use crate::helpers::settings_db;
 
     /// Setup a temporary directory for testing and initialize the database
     /// Returns a temporary directory that will clean up when dropped
@@ -156,7 +156,7 @@ mod tests {
         std::fs::create_dir_all(&test_subdir).expect("Failed to create test subdirectory");
         
         // Initialize the global settings database with the test-specific directory
-        settingsdb::SettingsDb::initialize_global(&test_subdir)
+        settings_db::SettingsDb::initialize_global(&test_subdir)
             .expect("Failed to initialize test database");
             
         temp_dir
@@ -264,11 +264,11 @@ mod tests {
         let test_value = json!("Hello, World!");
         
         // Test setting a value directly using the settings database
-        let result = settingsdb::get_settings_db().set(test_key, &test_value);
+        let result = settings_db::get_settings_db().set(test_key, &test_value);
         assert!(result.is_ok());
         
         // Test getting the value directly
-        let retrieved: Result<Option<serde_json::Value>, String> = settingsdb::get_settings_db().get(test_key);
+        let retrieved: Result<Option<serde_json::Value>, String> = settings_db::get_settings_db().get(test_key);
         assert!(retrieved.is_ok());
         
         let retrieved_value = retrieved.unwrap().unwrap();
@@ -283,7 +283,7 @@ mod tests {
         let test_key = "nonexistent_key_12345";
         
         // Test getting a nonexistent key
-        let retrieved: Result<Option<serde_json::Value>, String> = settingsdb::get_settings_db().get(test_key);
+        let retrieved: Result<Option<serde_json::Value>, String> = settings_db::get_settings_db().get(test_key);
         assert!(retrieved.is_ok());
         assert!(retrieved.unwrap().is_none());
     }

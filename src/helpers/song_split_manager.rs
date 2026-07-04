@@ -1,5 +1,5 @@
-use crate::helpers::songtitlesplitter::SongTitleSplitter;
-use crate::helpers::attributecache;
+use crate::helpers::song_title_splitter::SongTitleSplitter;
+use crate::helpers::attribute_cache;
 use std::collections::HashMap;
 use std::sync::Arc;
 use parking_lot::Mutex;
@@ -218,7 +218,7 @@ impl SongSplitManager {
             match splitter.to_json_compact() {
                 Ok(json) => {
                     // Store in attribute cache
-                    match attributecache::set(&cache_key, &json) {
+                    match attribute_cache::set(&cache_key, &json) {
                         Ok(_) => {
                             debug!("Successfully saved splitter state for '{}' to cache", splitter_id);
                             Ok(())
@@ -249,7 +249,7 @@ impl SongSplitManager {
     fn load_from_cache(&self, splitter_id: &str) -> Option<SongTitleSplitter> {
         let cache_key = format!("song_splitter:{}", splitter_id);
         
-        match attributecache::get::<String>(&cache_key) {
+        match attribute_cache::get::<String>(&cache_key) {
             Ok(Some(json)) => {
                 match SongTitleSplitter::from_json(&json) {
                     Ok(splitter) => {
@@ -456,7 +456,7 @@ mod tests {
         
         // Save the splitter
         let save_result = manager.save(splitter_id);
-        // Note: This might fail if attributecache is not properly initialized in test environment
+        // Note: This might fail if attribute_cache is not properly initialized in test environment
         // but the function should exist and handle errors gracefully
         match save_result {
             Ok(_) => {

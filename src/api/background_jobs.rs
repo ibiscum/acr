@@ -2,7 +2,7 @@ use rocket::serde::json::Json;
 use rocket::get;
 use serde::{Deserialize, Serialize};
 use log::{debug, error};
-use crate::helpers::backgroundjobs::{get_all_jobs, BackgroundJob};
+use crate::helpers::background_jobs::{get_all_jobs, BackgroundJob};
 
 /// Response structure for background jobs listing
 #[derive(Serialize, Deserialize)]
@@ -106,7 +106,7 @@ pub fn get_background_jobs() -> Json<BackgroundJobsResponse> {
 pub fn get_background_job(job_id: String) -> Json<BackgroundJobsResponse> {
     debug!("API request: get background job with ID: {}", job_id);
 
-    match crate::helpers::backgroundjobs::get_job(&job_id) {
+    match crate::helpers::background_jobs::get_job(&job_id) {
         Ok(Some(job)) => {
             debug!("Successfully retrieved background job: {}", job_id);
             

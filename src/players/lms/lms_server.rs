@@ -9,7 +9,7 @@ use mac_address::MacAddress;
 use std::time::Instant;
 use once_cell::sync::Lazy;
 
-use crate::players::lms::jsonrps::LmsRpcClient;
+use crate::players::lms::json_rps::LmsRpcClient;
 
 /// Default timeout for server discovery in seconds
 const DEFAULT_DISCOVERY_TIMEOUT: u64 = 2;

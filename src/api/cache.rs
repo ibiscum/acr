@@ -2,8 +2,8 @@ use rocket::serde::json::Json;
 use rocket::get;
 use serde::{Deserialize, Serialize};
 use log::{debug, error};
-use crate::helpers::attributecache::{get_cache_stats, CacheStats};
-use crate::helpers::imagecache;
+use crate::helpers::attribute_cache::{get_cache_stats, CacheStats};
+use crate::helpers::image_cache;
 
 /// Response structure for cache statistics
 #[derive(Serialize, Deserialize)]
@@ -51,7 +51,7 @@ pub fn get_cache_statistics() -> Json<CacheStatsResponse> {
     };
 
     // Get image cache stats
-    let image_stats = match imagecache::get_cache_statistics() {
+    let image_stats = match image_cache::get_cache_statistics() {
         Ok(stats) => {
             debug!("Successfully retrieved image cache stats: total_images={}, total_size={}, last_updated={}", 
                 stats.total_images, stats.total_size, stats.last_updated);

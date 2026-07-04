@@ -3,7 +3,7 @@ use rocket::http::ContentType;
 use rocket::response::status::Custom;
 use rocket::http::Status;
 use std::path::{Path, PathBuf};
-use crate::helpers::imagecache;
+use crate::helpers::image_cache;
 
 /// Retrieve an image from the image cache based on a filepath
 ///
@@ -15,7 +15,7 @@ pub fn get_image_from_cache(filepath: PathBuf) -> Result<(ContentType, Vec<u8>),
     log::debug!("Request for image cache file: {:?}", filepath);
     
     // Check if image exists in the cache
-    if !imagecache::image_exists(&filepath) {
+    if !image_cache::image_exists(&filepath) {
         return Err(Custom(
             Status::NotFound,
             format!("Image '{}' not found in cache", filepath.display()),
@@ -23,7 +23,7 @@ pub fn get_image_from_cache(filepath: PathBuf) -> Result<(ContentType, Vec<u8>),
     }
 
     // Get the image data
-    match imagecache::get_image_data(&filepath) {
+    match image_cache::get_image_data(&filepath) {
         Ok(data) => {
             // Detect the content type based on the file extension
             let content_type = detect_content_type(&filepath);

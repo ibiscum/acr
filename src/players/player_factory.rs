@@ -1,4 +1,4 @@
-use crate::players::{MPDPlayerController, NullPlayerController, PlayerController, raat::RAATPlayerController, librespot::LibrespotPlayerController, lms::lmsaudio::LMSAudioController, generic::GenericPlayerController, ShairportController, BluetoothPlayerController};
+use crate::players::{MPDPlayerController, NullPlayerController, PlayerController, raat::RAATPlayerController, librespot::LibrespotPlayerController, lms::lms_audio::LMSAudioController, generic::GenericPlayerController, ShairportController, BluetoothPlayerController};
 
 // MPRIS support is only available on Unix-like systems
 #[cfg(not(windows))]

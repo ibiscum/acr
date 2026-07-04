@@ -410,7 +410,7 @@ impl MPDLibrary {
         // Check if we should look in the cache first
         if let Some(path) = cache_path {
             // Check if the track has a cover in the cache
-            if let Ok((image_data, mime_type)) = crate::helpers::imagecache::get_image_with_mime_type(path) {
+            if let Ok((image_data, mime_type)) = crate::helpers::image_cache::get_image_with_mime_type(path) {
                 debug!("Found cached cover art for track at {}", path);
                 return Some((image_data, mime_type));
             }
@@ -421,10 +421,10 @@ impl MPDLibrary {
         // Use the existing cover_art function to get the image data
         let image_result = self.cover_art(track_url);
         
-        // If we got an image and have a cache path, store it in the imagecache
+        // If we got an image and have a cache path, store it in the image_cache
         if let (Some((image_data, mime_type)), Some(path)) = (&image_result, cache_path) {
             // Store the image in the cache using store_image_from_data
-            if let Err(e) = crate::helpers::imagecache::store_image_from_data(path, image_data.clone(), mime_type.clone()) {
+            if let Err(e) = crate::helpers::image_cache::store_image_from_data(path, image_data.clone(), mime_type.clone()) {
                 warn!("Failed to cache track cover art at '{}': {}", path, e);
             } else {
                 debug!("Stored track cover art in cache at {}", path);
@@ -503,7 +503,7 @@ impl MPDLibrary {
             
             // Try to load metadata from the attribute cache
             let mut artist_with_metadata = artist;
-            match crate::helpers::attributecache::get::<crate::data::ArtistMeta>(&cache_key) {
+            match crate::helpers::attribute_cache::get::<crate::data::ArtistMeta>(&cache_key) {
                 Ok(Some(cached_metadata)) => {
                     debug!("Loaded metadata for artist {} from attribute cache", artist_name);
                     artist_with_metadata.metadata = Some(cached_metadata);
@@ -667,7 +667,7 @@ impl MPDLibrary {
     /// 3. If it doesn't, locate the directory of the album and look for local files
     /// 4. Attempt to extract cover art from music files in that directory
     /// 5. Try to save the extracted art as cover.jpg in the album directory
-    /// 6. Store it in the imagecache for future requests
+    /// 6. Store it in the image_cache for future requests
     /// 
     /// Returns a tuple of (binary data, mime-type) of the cover art if found, None otherwise
     pub fn get_album_cover(&self, id: &crate::data::Identifier) -> Option<(Vec<u8>, String)> {
@@ -685,7 +685,7 @@ impl MPDLibrary {
         let year = album.release_date.map(|date| date.year());
         
         // Step 1: Try to get the cover art from the image cache first
-        if let Ok((data, mime_type)) = crate::helpers::imagecache::get_album_cover(&artist_name, &album.name, year) {
+        if let Ok((data, mime_type)) = crate::helpers::image_cache::get_album_cover(&artist_name, &album.name, year) {
             debug!("Found album cover in image cache for {}", album.name);
             return Some((data, mime_type));
         }
@@ -712,8 +712,8 @@ impl MPDLibrary {
         if let Some((data, mime_type)) = self.cover_art(uri) {
             debug!("Successfully retrieved cover art from MPD for album: {}", album.name);
             
-            // Store the cover art in the imagecache with artist and album name
-            let _ = crate::helpers::imagecache::store_album_cover(
+            // Store the cover art in the image_cache with artist and album name
+            let _ = crate::helpers::image_cache::store_album_cover(
                 &artist_name, 
                 &album.name, 
                 year, 
@@ -736,7 +736,7 @@ impl MPDLibrary {
             // Try to get track cover
             if let Some((data, mime_type)) = self.get_track_cover(uri, None) {
                 // Store in image cache with artist and album info for future requests
-                let _ = crate::helpers::imagecache::store_album_cover(
+                let _ = crate::helpers::image_cache::store_album_cover(
                     &artist_name,
                     &album.name,
                     year,
@@ -762,8 +762,8 @@ impl MPDLibrary {
                 // Step 5: Try to save as cover.jpg in album directory
                 self.save_cover_to_album_dir(&dir_path, &data);
                 
-                // Step 6: Store in imagecache for future requests
-                let _ = crate::helpers::imagecache::store_album_cover(
+                // Step 6: Store in image_cache for future requests
+                let _ = crate::helpers::image_cache::store_album_cover(
                     &artist_name,
                     &album.name,
                     year,
@@ -781,7 +781,7 @@ impl MPDLibrary {
         // Try to get track cover
         if let Some((data, mime_type)) = self.get_track_cover(uri, None) {
             // Store in image cache with artist and album info for future requests
-            let _ = crate::helpers::imagecache::store_album_cover(
+            let _ = crate::helpers::image_cache::store_album_cover(
                 &artist_name,
                 &album.name,
                 year,
@@ -988,7 +988,7 @@ impl LibraryInterface for MPDLibrary {
         let start_time = Instant::now();
         
         // Use our MPDLibraryLoader to load albums, passing the controller reference
-        let loader = super::libraryloader::MPDLibraryLoader::new(&self.hostname, self.port, self.controller.clone());
+        let loader = super::library_loader::MPDLibraryLoader::new(&self.hostname, self.port, self.controller.clone());
         
         // Get artist separators from the MPD configuration, if any
         let artist_separators = self.get_artist_separators();
@@ -1036,11 +1036,11 @@ impl LibraryInterface for MPDLibrary {
                 // Start background metadata updates now that the library is fully loaded
                 if self.enhance_metadata {
                     info!("Starting background metadata update for artists");
-                    crate::helpers::artistupdater::update_library_artists_metadata_in_background(
+                    crate::helpers::artist_updater::update_library_artists_metadata_in_background(
                         self.artists.clone()
                     );
                     info!("Starting background genre update for albums");
-                    crate::helpers::albumupdater::update_library_albums_genres_in_background(
+                    crate::helpers::album_updater::update_library_albums_genres_in_background(
                         self.albums.clone()
                     );
                 }
@@ -1086,14 +1086,14 @@ impl LibraryInterface for MPDLibrary {
     fn update_artist_metadata(&self) {
         if self.enhance_metadata {
             info!("Starting background metadata update for MPDLibrary artists");
-            crate::helpers::artistupdater::update_library_artists_metadata_in_background(self.artists.clone());
+            crate::helpers::artist_updater::update_library_artists_metadata_in_background(self.artists.clone());
         }
     }
 
     fn update_album_metadata(&self) {
         if self.enhance_metadata {
             info!("Starting background genre update for MPDLibrary albums");
-            crate::helpers::albumupdater::update_library_albums_genres_in_background(self.albums.clone());
+            crate::helpers::album_updater::update_library_albums_genres_in_background(self.albums.clone());
         }
     }
     

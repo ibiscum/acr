@@ -1,7 +1,7 @@
 use log::{debug, info, error};
 
-use crate::players::lms::jsonrps::LmsRpcClient;
-use crate::helpers::macaddress::{normalize_mac_address, mac_equal_ignore_case, mac_to_lowercase_string};
+use crate::players::lms::json_rps::LmsRpcClient;
+use crate::helpers::mac_address::{normalize_mac_address, mac_equal_ignore_case, mac_to_lowercase_string};
 
 /// Check if any of the specified MAC addresses is connected to the given LMS server
 ///

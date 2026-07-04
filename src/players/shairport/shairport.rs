@@ -5,7 +5,7 @@ use crate::helpers::shairportsync_messages::{
     update_song_from_message, song_has_significant_metadata
 };
 use crate::helpers::process_helper::{systemd, SystemdAction};
-use crate::helpers::imagecache;
+use crate::helpers::image_cache;
 use std::sync::Arc;
 use parking_lot::Mutex;
 use log::{debug, info, warn, error, trace};
@@ -501,13 +501,13 @@ impl ShairportController {
         let expiry_time = SystemTime::now() + Duration::from_secs(7 * 24 * 60 * 60); // 7 days
         
         // Store in image cache with expiry
-        match imagecache::store_image_with_expiry(&cache_path, &artwork_data, Some(expiry_time)) {
+        match image_cache::store_image_with_expiry(&cache_path, &artwork_data, Some(expiry_time)) {
             Ok(_) => {
                 debug!("Stored cover art in cache: {} ({} bytes, expires in 1 week)", 
                       cache_path, artwork_data.len());
                 
                 // Return URL path for accessing the image
-                Some(format!("/api/imagecache/{}", cache_path))
+                Some(format!("/api/image_cache/{}", cache_path))
             }
             Err(e) => {
                 error!("Failed to store cover art in cache: {}", e);

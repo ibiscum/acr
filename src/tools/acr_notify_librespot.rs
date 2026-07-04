@@ -87,14 +87,13 @@ fn handle_track_changed(client: &ureq::Agent, args: &Args) -> Result<(), Box<dyn
     }
 
     if let Ok(duration_ms) = env::var("DURATION_MS") {
-        if let Ok(duration) = duration_ms.parse::<u64>() {
+        if let Some(duration_seconds) = parse_millis_to_seconds(&duration_ms) {
             // Convert to seconds and ensure it's set
-            let duration_seconds = duration as f64 / 1000.0;
             song["duration"] = json!(duration_seconds);
             
             // Log duration for debugging
             if !args.quiet {
-                println!("Setting song duration: {} ms -> {} seconds", duration, duration_seconds);
+                println!("Setting song duration: {} ms -> {} seconds", duration_ms, duration_seconds);
             }
         }
     }
@@ -116,10 +115,8 @@ fn handle_track_changed(client: &ureq::Agent, args: &Args) -> Result<(), Box<dyn
     }
 
     if let Ok(covers) = env::var("COVERS") {
-        // Split covers by newline and take the first one
-        let cover_urls: Vec<&str> = covers.lines().collect();
-        if !cover_urls.is_empty() {
-            let cover_url = cover_urls[0];
+        // Pick the first non-empty line to avoid sending empty cover URLs.
+        if let Some(cover_url) = first_non_empty_line(&covers) {
             // Set both field names to ensure compatibility
             song["cover_url"] = json!(cover_url);
             song["cover_art_url"] = json!(cover_url);
@@ -184,8 +181,8 @@ fn handle_playback_state(
 
     // Add position if available
     if let Ok(position_ms) = env::var("POSITION_MS") {
-        if let Ok(position) = position_ms.parse::<u64>() {
-            event["position"] = json!(position as f64 / 1000.0); // Convert to seconds
+        if let Some(position) = parse_millis_to_seconds(&position_ms) {
+            event["position"] = json!(position); // Convert to seconds
         }
     }
 
@@ -203,9 +200,9 @@ fn handle_playback_state(
 
 fn handle_shuffle_changed(client: &ureq::Agent, args: &Args) -> Result<(), Box<dyn Error>> {
     let shuffle_enabled = env::var("SHUFFLE")
-        .unwrap_or_else(|_| "false".to_string())
-        .to_lowercase()
-        == "true";
+        .ok()
+        .and_then(|v| parse_bool_like(&v))
+        .unwrap_or(false);
 
     let event = json!({
         "type": "shuffle_changed",
@@ -226,14 +223,14 @@ fn handle_shuffle_changed(client: &ureq::Agent, args: &Args) -> Result<(), Box<d
 
 fn handle_repeat_changed(client: &ureq::Agent, args: &Args) -> Result<(), Box<dyn Error>> {
     let repeat_enabled = env::var("REPEAT")
-        .unwrap_or_else(|_| "false".to_string())
-        .to_lowercase()
-        == "true";
+        .ok()
+        .and_then(|v| parse_bool_like(&v))
+        .unwrap_or(false);
 
     let repeat_track = env::var("REPEAT_TRACK")
-        .unwrap_or_else(|_| "false".to_string())
-        .to_lowercase()
-        == "true";
+        .ok()
+        .and_then(|v| parse_bool_like(&v))
+        .unwrap_or(false);
 
     let loop_mode = if !repeat_enabled {
         "none"
@@ -267,8 +264,8 @@ fn handle_position_changed(client: &ureq::Agent, args: &Args) -> Result<(), Box<
 
     // Add position from environment variable
     if let Ok(position_ms) = env::var("POSITION_MS") {
-        if let Ok(position) = position_ms.parse::<u64>() {
-            event["position"] = json!(position as f64 / 1000.0); // Convert to seconds
+        if let Some(position) = parse_millis_to_seconds(&position_ms) {
+            event["position"] = json!(position); // Convert to seconds
         }
     }
 
@@ -282,6 +279,54 @@ fn handle_position_changed(client: &ureq::Agent, args: &Args) -> Result<(), Box<
     )?;
 
     Ok(())
+}
+
+fn parse_millis_to_seconds(value: &str) -> Option<f64> {
+    let millis = value.trim().parse::<u64>().ok()?;
+    Some(millis as f64 / 1000.0)
+}
+
+fn parse_bool_like(value: &str) -> Option<bool> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "true" | "1" | "yes" | "on" => Some(true),
+        "false" | "0" | "no" | "off" => Some(false),
+        _ => None,
+    }
+}
+
+fn first_non_empty_line(value: &str) -> Option<&str> {
+    value.lines().map(str::trim).find(|line| !line.is_empty())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn regression_parse_millis_to_seconds_handles_invalid_input() {
+        assert_eq!(parse_millis_to_seconds("1000"), Some(1.0));
+        assert_eq!(parse_millis_to_seconds(" 2500 "), Some(2.5));
+        assert_eq!(parse_millis_to_seconds("-10"), None);
+        assert_eq!(parse_millis_to_seconds("abc"), None);
+        assert_eq!(parse_millis_to_seconds(""), None);
+    }
+
+    #[test]
+    fn regression_parse_bool_like_accepts_common_variants() {
+        assert_eq!(parse_bool_like("true"), Some(true));
+        assert_eq!(parse_bool_like("YES"), Some(true));
+        assert_eq!(parse_bool_like("1"), Some(true));
+        assert_eq!(parse_bool_like("off"), Some(false));
+        assert_eq!(parse_bool_like("0"), Some(false));
+        assert_eq!(parse_bool_like("maybe"), None);
+    }
+
+    #[test]
+    fn integration_first_non_empty_line_skips_blank_lines() {
+        assert_eq!(first_non_empty_line("\n\nhttps://x\nhttps://y"), Some("https://x"));
+        assert_eq!(first_non_empty_line("   \n  "), None);
+        assert_eq!(first_non_empty_line("single"), Some("single"));
+    }
 }
 
 fn handle_preloading(client: &ureq::Agent, args: &Args) -> Result<(), Box<dyn Error>> {

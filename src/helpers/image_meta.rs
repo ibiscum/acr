@@ -2,7 +2,7 @@ use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::fs::File;
 use log::{debug, warn};
 use serde::{Serialize, Deserialize};
-use crate::helpers::attributecache::get_attribute_cache;
+use crate::helpers::attribute_cache::get_attribute_cache;
 use crate::helpers::http_client::new_http_client;
 
 /// Cache key prefix for image metadata
@@ -521,7 +521,7 @@ mod tests {
     #[test]
     fn test_google_logo_url_with_temp_cache() {
         // Create a test using a temporary directory for the cache
-        use crate::helpers::attributecache::AttributeCache;
+        use crate::helpers::attribute_cache::AttributeCache;
         
         let url = "https://www.google.com/images/branding/googlelogo/1x/googlelogo_color_272x92dp.png";
         

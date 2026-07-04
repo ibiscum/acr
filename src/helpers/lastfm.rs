@@ -1,4 +1,4 @@
-use crate::helpers::ratelimit;
+use crate::helpers::rate_limit;
 use log::{debug, info, error};
 use md5;
 use once_cell::sync::Lazy;
@@ -247,7 +247,7 @@ impl LastfmClient {
         }
 
         // Register with rate limiter - 1 request per second is a safe default
-        ratelimit::register_service("lastfm", 1000);
+        rate_limit::register_service("lastfm", 1000);
 
         let credentials = LastfmCredentials {
             api_key,
@@ -367,7 +367,7 @@ impl LastfmClient {
         //     }
         // }
 
-        ratelimit::rate_limit("lastfm");
+        rate_limit::rate_limit("lastfm");
 
         let params = [("method", "auth.getToken")];
 
@@ -416,7 +416,7 @@ impl LastfmClient {
             }
         };
 
-        ratelimit::rate_limit("lastfm");
+        rate_limit::rate_limit("lastfm");
 
         let params = [
             ("method", "auth.getSession"),
@@ -639,7 +639,7 @@ impl LastfmClient {
         }
 
         // Register with rate limiter
-        ratelimit::register_service("lastfm", 1000);
+        rate_limit::register_service("lastfm", 1000);
 
         let client = LastfmClient {
             credentials,
@@ -681,7 +681,7 @@ impl LastfmClient {
         //     LastfmError::AuthError("Username not found despite being authenticated.".to_string())
         // })?;
 
-        ratelimit::rate_limit("lastfm");
+        rate_limit::rate_limit("lastfm");
 
         let params = vec![
             ("method", "track.getInfo"),
@@ -723,7 +723,7 @@ impl LastfmClient {
     /// # Returns
     /// Result containing `LastfmArtistDetails` or an error.
     pub fn get_artist_info(&self, artist: &str) -> Result<LastfmArtistDetails, LastfmError> {
-        ratelimit::rate_limit("lastfm");
+        rate_limit::rate_limit("lastfm");
 
         let params = vec![
             ("method", "artist.getInfo"),
@@ -778,7 +778,7 @@ impl LastfmClient {
             return Err(LastfmError::AuthError("Not authenticated with Last.fm".to_string()));
         }
 
-        ratelimit::rate_limit("lastfm");
+        rate_limit::rate_limit("lastfm");
 
         // Convert all parameters to owned strings
         let api_key = self.credentials.api_key.clone();
@@ -854,7 +854,7 @@ impl LastfmClient {
             return Err(LastfmError::AuthError("Not authenticated with Last.fm".to_string()));
         }
 
-        ratelimit::rate_limit("lastfm");
+        rate_limit::rate_limit("lastfm");
 
         // Convert all parameters to owned strings
         let api_key = self.credentials.api_key.clone();

@@ -1,7 +1,7 @@
-use crate::helpers::attributecache;
-use crate::helpers::ratelimit;
+use crate::helpers::attribute_cache;
+use crate::helpers::rate_limit;
 use crate::helpers::sanitize;
-use crate::helpers::artistsplitter;
+use crate::helpers::artist_splitter;
 use crate::config::get_service_config;
 use log::{info, error, debug, warn};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -118,7 +118,7 @@ pub fn initialize_from_config(config: &serde_json::Value) {
             .and_then(|v| v.as_u64())
             .unwrap_or(500);
             
-        ratelimit::register_service("musicbrainz", rate_limit_ms);
+        rate_limit::register_service("musicbrainz", rate_limit_ms);
         info!("MusicBrainz rate limit set to {} ms", rate_limit_ms);
     } else {
         // Default to disabled if not in config
@@ -126,7 +126,7 @@ pub fn initialize_from_config(config: &serde_json::Value) {
         debug!("MusicBrainz configuration not found, lookups disabled");
         
         // Register default rate limit even if disabled
-        ratelimit::register_service("musicbrainz", 500);
+        rate_limit::register_service("musicbrainz", 500);
     }
 }
 
@@ -240,8 +240,8 @@ fn sanitize_artist_name_for_search(artist_name: &str) -> String {
 
 /// Split an artist name that might contain multiple artists
 ///
-/// This function has been moved to artistsplitter module for better organization.
-/// Use `crate::helpers::artistsplitter::split_artist` instead.
+/// This function has been moved to artist_splitter module for better organization.
+/// Use `crate::helpers::artist_splitter::split_artist` instead.
 ///
 /// # Arguments
 /// * `artist_name` - The artist name to split
@@ -249,7 +249,7 @@ fn sanitize_artist_name_for_search(artist_name: &str) -> String {
 /// # Returns
 /// * `Vec<String>` - Vector containing individual artist names
 pub fn split_artist(artist_name: &str) -> Vec<String> {
-    artistsplitter::split_artist(artist_name)
+    artist_splitter::split_artist(artist_name)
 }
 
 /// Compare two artist names to see if they match, using both exact normalized comparison
@@ -387,7 +387,7 @@ fn search_musicbrainz_for_artist(artist_name: &str, cache_only: bool) -> MusicBr
     
     // Try to get MBID from cache first
     let cache_key = format!("{}{}", ARTIST_MBID_CACHE_PREFIX, artist_name);
-    match attributecache::get::<String>(&cache_key) {
+    match attribute_cache::get::<String>(&cache_key) {
         Ok(Some(mbid)) => {
             debug!("Found MusicBrainz ID for '{}' in cache: {}", artist_name, mbid);
             return MusicBrainzSearchResult::Found(vec![mbid], true);
@@ -402,9 +402,9 @@ fn search_musicbrainz_for_artist(artist_name: &str, cache_only: bool) -> MusicBr
         }
     }
     
-    // Check negative cache for failed lookups using attributecache
+    // Check negative cache for failed lookups using attribute_cache
     let not_found_cache_key = format!("{}{}", ARTIST_NOT_FOUND_CACHE_PREFIX, artist_name);
-    match attributecache::get::<bool>(&not_found_cache_key) {
+    match attribute_cache::get::<bool>(&not_found_cache_key) {
         Ok(Some(true)) => {
             debug!("Artist '{}' found in negative cache (previous lookup failed)", artist_name);
             return MusicBrainzSearchResult::NotFound;
@@ -420,7 +420,7 @@ fn search_musicbrainz_for_artist(artist_name: &str, cache_only: bool) -> MusicBr
         return MusicBrainzSearchResult::NotFound;
     }
       // Apply rate limiting before making the API request
-    ratelimit::rate_limit("musicbrainz");
+    rate_limit::rate_limit("musicbrainz");
     
     // Sanitize artist name for the API query
     let sanitized_artist_name = sanitize_artist_name_for_search(artist_name);
@@ -442,7 +442,7 @@ fn search_musicbrainz_for_artist(artist_name: &str, cache_only: bool) -> MusicBr
             error!("Failed to execute MusicBrainz API request: {}", e);
             // Add to negative cache with 48-hour expiry before returning
             let not_found_cache_key = format!("{}{}", ARTIST_NOT_FOUND_CACHE_PREFIX, artist_name);
-            if let Err(cache_err) = attributecache::set_with_expiry(&not_found_cache_key, &true, Some(NOT_FOUND_CACHE_TIMEOUT_SECONDS)) {
+            if let Err(cache_err) = attribute_cache::set_with_expiry(&not_found_cache_key, &true, Some(NOT_FOUND_CACHE_TIMEOUT_SECONDS)) {
                 debug!("Failed to cache API failure for '{}': {}", artist_name, cache_err);
             } else {
                 debug!("Cached API failure for '{}' with 48-hour expiry", artist_name);
@@ -479,7 +479,7 @@ fn search_musicbrainz_for_artist(artist_name: &str, cache_only: bool) -> MusicBr
                     let cache_key = format!("{}{}", ARTIST_MBID_CACHE_PREFIX, artist_name);
                     debug!("Attempting to store MBID in cache with key: {}", cache_key);
                     
-                    match attributecache::set(&cache_key, &mbid) {
+                    match attribute_cache::set(&cache_key, &mbid) {
                         Ok(_) => {
                             debug!("Successfully stored MusicBrainz ID for '{}' in cache", artist_name);
                         },
@@ -494,7 +494,7 @@ fn search_musicbrainz_for_artist(artist_name: &str, cache_only: bool) -> MusicBr
                     // No matching artist found, add to negative cache with 48-hour expiry
                     debug!("Found artist but names don't match: '{}' vs '{}'", artist_name, response_name);
                     let not_found_cache_key = format!("{}{}", ARTIST_NOT_FOUND_CACHE_PREFIX, artist_name);
-                    if let Err(cache_err) = attributecache::set_with_expiry(&not_found_cache_key, &true, Some(NOT_FOUND_CACHE_TIMEOUT_SECONDS)) {
+                    if let Err(cache_err) = attribute_cache::set_with_expiry(&not_found_cache_key, &true, Some(NOT_FOUND_CACHE_TIMEOUT_SECONDS)) {
                         debug!("Failed to cache name mismatch for '{}': {}", artist_name, cache_err);
                     } else {
                         debug!("Cached name mismatch for '{}' with 48-hour expiry", artist_name);
@@ -504,7 +504,7 @@ fn search_musicbrainz_for_artist(artist_name: &str, cache_only: bool) -> MusicBr
                 // No results found, add to negative cache with 48-hour expiry
                 debug!("No results found for artist '{}'", artist_name);
                 let not_found_cache_key = format!("{}{}", ARTIST_NOT_FOUND_CACHE_PREFIX, artist_name);
-                if let Err(cache_err) = attributecache::set_with_expiry(&not_found_cache_key, &true, Some(NOT_FOUND_CACHE_TIMEOUT_SECONDS)) {
+                if let Err(cache_err) = attribute_cache::set_with_expiry(&not_found_cache_key, &true, Some(NOT_FOUND_CACHE_TIMEOUT_SECONDS)) {
                     debug!("Failed to cache no results for '{}': {}", artist_name, cache_err);
                 } else {
                     debug!("Cached no results for '{}' with 48-hour expiry", artist_name);
@@ -520,7 +520,7 @@ fn search_musicbrainz_for_artist(artist_name: &str, cache_only: bool) -> MusicBr
             debug!("Full response JSON: {}", response);
             // Add to negative cache with 48-hour expiry before returning
             let not_found_cache_key = format!("{}{}", ARTIST_NOT_FOUND_CACHE_PREFIX, artist_name);
-            if let Err(cache_err) = attributecache::set_with_expiry(&not_found_cache_key, &true, Some(NOT_FOUND_CACHE_TIMEOUT_SECONDS)) {
+            if let Err(cache_err) = attribute_cache::set_with_expiry(&not_found_cache_key, &true, Some(NOT_FOUND_CACHE_TIMEOUT_SECONDS)) {
                 debug!("Failed to cache parse error for '{}': {}", artist_name, cache_err);
             } else {
                 debug!("Cached parse error for '{}' with 48-hour expiry", artist_name);
@@ -563,7 +563,7 @@ pub fn search_mbids_for_artist(artist_name: &str, allow_multiple: bool,
     // Check if we have already determined this artist doesn't exist
     if cache_failures {
         let not_found_cache_key = format!("{}{}", ARTIST_NOT_FOUND_CACHE_PREFIX, artist_name);
-        match attributecache::get::<bool>(&not_found_cache_key) {
+        match attribute_cache::get::<bool>(&not_found_cache_key) {
             Ok(Some(true)) => {
                 debug!("Artist '{}' previously marked as not found in cache", artist_name);
                 return MusicBrainzSearchResult::NotFound;
@@ -575,12 +575,12 @@ pub fn search_mbids_for_artist(artist_name: &str, allow_multiple: bool,
     }
     
     // Try to get MBIDs and partial status from cache first
-    match attributecache::get::<Vec<String>>(&cache_key) {
+    match attribute_cache::get::<Vec<String>>(&cache_key) {
         Ok(Some(mbids)) => {
             debug!("Found MusicBrainz IDs for '{}' in cache: {:?}", artist_name, mbids);
             
             // Check if this was a partial result
-            match attributecache::get::<bool>(&cache_partial_key) {
+            match attribute_cache::get::<bool>(&cache_partial_key) {
                 Ok(Some(true)) => {
                     debug!("Cached result for '{}' was marked as partial", artist_name);
                     return MusicBrainzSearchResult::FoundPartial(mbids, true);
@@ -639,14 +639,14 @@ pub fn search_mbids_for_artist(artist_name: &str, allow_multiple: bool,
                         debug!("Found {} MusicBrainz ID(s) for split artists in '{}'", all_mbids.len(), artist_name);
                         
                         // Store the combined result in the cache with the full artist name
-                        match attributecache::set(&cache_key, &all_mbids) {
+                        match attribute_cache::set(&cache_key, &all_mbids) {
                             Ok(_) => {
                                 debug!("Successfully stored multiple MusicBrainz IDs for '{}' in cache", artist_name);
                                 
                                 // Only store partial status if we didn't find all the artists
                                 if !all_found {
                                     debug!("Not all artists in '{}' were found, marking as partial result", artist_name);
-                                    match attributecache::set(&cache_partial_key, &true) {
+                                    match attribute_cache::set(&cache_partial_key, &true) {
                                         Ok(_) => {
                                             debug!("Successfully marked '{}' as a partial match in cache", artist_name);
                                         },
@@ -681,7 +681,7 @@ pub fn search_mbids_for_artist(artist_name: &str, allow_multiple: bool,
             // If we reached here, the artist was not found. Cache this result if requested.
             if cache_failures {
                 let not_found_cache_key = format!("{}{}", ARTIST_NOT_FOUND_CACHE_PREFIX, artist_name);
-                match attributecache::set_with_expiry(&not_found_cache_key, &true, Some(NOT_FOUND_CACHE_TIMEOUT_SECONDS)) {
+                match attribute_cache::set_with_expiry(&not_found_cache_key, &true, Some(NOT_FOUND_CACHE_TIMEOUT_SECONDS)) {
                     Ok(_) => {
                         debug!("Cached '{}' as not found with 48-hour expiry to prevent future lookups", artist_name);
                     },
@@ -702,8 +702,8 @@ pub fn search_mbids_for_artist(artist_name: &str, allow_multiple: bool,
 /// Check if an artist name contains multiple artists by looking up MBIDs
 /// and splitting the name if multiple MBIDs are found
 ///
-/// This function has been moved to artistsplitter module for better organization.
-/// Use `crate::helpers::artistsplitter::split_artist_names_with_mbid_lookup` instead.
+/// This function has been moved to artist_splitter module for better organization.
+/// Use `crate::helpers::artist_splitter::split_artist_names_with_mbid_lookup` instead.
 ///
 /// # Arguments
 /// * `artist_name` - The name of the artist to check
@@ -713,7 +713,7 @@ pub fn search_mbids_for_artist(artist_name: &str, allow_multiple: bool,
 /// # Returns
 /// * `Option<Vec<String>>` - None if single artist, or Some(Vec<String>) with split artist names if multiple
 pub fn split_artist_names(artist_name: &str, cache_only: bool, custom_separators: Option<&[String]>) -> Option<Vec<String>> {
-    artistsplitter::split_artist_names_with_mbid_lookup(artist_name, cache_only, custom_separators)
+    artist_splitter::split_artist_names_with_mbid_lookup(artist_name, cache_only, custom_separators)
 }
 
 /// Search for recordings (songs) by artist and title
@@ -740,7 +740,7 @@ pub fn search_recording(artist: &str, title: &str) -> Result<MusicBrainzRecordin
     }
     
     // Apply rate limiting before making the API request
-    ratelimit::rate_limit("musicbrainz");
+    rate_limit::rate_limit("musicbrainz");
     
     // Build query for exact match
     let query = format!("artist:\"{}\" AND recording:\"{}\"", artist, title);
@@ -817,7 +817,7 @@ pub fn search_release_group_genres(artist: &str, album: &str) -> Vec<String> {
 
     let search_url = format!("{}/release-group?query={}&limit=1&fmt=json", MUSICBRAINZ_API_BASE, encoded);
 
-    ratelimit::rate_limit("musicbrainz");
+    rate_limit::rate_limit("musicbrainz");
     let body = match musicbrainz_api_get(&search_url) {
         Ok(b) => b,
         Err(e) => {
@@ -845,7 +845,7 @@ pub fn search_release_group_genres(artist: &str, album: &str) -> Vec<String> {
     // Step 2: fetch genres for this release group
     let detail_url = format!("{}/release-group/{}?inc=genres&fmt=json", MUSICBRAINZ_API_BASE, mbid);
 
-    ratelimit::rate_limit("musicbrainz");
+    rate_limit::rate_limit("musicbrainz");
     let body2 = match musicbrainz_api_get(&detail_url) {
         Ok(b) => b,
         Err(e) => {

@@ -14,7 +14,7 @@ fn cache_key(album_id: &str) -> String {
 /// Load cached genres for an album from the attribute cache.
 /// Returns `Some(genres)` if a cached entry exists (even if empty), `None` if not found.
 pub fn load_cached_genres(album_id: &str) -> Option<Vec<String>> {
-    match crate::helpers::attributecache::get::<Vec<String>>(&cache_key(album_id)) {
+    match crate::helpers::attribute_cache::get::<Vec<String>>(&cache_key(album_id)) {
         Ok(Some(genres)) => Some(genres),
         Ok(None) => None,
         Err(e) => {
@@ -27,7 +27,7 @@ pub fn load_cached_genres(album_id: &str) -> Option<Vec<String>> {
 /// Persist genres for an album to the attribute cache.
 fn store_cached_genres(album_id: &str, genres: &[String]) {
     let genres_vec = genres.to_vec();
-    match crate::helpers::attributecache::set(&cache_key(album_id), &genres_vec) {
+    match crate::helpers::attribute_cache::set(&cache_key(album_id), &genres_vec) {
         Ok(_) => debug!("Stored genres for album {} in attribute cache", album_id),
         Err(e) => warn!("Failed to store genres for album {} in attribute cache: {}", album_id, e),
     }
@@ -72,7 +72,7 @@ pub fn update_library_albums_genres_in_background(
         let job_id = "album_genre_update".to_string();
         let job_name = "Album Genre Update".to_string();
 
-        if let Err(e) = crate::helpers::backgroundjobs::register_job(job_id.clone(), job_name) {
+        if let Err(e) = crate::helpers::background_jobs::register_job(job_id.clone(), job_name) {
             warn!("Failed to register album genre background job: {}", e);
             return;
         }
@@ -96,7 +96,7 @@ pub fn update_library_albums_genres_in_background(
         let total = albums_snapshot.len();
         info!("Updating genres for {} albums without genre tags", total);
 
-        let _ = crate::helpers::backgroundjobs::update_job(
+        let _ = crate::helpers::background_jobs::update_job(
             &job_id,
             Some(format!("Starting genre update for {} albums", total)),
             Some(0),
@@ -108,7 +108,7 @@ pub fn update_library_albums_genres_in_background(
         for (index, (album_id, album_name, artists)) in albums_snapshot.into_iter().enumerate() {
             let artist = artists.first().cloned().unwrap_or_default();
 
-            let _ = crate::helpers::backgroundjobs::update_job(
+            let _ = crate::helpers::background_jobs::update_job(
                 &job_id,
                 Some(format!("Processing: {}", album_name)),
                 Some(index),
@@ -150,7 +150,7 @@ pub fn update_library_albums_genres_in_background(
             let count = index + 1;
             if count % 50 == 0 || count == total {
                 info!("Album genre update: {}/{} processed, {} updated", count, total, updated);
-                let _ = crate::helpers::backgroundjobs::update_job(
+                let _ = crate::helpers::background_jobs::update_job(
                     &job_id,
                     Some(format!("Processed {}/{} albums", count, total)),
                     Some(count),
@@ -158,12 +158,12 @@ pub fn update_library_albums_genres_in_background(
                 );
             }
 
-            // Rate limiting: MusicBrainz allows 1 req/sec; the ratelimit helper handles
+            // Rate limiting: MusicBrainz allows 1 req/sec; the rate_limit helper handles
             // per-request limiting but we add a small sleep to be polite.
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
 
         info!("Album genre update complete: {}/{} albums updated", updated, total);
-        let _ = crate::helpers::backgroundjobs::complete_job(&job_id);
+        let _ = crate::helpers::background_jobs::complete_job(&job_id);
     });
 }

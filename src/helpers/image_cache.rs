@@ -7,11 +7,11 @@ use std::collections::HashMap;
 use once_cell::sync::Lazy;
 use log::{info, error, debug};
 use serde::{Serialize, Deserialize};
-use crate::helpers::attributecache;
+use crate::helpers::attribute_cache;
 
 // Constants for cache keys
-const IMAGECACHE_METADATA_PREFIX: &str = "imagecache:metadata:";
-const IMAGECACHE_STATS_KEY: &str = "imagecache:stats";
+const IMAGECACHE_METADATA_PREFIX: &str = "image_cache:metadata:";
+const IMAGECACHE_STATS_KEY: &str = "image_cache:stats";
 
 /// Metadata for a cached image
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -553,20 +553,20 @@ impl ImageCache {
     /// Store image metadata in the attribute cache
     fn store_image_metadata(&self, path: &str, metadata: &ImageMetadata) -> Result<(), String> {
         let cache_key = format!("{}{}", IMAGECACHE_METADATA_PREFIX, path);
-        attributecache::set(&cache_key, metadata)
+        attribute_cache::set(&cache_key, metadata)
             .map_err(|e| format!("Failed to store image metadata: {}", e))
     }
 
     /// Retrieve image metadata from the attribute cache
     fn get_image_metadata(&self, path: &str) -> Option<ImageMetadata> {
         let cache_key = format!("{}{}", IMAGECACHE_METADATA_PREFIX, path);
-        attributecache::get(&cache_key).ok().flatten()
+        attribute_cache::get(&cache_key).ok().flatten()
     }
 
     /// Remove image metadata from the attribute cache
     fn remove_image_metadata(&self, path: &str) -> Result<(), String> {
         let cache_key = format!("{}{}", IMAGECACHE_METADATA_PREFIX, path);
-        attributecache::remove(&cache_key)
+        attribute_cache::remove(&cache_key)
             .map(|_| ())
             .map_err(|e| format!("Failed to remove image metadata: {}", e))
     }
@@ -577,10 +577,10 @@ impl ImageCache {
         
         // Get all image metadata entries
         let prefix = Some(IMAGECACHE_METADATA_PREFIX);
-        match attributecache::list_keys(prefix) {
+        match attribute_cache::list_keys(prefix) {
             Ok(keys) => {
                 for key in keys {
-                    if let Ok(Some(metadata)) = attributecache::get::<ImageMetadata>(&key) {
+                    if let Ok(Some(metadata)) = attribute_cache::get::<ImageMetadata>(&key) {
                         stats.total_images += 1;
                         stats.total_size += metadata.size;
                     }
@@ -594,7 +594,7 @@ impl ImageCache {
         }
 
         // Store updated stats
-        attributecache::set(IMAGECACHE_STATS_KEY, &stats)
+        attribute_cache::set(IMAGECACHE_STATS_KEY, &stats)
             .map_err(|e| format!("Failed to store cache stats: {}", e))?;
 
         Ok(stats)
@@ -638,7 +638,7 @@ impl ImageCache {
         scan_directory(&self.base_path, &mut stats)?;
         
         // Store scanned stats
-        attributecache::set(IMAGECACHE_STATS_KEY, &stats)
+        attribute_cache::set(IMAGECACHE_STATS_KEY, &stats)
             .map_err(|e| format!("Failed to store scanned cache stats: {}", e))?;
 
         Ok(stats)
@@ -736,7 +736,7 @@ impl ImageCache {
         }
 
         // Try to get cached stats first
-        match attributecache::get::<ImageCacheStats>(IMAGECACHE_STATS_KEY) {
+        match attribute_cache::get::<ImageCacheStats>(IMAGECACHE_STATS_KEY) {
             Ok(Some(stats)) => {
                 // Check if stats are recent (less than 5 minutes old)
                 let now = SystemTime::now()
@@ -1006,7 +1006,7 @@ mod tests {
 
     // Helper function to initialize attribute cache for tests
     fn init_test_attribute_cache() {
-        use crate::helpers::attributecache::AttributeCache;
+        use crate::helpers::attribute_cache::AttributeCache;
         use std::sync::Once;
         static INIT: Once = Once::new();
         
@@ -1156,7 +1156,7 @@ mod tests {
     #[test]
     #[serial]
     fn test_image_cache_statistics() {
-        use crate::helpers::attributecache::AttributeCache;
+        use crate::helpers::attribute_cache::AttributeCache;
         
         let temp_dir = TempDir::new().unwrap();
         let cache_path = temp_dir.path().to_str().unwrap();
