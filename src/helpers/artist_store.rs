@@ -35,22 +35,22 @@ pub struct ArtistStoreConfig {
 impl Default for ArtistStoreConfig {
     fn default() -> Self {
         // Read configuration from settings database with fallback defaults
-        let cache_dir = crate::helpers::settingsdb::get_string_with_default(
+        let cache_dir = crate::helpers::settings_db::get_string_with_default(
             "datastore.artist_store.cache_dir", 
             "/var/lib/audiocontrol/cache/artists"
         ).unwrap_or_else(|_| "/var/lib/audiocontrol/cache/artists".to_string());
         
-        let user_dir = crate::helpers::settingsdb::get_string_with_default(
+        let user_dir = crate::helpers::settings_db::get_string_with_default(
             "datastore.user_image_path", 
             "/var/lib/audiocontrol/user/images"
         ).unwrap_or_else(|_| "/var/lib/audiocontrol/user/images".to_string());
         
-        let enable_custom_images = crate::helpers::settingsdb::get_bool_with_default(
+        let enable_custom_images = crate::helpers::settings_db::get_bool_with_default(
             "datastore.artist_store.enable_custom_images", 
             true
         ).unwrap_or(true);
         
-        let auto_download = crate::helpers::settingsdb::get_bool_with_default(
+        let auto_download = crate::helpers::settings_db::get_bool_with_default(
             "datastore.artist_store.auto_download", 
             true
         ).unwrap_or(true);
@@ -322,7 +322,7 @@ impl ArtistStore {
         // Check for custom image URL in settings first
         if self.config.enable_custom_images {
             let custom_url_key = format!("artist.image.{}", artist_name);
-            if let Ok(Some(custom_url)) = crate::helpers::settingsdb::get_string(&custom_url_key) {
+            if let Ok(Some(custom_url)) = crate::helpers::settings_db::get_string(&custom_url_key) {
                 if !custom_url.is_empty() {
                     debug!("Found custom image URL for artist {}: {}", artist_name, custom_url);
                     return self.download_and_cache_image(artist_name, &custom_url, "custom");
@@ -525,7 +525,7 @@ impl ArtistStore {
             let cache_key = format!("artist::metadata::{}", artist.name);
             
             // Store the metadata in the attribute cache
-            match crate::helpers::attributecache::set(&cache_key, metadata) {
+            match crate::helpers::attribute_cache::set(&cache_key, metadata) {
                 Ok(_) => debug!("Stored metadata for artist {} in attribute cache", artist.name),
                 Err(e) => warn!("Failed to store metadata for artist {} in attribute cache: {}", artist.name, e),
             }
@@ -533,7 +533,7 @@ impl ArtistStore {
             // If the artist has MusicBrainz IDs, store them separately for faster lookup
             if !metadata.mbid.is_empty() {
                 let mbid_key = format!("artist::mbid::{}", artist.name);
-                if let Err(e) = crate::helpers::attributecache::set(&mbid_key, &metadata.mbid) {
+                if let Err(e) = crate::helpers::attribute_cache::set(&mbid_key, &metadata.mbid) {
                     warn!("Failed to store MusicBrainz IDs for artist {} in attribute cache: {}", artist.name, e);
                 }
             }
@@ -608,7 +608,7 @@ impl ArtistStore {
     /// Result indicating success or failure
     fn store_image(&self, cache_path: &str, image_data: &[u8]) -> Result<(), String> {
         // Use the existing image cache functionality
-        crate::helpers::imagecache::store_image(cache_path, image_data)
+        crate::helpers::image_cache::store_image(cache_path, image_data)
             .map_err(|e| e.to_string())
     }
 }

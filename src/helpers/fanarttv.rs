@@ -9,7 +9,7 @@ use once_cell::sync::Lazy;
 use std::sync::atomic::{AtomicBool, Ordering};
 use parking_lot::Mutex;
 use crate::config::get_service_config;
-use crate::helpers::ratelimit;
+use crate::helpers::rate_limit;
 
 /// Global flag to indicate if FanArt.tv lookups are enabled
 static FANARTTV_ENABLED: AtomicBool = AtomicBool::new(false);
@@ -76,7 +76,7 @@ pub fn initialize_from_config(config: &serde_json::Value) {
             .and_then(|v| v.as_u64())
             .unwrap_or(500);
             
-        ratelimit::register_service("fanarttv", rate_limit_ms);
+        rate_limit::register_service("fanarttv", rate_limit_ms);
         info!("FanArt.tv rate limit set to {} ms", rate_limit_ms);
         
         let status = if enabled { "enabled" } else { "disabled" };
@@ -92,7 +92,7 @@ pub fn initialize_from_config(config: &serde_json::Value) {
         debug!("FanArt.tv configuration not found, using defaults (enabled with default API key)");
         
         // Register default rate limit
-        ratelimit::register_service("fanarttv", 500);
+        rate_limit::register_service("fanarttv", 500);
     }
 }
 

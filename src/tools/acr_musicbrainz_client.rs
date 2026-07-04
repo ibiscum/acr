@@ -4,7 +4,7 @@ use std::fs;
 use std::time::Duration;
 
 use audiocontrol::helpers::musicbrainz::{self, is_mbid};
-use audiocontrol::helpers::artistsplitter::DEFAULT_ARTIST_SEPARATORS;
+use audiocontrol::helpers::artist_splitter::DEFAULT_ARTIST_SEPARATORS;
 
 const USER_AGENT: &str = "HifiBerry-ACR/1.0 (https://www.hifiberry.com/)";
 

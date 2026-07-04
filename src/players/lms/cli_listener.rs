@@ -234,7 +234,7 @@ impl LMSListener {
                     // Only update last_seen timestamp if the MAC address matches our player_id
                     if let Some(mac_addr) = &mac_opt {
                         // Use the MAC address helper to compare addresses case-insensitively
-                        if crate::helpers::macaddress::mac_equal_ignore_case(mac_addr, player_id) {
+                        if crate::helpers::mac_address::mac_equal_ignore_case(mac_addr, player_id) {
                             // Notify the audio controller that we've seen activity for our player
                             if let Some(controller) = controller.upgrade() {
                                 controller.seen();
@@ -296,7 +296,7 @@ impl LMSListener {
                                                     if let Some(ctrl) = controller.upgrade() {
                                                         // Use this AudioControllerRef trait object to access the BasePlayerController
                                                         // and notify about shuffle mode changes
-                                                        if let Some(lms_controller) = ctrl.as_any().downcast_ref::<crate::players::lms::lmsaudio::LMSAudioController>() {
+                                                        if let Some(lms_controller) = ctrl.as_any().downcast_ref::<crate::players::lms::lms_audio::LMSAudioController>() {
                                                             // Use the public method instead of directly accessing the private base field
                                                             lms_controller.notify_random_mode(shuffle_enabled);
                                                             debug!("Notified random mode change: {}", shuffle_enabled);
@@ -317,7 +317,7 @@ impl LMSListener {
                                                     // Notify the controller about the loop mode change
                                                     if let Some(ctrl) = controller.upgrade() {
                                                         // Convert the mode to LoopMode enum and notify
-                                                        if let Some(lms_controller) = ctrl.as_any().downcast_ref::<crate::players::lms::lmsaudio::LMSAudioController>() {
+                                                        if let Some(lms_controller) = ctrl.as_any().downcast_ref::<crate::players::lms::lms_audio::LMSAudioController>() {
                                                             let loop_mode = match mode.as_str() {
                                                                 "0" => crate::data::LoopMode::None,
                                                                 "1" => crate::data::LoopMode::Track,
@@ -423,7 +423,7 @@ impl LMSListener {
                                                         // Notify all controllers about this change,
                                                         // as it's a server-wide setting
                                                         if let Some(ctrl) = controller.upgrade() {
-                                                            if let Some(lms_controller) = ctrl.as_any().downcast_ref::<crate::players::lms::lmsaudio::LMSAudioController>() {
+                                                            if let Some(lms_controller) = ctrl.as_any().downcast_ref::<crate::players::lms::lms_audio::LMSAudioController>() {
                                                                 lms_controller.notify_loop_mode(loop_mode);
                                                                 debug!("Notified server-wide loop mode change: {:?}", loop_mode);
                                                             }
@@ -442,7 +442,7 @@ impl LMSListener {
                                                         // Notify all controllers about this change,
                                                         // as it's a server-wide setting
                                                         if let Some(ctrl) = controller.upgrade() {
-                                                            if let Some(lms_controller) = ctrl.as_any().downcast_ref::<crate::players::lms::lmsaudio::LMSAudioController>() {
+                                                            if let Some(lms_controller) = ctrl.as_any().downcast_ref::<crate::players::lms::lms_audio::LMSAudioController>() {
                                                                 lms_controller.notify_random_mode(shuffle_enabled);
                                                                 debug!("Notified server-wide shuffle mode change: {}", shuffle_enabled);
                                                             }
@@ -583,7 +583,7 @@ impl LMSListener {
                                                         // Notify all controllers about this change,
                                                         // as it's a server-wide setting
                                                         if let Some(ctrl) = controller.upgrade() {
-                                                            if let Some(lms_controller) = ctrl.as_any().downcast_ref::<crate::players::lms::lmsaudio::LMSAudioController>() {
+                                                            if let Some(lms_controller) = ctrl.as_any().downcast_ref::<crate::players::lms::lms_audio::LMSAudioController>() {
                                                                 lms_controller.notify_loop_mode(loop_mode);
                                                                 debug!("Notified server-wide loop mode change: {:?}", loop_mode);
                                                             }
@@ -602,7 +602,7 @@ impl LMSListener {
                                                         // Notify all controllers about this change,
                                                         // as it's a server-wide setting
                                                         if let Some(ctrl) = controller.upgrade() {
-                                                            if let Some(lms_controller) = ctrl.as_any().downcast_ref::<crate::players::lms::lmsaudio::LMSAudioController>() {
+                                                            if let Some(lms_controller) = ctrl.as_any().downcast_ref::<crate::players::lms::lms_audio::LMSAudioController>() {
                                                                 lms_controller.notify_random_mode(shuffle_enabled);
                                                                 debug!("Notified server-wide shuffle mode change: {}", shuffle_enabled);
                                                             }

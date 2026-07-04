@@ -1,7 +1,7 @@
 use crate::AudioController;
 use crate::api::{
-    players, plugins, library, imagecache, coverart, events, lastfm, spotify,
-    theaudiodb, favourites, volume, lyrics, m3u, settings, cache, backgroundjobs, genres
+    players, plugins, library, image_cache, coverart, events, lastfm, spotify,
+    theaudiodb, favourites, volume, lyrics, m3u, settings, cache, background_jobs, genres
 };
 use crate::api::events::WebSocketManager;
 use crate::config::get_service_config;
@@ -183,7 +183,7 @@ pub async fn start_rocket_server(controller: Arc<AudioController>, config_json: 
     
     // ImageCache routes
     let imagecache_routes = routes![
-        imagecache::get_image_from_cache
+        image_cache::get_image_from_cache
     ];
     
     // Favourites routes
@@ -213,8 +213,8 @@ pub async fn start_rocket_server(controller: Arc<AudioController>, config_json: 
     
     // Background jobs routes
     let backgroundjobs_routes = routes![
-        backgroundjobs::get_background_jobs,
-        backgroundjobs::get_background_job,
+        background_jobs::get_background_jobs,
+        background_jobs::get_background_job,
     ];
 
     // Genre config routes
@@ -234,7 +234,7 @@ pub async fn start_rocket_server(controller: Arc<AudioController>, config_json: 
             format!("{}/spotify", API_PREFIX),
             if spotify_api_enabled { spotify_full_routes } else { spotify_auth_routes }
         )
-        .mount(format!("{}/imagecache", API_PREFIX), imagecache_routes) // Mount imagecache routes
+        .mount(format!("{}/image_cache", API_PREFIX), imagecache_routes) // Mount image_cache routes
         .mount(format!("{}/favourites", API_PREFIX), favourites_routes) // Mount favourites routes
         .mount(format!("{}/lyrics", API_PREFIX), lyrics_routes) // Mount lyrics routes
         .mount(format!("{}/m3u", API_PREFIX), m3u_routes) // Mount M3U routes

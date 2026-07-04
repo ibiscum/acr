@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand};
 use log::{info, warn};
-use audiocontrol::helpers::attributecache::{self, AttributeCache};
-use audiocontrol::helpers::artistsplitter::ARTIST_SPLIT_CACHE_PREFIX;
+use audiocontrol::helpers::attribute_cache::{self, AttributeCache};
+use audiocontrol::helpers::artist_splitter::ARTIST_SPLIT_CACHE_PREFIX;
 use audiocontrol::helpers::musicbrainz::{ARTIST_MBID_CACHE_PREFIX, ARTIST_NOT_FOUND_CACHE_PREFIX};
 use audiocontrol::helpers::image_meta::IMAGE_META_CACHE_PREFIX;
 use std::path::PathBuf;
@@ -150,7 +150,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 fn list_cache_entries(prefix: Option<&str>, detailed: bool, limit: Option<usize>) -> Result<(), Box<dyn std::error::Error>> {
     if detailed {
-        let entries = attributecache::list_entries(prefix)?;
+        let entries = attribute_cache::list_entries(prefix)?;
         let entries_to_show = if let Some(limit) = limit {
             &entries[..entries.len().min(limit)]
         } else {
@@ -192,7 +192,7 @@ fn list_cache_entries(prefix: Option<&str>, detailed: bool, limit: Option<usize>
                      updated);
         }
     } else {
-        let keys = attributecache::list_keys(prefix)?;
+        let keys = attribute_cache::list_keys(prefix)?;
         let keys_to_show = if let Some(limit) = limit {
             &keys[..keys.len().min(limit)]
         } else {
@@ -233,20 +233,20 @@ fn clean_cache_entries(prefix: Option<&str>, all: bool, older_than_days: Option<
 
     if all {
         if dry_run {
-            let entries = attributecache::list_entries(None)?;
+            let entries = attribute_cache::list_entries(None)?;
             println!("Would delete {} cache entries (dry run)", entries.len());
             return Ok(());
         }
 
         warn!("Clearing ALL cache entries!");
-        attributecache::clear()?;
+        attribute_cache::clear()?;
         info!("All cache entries cleared");
         return Ok(());
     }
 
     if let Some(prefix) = prefix {
         if dry_run {
-            let entries = attributecache::list_entries(Some(prefix))?;
+            let entries = attribute_cache::list_entries(Some(prefix))?;
             println!("Would delete {} cache entries with prefix '{}' (dry run)", entries.len(), prefix);
             for entry in &entries[..entries.len().min(10)] {
                 println!("  - {}", entry.key);
@@ -257,7 +257,7 @@ fn clean_cache_entries(prefix: Option<&str>, all: bool, older_than_days: Option<
             return Ok(());
         }
 
-        let deleted = attributecache::remove_by_prefix(prefix)?;
+        let deleted = attribute_cache::remove_by_prefix(prefix)?;
         info!("Deleted {} cache entries with prefix '{}'", deleted, prefix);
         return Ok(());
     }
@@ -266,7 +266,7 @@ fn clean_cache_entries(prefix: Option<&str>, all: bool, older_than_days: Option<
         // For now, we'll use the cleanup function which removes entries older than the configured max age
         // In the future, we could add a custom cleanup function that takes days as parameter
         warn!("Cleaning entries older than {} days using cache cleanup function", days);
-        let deleted = attributecache::cleanup()?;
+        let deleted = attribute_cache::cleanup()?;
         info!("Deleted {} old cache entries", deleted);
         return Ok(());
     }
@@ -275,7 +275,7 @@ fn clean_cache_entries(prefix: Option<&str>, all: bool, older_than_days: Option<
 }
 
 fn show_cache_stats(by_prefix: bool) -> Result<(), Box<dyn std::error::Error>> {
-    let entries = attributecache::list_entries(None)?;
+    let entries = attribute_cache::list_entries(None)?;
     
     if entries.is_empty() {
         info!("Cache is empty");

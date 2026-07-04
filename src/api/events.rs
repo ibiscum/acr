@@ -10,7 +10,7 @@ use rocket_ws::{WebSocket, Channel, Message};
 use rocket::futures::{SinkExt, StreamExt};
 
 use crate::data::PlayerEvent;
-use crate::audiocontrol::eventbus::EventBus;
+use crate::audiocontrol::event_bus::EventBus;
 
 /// New format for WebSocket messages with source at top level
 #[derive(Debug, Clone, Serialize)]

@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize, Deserializer};
 use serde_json::Value;
 use log::{debug, error};
-use crate::helpers::macaddress::normalize_mac_address;
+use crate::helpers::mac_address::normalize_mac_address;
 use crate::helpers::http_client::{HttpClient, HttpClientError, new_http_client, post_json};
 use std::sync::Arc;
 use parking_lot::Mutex;
@@ -458,7 +458,7 @@ impl LmsRpcClient {
             },
             None => {
                 // Get all local MACs
-                match crate::players::lms::lmsserver::get_local_mac_addresses() {
+                match crate::players::lms::lms_server::get_local_mac_addresses() {
                     Ok(addresses) => {
                         if addresses.is_empty() {
                             return Err(LmsRpcError::ServerError("No MAC addresses found for local interfaces".to_string()));

@@ -1,10 +1,10 @@
-// filepath: c:\Users\danie\devel\hifiberry-os\packages\acr\src\players\lms\lmspplayer.rs
+// filepath: c:\Users\danie\devel\hifiberry-os\packages\acr\src\players\lms\lms_player.rs
 use std::sync::Arc;
 use log::{debug, info, warn};
 
-use crate::players::lms::jsonrps::LmsRpcClient;
-use crate::players::lms::lmsserver::get_local_mac_addresses;
-use crate::helpers::macaddress::normalize_mac_address;
+use crate::players::lms::json_rps::LmsRpcClient;
+use crate::players::lms::lms_server::get_local_mac_addresses;
+use crate::helpers::mac_address::normalize_mac_address;
 use crate::data::song::Song;
 
 /// Represents a Logitech Media Server player with its client connection

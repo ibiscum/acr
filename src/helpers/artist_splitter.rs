@@ -5,7 +5,7 @@
 /// simple text-based splitting and intelligent splitting using MusicBrainz MBID lookups.
 use log::debug;
 use crate::helpers::musicbrainz::{self, MusicBrainzSearchResult};
-use crate::helpers::attributecache;
+use crate::helpers::attribute_cache;
 
 /// Default separators used to split artist names containing multiple artists
 pub static DEFAULT_ARTIST_SEPARATORS: &[&str] = &[",", "&", " feat ", " feat.", " featuring ", " with "];
@@ -26,7 +26,7 @@ pub static ARTIST_SIMPLE_SPLIT_CACHE_PREFIX: &str = "artist::simple_split::";
 /// 
 /// # Examples
 /// ```
-/// use audiocontrol::helpers::artistsplitter::split_artist;
+/// use audiocontrol::helpers::artist_splitter::split_artist;
 /// 
 /// let artists = split_artist("The Beatles feat. Tony Sheridan");
 /// assert_eq!(artists, vec!["The Beatles", "Tony Sheridan"]);
@@ -53,7 +53,7 @@ pub fn split_artist(artist_name: &str) -> Vec<String> {
 /// 
 /// # Examples
 /// ```
-/// use audiocontrol::helpers::artistsplitter::split_artist_with_separators;
+/// use audiocontrol::helpers::artist_splitter::split_artist_with_separators;
 /// 
 /// let custom_separators = vec![" x ".to_string(), " vs ".to_string()];
 /// let artists = split_artist_with_separators("Artist A x Artist B vs Artist C", &custom_separators);
@@ -115,7 +115,7 @@ pub fn split_artist_with_separators(artist_name: &str, separators: &[String]) ->
 /// 
 /// # Examples
 /// ```
-/// use audiocontrol::helpers::artistsplitter::contains_multiple_artists;
+/// use audiocontrol::helpers::artist_splitter::contains_multiple_artists;
 /// 
 /// assert!(contains_multiple_artists("The Beatles feat. Tony Sheridan", None));
 /// assert!(contains_multiple_artists("Simon & Garfunkel", None));
@@ -146,7 +146,7 @@ pub fn contains_multiple_artists(artist_name: &str, custom_separators: Option<&[
 /// 
 /// # Examples
 /// ```
-/// use audiocontrol::helpers::artistsplitter::split_if_multiple;
+/// use audiocontrol::helpers::artist_splitter::split_if_multiple;
 /// 
 /// assert_eq!(split_if_multiple("The Beatles", None), None);
 /// assert_eq!(split_if_multiple("Simon & Garfunkel", None), Some(vec!["Simon".to_string(), "Garfunkel".to_string()]));
@@ -160,7 +160,7 @@ pub fn split_if_multiple(artist_name: &str, custom_separators: Option<&[String]>
     let cache_key = format!("{}{}::{}", ARTIST_SIMPLE_SPLIT_CACHE_PREFIX, separator_key, artist_name);
     
     // Try to get cached result first (no expiry)
-    match attributecache::get::<Option<Vec<String>>>(&cache_key) {
+    match attribute_cache::get::<Option<Vec<String>>>(&cache_key) {
         Ok(Some(cached_result)) => {
             debug!("Found cached simple split result for '{}': {:?}", artist_name, cached_result);
             return cached_result;
@@ -195,7 +195,7 @@ pub fn split_if_multiple(artist_name: &str, custom_separators: Option<&[String]>
     };
     
     // Cache the result (no expiry)
-    if let Err(e) = attributecache::set_with_expiry(&cache_key, &result, None) {
+    if let Err(e) = attribute_cache::set_with_expiry(&cache_key, &result, None) {
         debug!("Failed to cache simple split result for '{}': {}", artist_name, e);
     } else {
         debug!("Cached simple split result for '{}': {:?}", artist_name, result);
@@ -221,7 +221,7 @@ pub fn split_artist_names_with_mbid_lookup(artist_name: &str, cache_only: bool, 
     let cache_key = format!("{}{}", ARTIST_SPLIT_CACHE_PREFIX, artist_name);
     
     // Try to get cached result first (no expiry)
-    match attributecache::get::<Option<Vec<String>>>(&cache_key) {
+    match attribute_cache::get::<Option<Vec<String>>>(&cache_key) {
         Ok(Some(cached_result)) => {
             debug!("Found cached split result for '{}': {:?}", artist_name, cached_result);
             return cached_result;
@@ -245,7 +245,7 @@ pub fn split_artist_names_with_mbid_lookup(artist_name: &str, cache_only: bool, 
     if !contains_separator {
         debug!("'{}' doesn't contain any separators, assuming single artist", artist_name);
         // Cache the result that this is a single artist
-        if let Err(e) = attributecache::set_with_expiry(&cache_key, &None::<Vec<String>>, None) {
+        if let Err(e) = attribute_cache::set_with_expiry(&cache_key, &None::<Vec<String>>, None) {
             debug!("Failed to cache single artist result for '{}': {}", artist_name, e);
         }
         return None;
@@ -254,7 +254,7 @@ pub fn split_artist_names_with_mbid_lookup(artist_name: &str, cache_only: bool, 
     let result = perform_artist_split_with_mbid_lookup(artist_name, cache_only, &separators);
     
     // Cache the result (no expiry)
-    if let Err(e) = attributecache::set_with_expiry(&cache_key, &result, None) {
+    if let Err(e) = attribute_cache::set_with_expiry(&cache_key, &result, None) {
         debug!("Failed to cache split result for '{}': {}", artist_name, e);
     } else {
         debug!("Cached split result for '{}': {:?}", artist_name, result);
