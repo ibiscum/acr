@@ -121,7 +121,7 @@ path = "src/tools/acr_dump_store.rs"
 
 [[bin]]
 name = "audiocontrol_dump_cache"
-path = "src/tools/audiocontrol_dump_cache.rs"
+path = "src/tools/acr_dump_cache.rs"
 
 [[bin]]
 name = "audiocontrol_player_event_client"

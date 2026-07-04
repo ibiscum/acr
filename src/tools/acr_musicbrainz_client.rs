@@ -1,16 +1,19 @@
 use clap::{Arg, Command};
 use log::{error, info, warn};
 use std::fs;
+use std::time::Duration;
 
 use audiocontrol::helpers::musicbrainz::{self, is_mbid};
 use audiocontrol::helpers::artistsplitter::DEFAULT_ARTIST_SEPARATORS;
+
+const USER_AGENT: &str = "HifiBerry-ACR/1.0 (https://www.hifiberry.com/)";
 
 fn main() {
     // Initialize logging
     env_logger::init();
 
     // Setup command line interface
-    let matches = Command::new("acr_musicbrainz_client")
+    let matches = Command::new("audiocontrol_musicbrainz_client")
         .about("MusicBrainz API client for direct API calls")
         .version("1.0")
         .arg(
@@ -299,15 +302,8 @@ fn make_artist_search_api_call(artist_name: &str, verbose: bool) -> Result<Strin
     if verbose {
         println!("API URL: {}", url);
     }
-    
-    let response = ureq::get(&url)
-        .set("User-Agent", "HifiBerry-ACR/1.0 (https://www.hifiberry.com/)")
-        .call()
-        .map_err(|e| format!("HTTP request failed: {}", e))?
-        .into_string()
-        .map_err(|e| format!("Failed to read response: {}", e))?;
-    
-    Ok(response)
+
+    perform_get_request(&url)
 }
 
 fn make_artist_lookup_api_call(mbid: &str, verbose: bool) -> Result<String, String> {
@@ -317,14 +313,7 @@ fn make_artist_lookup_api_call(mbid: &str, verbose: bool) -> Result<String, Stri
         println!("API URL: {}", url);
     }
     
-    let response = ureq::get(&url)
-        .set("User-Agent", "HifiBerry-ACR/1.0 (https://www.hifiberry.com/)")
-        .call()
-        .map_err(|e| format!("HTTP request failed: {}", e))?
-        .into_string()
-        .map_err(|e| format!("Failed to read response: {}", e))?;
-    
-    Ok(response)
+    perform_get_request(&url)
 }
 
 fn make_album_lookup_api_call(mbid: &str, verbose: bool) -> Result<String, String> {
@@ -334,14 +323,19 @@ fn make_album_lookup_api_call(mbid: &str, verbose: bool) -> Result<String, Strin
         println!("API URL: {}", url);
     }
     
-    let response = ureq::get(&url)
-        .set("User-Agent", "HifiBerry-ACR/1.0 (https://www.hifiberry.com/)")
+    perform_get_request(&url)
+}
+
+fn perform_get_request(url: &str) -> Result<String, String> {
+    ureq::AgentBuilder::new()
+        .timeout(Duration::from_secs(10))
+        .build()
+        .get(url)
+        .set("User-Agent", USER_AGENT)
         .call()
         .map_err(|e| format!("HTTP request failed: {}", e))?
         .into_string()
-        .map_err(|e| format!("Failed to read response: {}", e))?;
-    
-    Ok(response)
+        .map_err(|e| format!("Failed to read response: {}", e))
 }
 
 fn parse_and_display_artist_search_response(response: &str, artist_name: &str, verbose: bool) {
@@ -491,4 +485,53 @@ fn show_examples() {
     println!("# Use custom config file:");
     println!("audiocontrol_musicbrainz_client --config /path/to/config.json --artist-name \"Pink Floyd\"");
     println!();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+
+    #[test]
+    fn regression_split_artist_with_separators_filters_empty_parts() {
+        let separators = [",", "&"];
+        let split = split_artist_with_separators("Artist A, , Artist B &  Artist C", &separators);
+        assert_eq!(split, vec!["Artist A", "Artist B", "Artist C"]);
+    }
+
+    #[test]
+    fn regression_split_artist_with_overlapping_separators() {
+        let separators = [" feat. ", " & "];
+        let split = split_artist_with_separators("A feat. B & C", &separators);
+        assert_eq!(split, vec!["A", "B", "C"]);
+    }
+
+    #[test]
+    fn integration_load_config_file_valid_json() {
+        let mut file = tempfile::NamedTempFile::new().unwrap();
+        writeln!(file, "{{\"musicbrainz\":{{\"enabled\":true}}}}",).unwrap();
+
+        let config = load_config_file(file.path().to_str().unwrap()).unwrap();
+        assert_eq!(
+            config["musicbrainz"]["enabled"].as_bool(),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn regression_load_config_file_reports_missing_file() {
+        let result = load_config_file("/definitely/not/found/audiocontrol.json");
+        let err = result.unwrap_err();
+        assert!(err.contains("Failed to read config file"));
+    }
+
+    #[test]
+    fn regression_load_config_file_reports_invalid_json() {
+        let mut file = tempfile::NamedTempFile::new().unwrap();
+        writeln!(file, "not-json").unwrap();
+
+        let result = load_config_file(file.path().to_str().unwrap());
+        let err = result.unwrap_err();
+        assert!(err.contains("Failed to parse config file"));
+    }
 }
