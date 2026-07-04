@@ -21,35 +21,35 @@ These paths can be customized in the configuration file.
 
 ## Cache Management Tools
 
-### audiocontrol_dump_cache Tool
+### acr_dump_cache Tool
 
 Audiocontrol includes a dedicated cache management tool for inspecting and managing cache contents:
 
 ```bash
 # List all cache entries with details
-audiocontrol_dump_cache list --detailed
+acr_dump_cache list --detailed
 
 # List entries with a specific prefix
-audiocontrol_dump_cache list --prefix "artist::mbid"
+acr_dump_cache list --prefix "artist::mbid"
 
 # Use shortcuts for common cache types
-audiocontrol_dump_cache list --artistmbid          # MusicBrainz artist data
-audiocontrol_dump_cache list --artistnotfound      # MusicBrainz negative cache
-audiocontrol_dump_cache list --artistsplit         # Artist name splitting cache
-audiocontrol_dump_cache list --imagemeta           # Image metadata cache
+acr_dump_cache list --artistmbid          # MusicBrainz artist data
+acr_dump_cache list --artistnotfound      # MusicBrainz negative cache
+acr_dump_cache list --artistsplit         # Artist name splitting cache
+acr_dump_cache list --imagemeta           # Image metadata cache
 
 # Show cache statistics
-audiocontrol_dump_cache stats --by-prefix
+acr_dump_cache stats --by-prefix
 
 # Clean specific cache entries (dry run first)
-audiocontrol_dump_cache clean --prefix "artist::mbid" --dry-run
-audiocontrol_dump_cache clean --prefix "artist::mbid"
+acr_dump_cache clean --prefix "artist::mbid" --dry-run
+acr_dump_cache clean --prefix "artist::mbid"
 
 # Clean old entries
-audiocontrol_dump_cache clean --older-than-days 7
+acr_dump_cache clean --older-than-days 7
 
 # Clean all cache entries (use with caution!)
-audiocontrol_dump_cache clean --all
+acr_dump_cache clean --all
 ```
 
 ### SQLite Direct Access
@@ -72,20 +72,20 @@ sqlite3 /var/lib/audiocontrol/cache/attributes/attributes.db "SELECT * FROM cach
 
 ## Managing the Cache
 
-### Using the audiocontrol_dump_cache Tool
+### Using the acr_dump_cache Tool
 
 The recommended way to manage the cache is using the built-in tool:
 
 ```bash
 # Inspect cache contents before cleaning
-audiocontrol_dump_cache list --artistnotfound --detailed
+acr_dump_cache list --artistnotfound --detailed
 
 # Clean only expired negative cache entries (safe)
-audiocontrol_dump_cache clean --artistnotfound --dry-run
-audiocontrol_dump_cache clean --artistnotfound
+acr_dump_cache clean --artistnotfound --dry-run
+acr_dump_cache clean --artistnotfound
 
 # Clean old entries across all cache types
-audiocontrol_dump_cache clean --older-than-days 30
+acr_dump_cache clean --older-than-days 30
 ```
 
 ### Manual Cache Deletion
@@ -103,7 +103,7 @@ sudo rm -rf /var/lib/audiocontrol/cache
 sudo systemctl start audiocontrol
 ```
 
-**Warning**: Deleting the cache can significantly slow down operation, particularly during startup, as Audiocontrol will need to rebuild the cache by querying external services again. The audiocontrol_dump_cache tool provides more granular control and is the preferred method.
+**Warning**: Deleting the cache can significantly slow down operation, particularly during startup, as Audiocontrol will need to rebuild the cache by querying external services again. The acr_dump_cache tool provides more granular control and is the preferred method.
 
 ## Cache Key Prefixes
 
@@ -225,7 +225,7 @@ Recent updates have significantly improved the caching system:
 - **Extended Negative Caching**: MusicBrainz failures are cached for 48 hours instead of indefinitely
 - **Performance Optimization**: MPD library no longer performs redundant metadata updates during API access
 - **Consistent Key Format**: All cache keys now use "::" as the separator for consistency
-- **Enhanced Tooling**: The audiocontrol_dump_cache tool provides comprehensive cache management capabilities
+- **Enhanced Tooling**: The acr_dump_cache tool provides comprehensive cache management capabilities
 
 ### Performance Benefits
 
