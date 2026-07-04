@@ -1,6 +1,5 @@
 use std::io::{BufRead, BufReader};
 use std::time::Duration;
-use reqwest;
 use serde::{Deserialize, Serialize};
 use log::{debug, info};
 use thiserror::Error;
@@ -9,7 +8,7 @@ use thiserror::Error;
 #[derive(Error, Debug)]
 pub enum M3UError {
     #[error("Failed to download playlist: {0}")]
-    DownloadError(#[from] reqwest::Error),
+    DownloadError(String),
     
     #[error("Invalid URL: {0}")]
     InvalidUrl(String),
@@ -55,8 +54,8 @@ pub struct M3UPlaylist {
 
 /// M3U Parser with HTTP download capability
 pub struct M3UParser {
-    /// HTTP client for downloading playlists
-    client: reqwest::blocking::Client,
+    /// Timeout for downloading playlists
+    timeout: Duration,
 }
 
 impl Default for M3UParser {
@@ -68,24 +67,16 @@ impl Default for M3UParser {
 impl M3UParser {
     /// Create a new M3U parser with default HTTP client settings
     pub fn new() -> Self {
-        let client = reqwest::blocking::Client::builder()
-            .timeout(Duration::from_secs(30))
-            .user_agent("HiFiBerry-AudioControl/0.6.7")
-            .build()
-            .expect("Failed to create HTTP client");
-            
-        Self { client }
+        Self {
+            timeout: Duration::from_secs(30),
+        }
     }
     
     /// Create a new M3U parser with custom timeout
     pub fn with_timeout(timeout_secs: u64) -> Self {
-        let client = reqwest::blocking::Client::builder()
-            .timeout(Duration::from_secs(timeout_secs))
-            .user_agent("HiFiBerry-AudioControl/0.6.7")
-            .build()
-            .expect("Failed to create HTTP client");
-            
-        Self { client }
+        Self {
+            timeout: Duration::from_secs(timeout_secs),
+        }
     }
     
     /// Parse an M3U playlist from a URL
@@ -105,10 +96,16 @@ impl M3UParser {
             return Err(M3UError::InvalidUrl(format!("Invalid URL format: {}", url)));
         }
         
-        // Download the playlist content
-        let response = self.client.get(url).send()?.error_for_status()?;
-        
-        let content = response.text()?;
+        // Download the playlist content using the synchronous ureq client.
+        let response = ureq::get(url)
+            .timeout(self.timeout)
+            .set("User-Agent", "HiFiBerry-AudioControl/0.7.13")
+            .call()
+            .map_err(|e| M3UError::DownloadError(e.to_string()))?;
+
+        let content = response
+            .into_string()
+            .map_err(|e| M3UError::DownloadError(e.to_string()))?;
         debug!("Downloaded {} bytes of playlist content", content.len());
         
         // Parse the content

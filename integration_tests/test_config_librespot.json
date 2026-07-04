@@ -28,7 +28,7 @@
             "image_cache_path": "/tmp/test_cache_librespot/images"
         },
         "settingsdb": {
-            "path": "/tmp/test_db_librespot"
+            "path": "/tmp/test_librespot.db"
         },
         "security_store": {
             "path": "/tmp/test_security_store_librespot.json"

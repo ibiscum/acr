@@ -4,6 +4,7 @@ Integration tests for Settings API
 These tests verify the settings endpoints for get and set operations
 """
 
+import venv_bootstrap
 import pytest
 import json
 import time

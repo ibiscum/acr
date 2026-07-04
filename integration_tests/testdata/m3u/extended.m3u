@@ -1,0 +1,9 @@
+#EXTM3U
+#EXTINF:180,Artist 1 - Song 1
+http://example.com/song1.mp3
+#EXTINF:240,Artist 2 - Song 2
+http://example.com/song2.mp3
+#EXTINF:-1,Live Stream
+http://example.com/stream.m3u8
+#EXTINF:200,
+http://example.com/song_no_title.mp3

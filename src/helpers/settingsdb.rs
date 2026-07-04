@@ -28,6 +28,19 @@ impl Default for SettingsDb {
 }
 
 impl SettingsDb {
+    /// Resolve configured path to a concrete SQLite database file path.
+    ///
+    /// Backward compatibility:
+    /// - If `path` points to an existing file, use it directly as the database file.
+    /// - Otherwise treat `path` as a directory and use `<path>/settings.db`.
+    fn resolve_db_path<P: AsRef<Path>>(path: P) -> PathBuf {
+        let p = path.as_ref();
+        if p.is_file() {
+            return p.to_path_buf();
+        }
+        p.join("settings.db")
+    }
+
     /// Create a new settings database with default settings
     pub fn new() -> Self {
         // Using the default path
@@ -37,8 +50,11 @@ impl SettingsDb {
 
     /// Create a new settings database with a specific directory
     pub fn with_directory<P: AsRef<Path>>(dir: P) -> Self {
-        let db_dir = dir.as_ref().to_path_buf();
-        let db_path = db_dir.join("settings.db");
+        let db_path = Self::resolve_db_path(dir);
+        let db_dir = db_path
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| PathBuf::from("."));
         
         // Try to ensure the directory exists
         if let Err(e) = std::fs::create_dir_all(&db_dir) {
@@ -100,8 +116,11 @@ impl SettingsDb {
     /// Reconfigure the settings database with a new directory
     /// This will close the existing database and open a new one
     fn reconfigure_with_directory<P: AsRef<Path>>(&mut self, dir: P) -> Result<(), String> {
-        let db_dir = dir.as_ref().to_path_buf();
-        let db_path = db_dir.join("settings.db");
+        let db_path = Self::resolve_db_path(dir);
+        let db_dir = db_path
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| PathBuf::from("."));
         
         // Try to ensure the directory exists
         if let Err(e) = std::fs::create_dir_all(&db_dir) {

@@ -4,6 +4,7 @@ Integration tests for Cache Statistics API
 These tests verify the cache statistics endpoint functionality
 """
 
+import venv_bootstrap
 import pytest
 import json
 import time

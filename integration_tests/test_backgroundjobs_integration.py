@@ -1,9 +1,12 @@
+#!/usr/bin/env python3
+
 """
 Simple integration test for the background jobs API.
 
 This module tests the basic functionality of the background jobs API endpoints.
 """
 
+import venv_bootstrap
 import pytest
 
 

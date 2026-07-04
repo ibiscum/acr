@@ -20,6 +20,10 @@ import pytest
 import requests
 import psutil
 
+TEST_DIR = Path(__file__).parent
+TMP_DIR = TEST_DIR / ".tmp"
+TMP_DIR.mkdir(exist_ok=True)
+
 # Test configuration
 TEST_PORTS = {
     'generic': 18080,
@@ -35,19 +39,19 @@ TEST_PORTS = {
 
 # Path configurations for different test types
 TEST_CONFIGS = {
-    'generic': Path(__file__).parent / "test_config_generic.json",
-    'librespot': Path(__file__).parent / "test_config_librespot.json",
-    'activemonitor': Path(__file__).parent / "test_config_activemonitor.json",
-    'raat': Path(__file__).parent / "test_config_generic.json",
-    'theaudiodb': Path(__file__).parent / "test_config_theaudiodb.json",
-    'fanarttv': Path(__file__).parent / "test_config_fanarttv.json",
-    'volume': Path(__file__).parent / "test_config_volume.json",
-    'coverart': Path(__file__).parent / "test_config_generic.json",
-    'cache': Path(__file__).parent / "test_config_cache.json",
+    'generic': TEST_DIR / "test_config_generic.json",
+    'librespot': TEST_DIR / "test_config_librespot.json",
+    'activemonitor': TEST_DIR / "test_config_activemonitor.json",
+    'raat': TEST_DIR / "test_config_generic.json",
+    'theaudiodb': TEST_DIR / "test_config_theaudiodb.json",
+    'fanarttv': TEST_DIR / "test_config_fanarttv.json",
+    'volume': TEST_DIR / "test_config_volume.json",
+    'coverart': TEST_DIR / "test_config_generic.json",
+    'cache': TEST_DIR / "test_config_cache.json",
 }
 
 # Default path to static configuration file
-STATIC_CONFIG_PATH = Path(__file__).parent / "test_config_generic.json"
+STATIC_CONFIG_PATH = TEST_DIR / "test_config_generic.json"
 
 # Global server processes
 _server_processes: Dict[str, subprocess.Popen] = {}
@@ -67,7 +71,7 @@ class AudioControlTestServer:
     def create_config(self) -> Path:
         """Create a test configuration file based on the static configuration"""
         # Create cache directory paths
-        cache_dir = Path(f"test_cache_{self.port}")
+        cache_dir = TMP_DIR / f"test_cache_{self.port}"
         cache_dir.mkdir(exist_ok=True)
         
         attributes_cache_dir = cache_dir / "attributes"
@@ -96,18 +100,18 @@ class AudioControlTestServer:
             # Update librespot pipe
             if "librespot" in player_config:
                 player_config["librespot"]["event_pipe"] = (
-                    f"test_librespot_event_{self.port}" if os.name == 'nt' 
+                    str(TMP_DIR / f"test_librespot_event_{self.port}") if os.name == 'nt' 
                     else f"/tmp/test_librespot_event_{self.port}"
                 )
             
             # Update RAAT pipes
             if "raat" in player_config:
                 player_config["raat"]["metadata_pipe"] = (
-                    f"test_raat_metadata_{self.port}" if os.name == 'nt' 
+                    str(TMP_DIR / f"test_raat_metadata_{self.port}") if os.name == 'nt' 
                     else f"/tmp/test_raat_metadata_{self.port}"
                 )
                 player_config["raat"]["control_pipe"] = (
-                    f"test_raat_control_{self.port}" if os.name == 'nt' 
+                    str(TMP_DIR / f"test_raat_control_{self.port}") if os.name == 'nt' 
                     else f"/tmp/test_raat_control_{self.port}"
                 )
         
@@ -123,7 +127,7 @@ class AudioControlTestServer:
             config["services"]["cache"]["image_cache_path"] = str(images_cache_dir.absolute())
         
         # Create config file
-        self.config_path = Path(f"test_config_{self.port}.json")
+        self.config_path = TMP_DIR / f"test_config_{self.port}.json"
         with open(self.config_path, 'w') as f:
             json.dump(config, f, indent=2)
         
@@ -140,7 +144,7 @@ class AudioControlTestServer:
         for player_config in config["players"]:
             if "librespot" in player_config:
                 if os.name == 'nt':  # Windows
-                    librespot_pipe = Path(f"test_librespot_event_{self.port}")
+                    librespot_pipe = TMP_DIR / f"test_librespot_event_{self.port}"
                 else:  # Unix-like
                     librespot_pipe = Path(f"/tmp/test_librespot_event_{self.port}")
                 librespot_pipe.touch()
@@ -148,8 +152,8 @@ class AudioControlTestServer:
             
             if "raat" in player_config:
                 if os.name == 'nt':  # Windows
-                    raat_metadata_pipe = Path(f"test_raat_metadata_{self.port}")
-                    raat_control_pipe = Path(f"test_raat_control_{self.port}")
+                    raat_metadata_pipe = TMP_DIR / f"test_raat_metadata_{self.port}"
+                    raat_control_pipe = TMP_DIR / f"test_raat_control_{self.port}"
                 else:  # Unix-like
                     raat_metadata_pipe = Path(f"/tmp/test_raat_metadata_{self.port}")
                     raat_control_pipe = Path(f"/tmp/test_raat_control_{self.port}")
@@ -306,7 +310,7 @@ class AudioControlTestServer:
             self.config_path.unlink()
         
         # Clean up cache directory
-        cache_dir = Path(f"test_cache_{self.port}")
+        cache_dir = TMP_DIR / f"test_cache_{self.port}"
         if cache_dir.exists():
             shutil.rmtree(cache_dir)
     
@@ -686,7 +690,7 @@ def cleanup_all_servers():
     
     # Clean up config files and cache directories
     for port in TEST_PORTS.values():
-        config_path = Path(f"test_config_{port}.json")
+        config_path = TMP_DIR / f"test_config_{port}.json"
         if config_path.exists():
             try:
                 config_path.unlink()
@@ -694,7 +698,7 @@ def cleanup_all_servers():
             except Exception as e:
                 print(f"Warning: Failed to remove {config_path}: {e}")
         
-        cache_dir = Path(f"test_cache_{port}")
+        cache_dir = TMP_DIR / f"test_cache_{port}"
         if cache_dir.exists():
             try:
                 shutil.rmtree(cache_dir)
@@ -710,7 +714,7 @@ def cleanup_all_servers():
     ]
     
     # Clean up in both the current directory and /tmp (for Unix systems)
-    search_dirs = [Path(".")]
+    search_dirs = [TMP_DIR]
     if os.name != 'nt':  # Add /tmp for Unix-like systems
         search_dirs.append(Path("/tmp"))
     
@@ -725,7 +729,7 @@ def cleanup_all_servers():
     
     # Clean up Python cache files
     try:
-        pycache_dir = Path("__pycache__")
+        pycache_dir = TEST_DIR / "__pycache__"
         if pycache_dir.exists():
             shutil.rmtree(pycache_dir)
             print(f"Removed Python cache directory: {pycache_dir}")
@@ -738,7 +742,7 @@ def cleanup_all_servers():
     ]
     
     for temp_file in other_temp_files:
-        file_path = Path(temp_file)
+        file_path = TMP_DIR / temp_file
         if file_path.exists():
             try:
                 file_path.unlink()
