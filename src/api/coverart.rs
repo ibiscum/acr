@@ -35,7 +35,7 @@ pub struct UpdateImageResponse {
 }
 
 /// Get cover art for an artist
-/// 
+///
 /// # Parameters
 /// * `artist_b64` - Base64 encoded artist name
 #[get("/artist/<artist_b64>")]
@@ -58,7 +58,7 @@ pub fn get_artist_coverart(artist_b64: String) -> Json<CoverartResponse> {
 }
 
 /// Get cover art for a song
-/// 
+///
 /// # Parameters
 /// * `title_b64` - Base64 encoded song title
 /// * `artist_b64` - Base64 encoded artist name
@@ -92,7 +92,7 @@ pub fn get_song_coverart(title_b64: String, artist_b64: String) -> Json<Coverart
 }
 
 /// Get cover art for an album
-/// 
+///
 /// # Parameters
 /// * `title_b64` - Base64 encoded album title
 /// * `artist_b64` - Base64 encoded artist name
@@ -103,7 +103,7 @@ pub fn get_album_coverart(title_b64: String, artist_b64: String) -> Json<Coverar
 }
 
 /// Get cover art for an album with year
-/// 
+///
 /// # Parameters
 /// * `title_b64` - Base64 encoded album title
 /// * `artist_b64` - Base64 encoded artist name
@@ -138,7 +138,7 @@ pub fn get_album_coverart_with_year(title_b64: String, artist_b64: String, year:
 }
 
 /// Get cover art from a URL
-/// 
+///
 /// # Parameters
 /// * `url_b64` - Base64 encoded URL
 #[get("/url/<url_b64>")]
@@ -166,23 +166,23 @@ pub fn get_coverart_methods() -> Json<CoverartMethodsResponse> {
     let manager = get_coverart_manager();
     let manager_lock = manager.lock();
     let providers = manager_lock.get_providers();
-    
+
     log::debug!("API: Total providers found: {}", providers.len());
     for (i, provider) in providers.iter().enumerate() {
         log::debug!("API: Provider {}: {} ({})", i, provider.name(), provider.display_name());
         log::debug!("API: Provider {} supported methods: {:?}", i, provider.supported_methods());
     }
-    
+
     // Group providers by supported methods
     let mut method_providers = std::collections::HashMap::new();
-    
+
     for provider in providers {
         let supported_methods = provider.supported_methods();
         let provider_info = ProviderInfo {
             name: provider.name().to_string(),
             display_name: provider.display_name().to_string(),
         };
-        
+
         for method in supported_methods {
             method_providers
                 .entry(method)
@@ -190,7 +190,7 @@ pub fn get_coverart_methods() -> Json<CoverartMethodsResponse> {
                 .push(provider_info.clone());
         }
     }
-    
+
     // Convert to response format
     let methods: Vec<CoverartMethodInfo> = [
         CoverartMethod::Artist,
@@ -202,30 +202,30 @@ pub fn get_coverart_methods() -> Json<CoverartMethodsResponse> {
     .map(|method| {
         let method_name = match method {
             CoverartMethod::Artist => "Artist",
-            CoverartMethod::Song => "Song", 
+            CoverartMethod::Song => "Song",
             CoverartMethod::Album => "Album",
             CoverartMethod::Url => "Url",
         };
-        
+
         CoverartMethodInfo {
             method: method_name.to_string(),
             providers: method_providers.get(method).cloned().unwrap_or_default(),
         }
     })
     .collect();
-    
+
     Json(CoverartMethodsResponse { methods })
 }
 
 /// Update artist image with custom URL
-/// 
+///
 /// # Parameters
 /// * `artist_b64` - Base64 encoded artist name
 /// * `request` - JSON request body containing the image URL
 #[post("/artist/<artist_b64>/update", data = "<request>")]
 pub fn update_artist_image(artist_b64: String, request: Json<UpdateImageRequest>) -> Json<UpdateImageResponse> {
     debug!("Received artist image update request: artist_b64={}, url={}", artist_b64, request.url);
-    
+
     let artist_name = match decode_url_safe(&artist_b64) {
         Some(name) => name,
         None => {
@@ -242,15 +242,15 @@ pub fn update_artist_image(artist_b64: String, request: Json<UpdateImageRequest>
     // Store the custom URL in settings database
     let settings_key = format!("artist.image.{}", artist_name);
     debug!("Storing custom image URL in settings: key={}, url={}", settings_key, request.url);
-    
+
     match settings_db::set_string(&settings_key, &request.url) {
         Ok(_) => {
             info!("Successfully stored custom image URL for artist '{}': {}", artist_name, request.url);
-            
+
             // Clear any cached image to force refresh
             let cache_path = format!("artists/{}/cover.jpg", crate::helpers::url_encoding::encode_url_safe(&artist_name));
             debug!("Attempting to clear cached image at: {}", cache_path);
-            
+
             match std::fs::remove_file(&cache_path) {
                 Ok(_) => {
                     debug!("Successfully cleared cached image for artist: {}", artist_name);
@@ -259,15 +259,15 @@ pub fn update_artist_image(artist_b64: String, request: Json<UpdateImageRequest>
                     debug!("No cached image to clear for artist '{}' ({}): {}", artist_name, cache_path, e);
                 }
             }
-            
+
             // If URL is not empty, try to trigger immediate download to user directory
             if !request.url.is_empty() {
                 debug!("Attempting to trigger immediate download of custom image to user directory for artist: {}", artist_name);
-                
+
                 // Use the global artist store to download the image to user directory
                 let artist_store = crate::helpers::artist_store::get_artist_store();
                 let mut store_lock = artist_store.lock();
-                
+
                 match store_lock.download_and_store_user_image(&artist_name, &request.url, "custom") {
                     crate::helpers::artist_store::ArtistImageResult::Found { cache_path } => {
                         info!("Successfully downloaded and stored custom image in user directory for artist '{}': {}", artist_name, cache_path);
@@ -282,7 +282,7 @@ pub fn update_artist_image(artist_b64: String, request: Json<UpdateImageRequest>
             } else {
                 info!("Empty URL provided - custom image cleared for artist: {}", artist_name);
             }
-            
+
             Json(UpdateImageResponse {
                 success: true,
                 message: format!("Artist image URL updated successfully for '{}'", artist_name),
@@ -299,17 +299,17 @@ pub fn update_artist_image(artist_b64: String, request: Json<UpdateImageRequest>
 }
 
 /// Get artist image directly
-/// 
+///
 /// This endpoint serves the actual artist image file if available in cache.
 /// Returns a 404 if no image is found.
-/// 
+///
 /// # Parameters
 /// * `artist_b64` - Base64 encoded artist name
 #[get("/artist/<artist_b64>/image")]
 pub fn get_artist_image(artist_b64: String) -> Result<(rocket::http::ContentType, Vec<u8>), rocket::response::status::Custom<String>> {
     use rocket::http::Status;
     use rocket::response::status::Custom;
-    
+
     let artist_name = match decode_url_safe(&artist_b64) {
         Some(decoded) => decoded,
         None => {
@@ -337,7 +337,7 @@ pub fn get_artist_image(artist_b64: String) -> Result<(rocket::http::ContentType
                     } else {
                         rocket::http::ContentType::JPEG // Default to JPEG
                     };
-                    
+
                     debug!("Serving artist image for '{}' from cache: {}", artist_name, cache_path);
                     Ok((content_type, image_data))
                 },
@@ -357,5 +357,40 @@ pub fn get_artist_image(artist_b64: String) -> Result<(rocket::http::ContentType
                 format!("No image found for artist '{}'", artist_name),
             ))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{get_album_coverart, get_artist_coverart, get_song_coverart, get_url_coverart};
+
+    #[test]
+    fn get_artist_coverart_invalid_encoding_returns_empty_results() {
+        let response = get_artist_coverart("invalid_base64!".to_string());
+        assert!(response.0.results.is_empty());
+    }
+
+    #[test]
+    fn get_song_coverart_invalid_title_encoding_returns_empty_results() {
+        let response = get_song_coverart("invalid_base64!".to_string(), "TWV0YWxsaWNh".to_string());
+        assert!(response.0.results.is_empty());
+    }
+
+    #[test]
+    fn get_song_coverart_invalid_artist_encoding_returns_empty_results() {
+        let response = get_song_coverart("TWFzdGVyIG9mIFB1cHBldHM".to_string(), "invalid_base64!".to_string());
+        assert!(response.0.results.is_empty());
+    }
+
+    #[test]
+    fn get_album_coverart_invalid_title_encoding_returns_empty_results() {
+        let response = get_album_coverart("invalid_base64!".to_string(), "TWV0YWxsaWNh".to_string());
+        assert!(response.0.results.is_empty());
+    }
+
+    #[test]
+    fn get_url_coverart_invalid_encoding_returns_empty_results() {
+        let response = get_url_coverart("invalid_base64!".to_string());
+        assert!(response.0.results.is_empty());
     }
 }

@@ -65,10 +65,10 @@ pub struct ErrorResponse {
     pub message: String,
 }
 
-/// Get all currently running background jobs
-/// 
-/// This endpoint retrieves information about all background jobs currently
-/// running in the system, including their progress and timing information.
+/// Get all background jobs
+///
+/// This endpoint retrieves information about all background jobs
+/// (including finished jobs), including their progress and timing information.
 #[get("/jobs")]
 pub fn get_background_jobs() -> Json<BackgroundJobsResponse> {
     debug!("API request: get background jobs");
@@ -76,12 +76,12 @@ pub fn get_background_jobs() -> Json<BackgroundJobsResponse> {
     match get_all_jobs() {
         Ok(jobs) => {
             debug!("Successfully retrieved {} background jobs", jobs.len());
-            
+
             let job_infos: Vec<BackgroundJobInfo> = jobs
                 .into_iter()
                 .map(BackgroundJobInfo::from)
                 .collect();
-            
+
             Json(BackgroundJobsResponse {
                 success: true,
                 jobs: Some(job_infos),
@@ -100,7 +100,7 @@ pub fn get_background_jobs() -> Json<BackgroundJobsResponse> {
 }
 
 /// Get information about a specific background job by ID
-/// 
+///
 /// This endpoint retrieves detailed information about a specific background job.
 #[get("/jobs/<job_id>")]
 pub fn get_background_job(job_id: String) -> Json<BackgroundJobsResponse> {
@@ -109,9 +109,9 @@ pub fn get_background_job(job_id: String) -> Json<BackgroundJobsResponse> {
     match crate::helpers::background_jobs::get_job(&job_id) {
         Ok(Some(job)) => {
             debug!("Successfully retrieved background job: {}", job_id);
-            
+
             let job_info = BackgroundJobInfo::from(job);
-            
+
             Json(BackgroundJobsResponse {
                 success: true,
                 jobs: Some(vec![job_info]),
@@ -134,5 +134,86 @@ pub fn get_background_job(job_id: String) -> Json<BackgroundJobsResponse> {
                 message: Some(format!("Failed to retrieve background job: {}", e)),
             })
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::helpers::background_jobs::{complete_job, register_job, update_job};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn unique_job_id(prefix: &str) -> String {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        format!("{}_{}", prefix, nanos)
+    }
+
+    #[test]
+    fn test_background_job_info_completion_percentage() {
+        let mut job = BackgroundJob::new("job_pct".to_string(), "Progress Job".to_string());
+        job.completed_items = Some(5);
+        job.total_items = Some(10);
+
+        let info = BackgroundJobInfo::from(job);
+        assert_eq!(info.completion_percentage, Some(50.0));
+    }
+
+    #[test]
+    fn test_background_job_info_zero_total_maps_to_100_percent() {
+        let mut job = BackgroundJob::new("job_zero".to_string(), "Zero Total".to_string());
+        job.completed_items = Some(0);
+        job.total_items = Some(0);
+
+        let info = BackgroundJobInfo::from(job);
+        assert_eq!(info.completion_percentage, Some(100.0));
+    }
+
+    #[test]
+    fn test_get_background_job_not_found() {
+        let response = get_background_job(unique_job_id("missing")).into_inner();
+
+        assert!(!response.success);
+        assert!(response.jobs.is_none());
+        assert!(response
+            .message
+            .as_deref()
+            .unwrap_or_default()
+            .contains("not found"));
+    }
+
+    #[test]
+    fn test_get_background_job_found() {
+        let job_id = unique_job_id("found");
+        register_job(job_id.clone(), "Found Job".to_string()).unwrap();
+
+        let response = get_background_job(job_id.clone()).into_inner();
+
+        assert!(response.success);
+        let jobs = response.jobs.expect("expected jobs payload");
+        assert_eq!(jobs.len(), 1);
+        assert_eq!(jobs[0].id, job_id);
+        assert_eq!(jobs[0].name, "Found Job");
+    }
+
+    #[test]
+    fn test_get_background_jobs_includes_finished_jobs_current_behavior() {
+        let job_id = unique_job_id("finished");
+        register_job(job_id.clone(), "Finished Job".to_string()).unwrap();
+        update_job(&job_id, Some("done".to_string()), Some(1), Some(1)).unwrap();
+        complete_job(&job_id).unwrap();
+
+        let response = get_background_jobs().into_inner();
+
+        assert!(response.success);
+        let jobs = response.jobs.expect("expected jobs payload");
+        let finished_job = jobs
+            .into_iter()
+            .find(|job| job.id == job_id)
+            .expect("finished job should be present in listing");
+        assert!(finished_job.finished);
+        assert!(finished_job.finish_time.is_some());
     }
 }
