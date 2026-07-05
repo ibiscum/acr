@@ -121,6 +121,49 @@ stateDiagram-v2
 - Shairport: UDP control messages define transitions explicitly (`PAUSE`, `RESUME`, `AUDIO_BEGIN`, `SESSION_END`).
 - Librespot: state is primarily event-driven via incoming API events; commands use Spotify API when token is valid.
 
+## 3) Bluetooth Controller Runtime State Machine (Current Code)
+
+```mermaid
+stateDiagram-v2
+    [*] --> Constructed
+    Constructed --> AutoDiscoverMode: new_with_address none
+    Constructed --> FixedAddressMode: new_with_address with address
+
+    AutoDiscoverMode --> Scanning: start scan thread
+    Scanning --> DeviceResolved: device and player path found
+
+    FixedAddressMode --> DeviceResolved: find player path success
+    FixedAddressMode --> WaitingForPlayerPath: find player path failed
+
+    DeviceResolved --> Starting: start controller
+    WaitingForPlayerPath --> Starting: start controller
+
+    Starting --> Polling: start polling thread
+    Polling --> Polling: check active player path
+    Polling --> WaitingForPlayerPath: no valid player path
+    WaitingForPlayerPath --> DeviceResolved: path discovered later
+
+    Polling --> Playing: status playing
+    Polling --> Paused: status paused
+    Polling --> Stopped: status stopped
+    Polling --> Unknown: status unknown or read error
+
+    Playing --> Paused: pause or play pause
+    Playing --> Stopped: stop
+    Paused --> Playing: play or play pause
+    Stopped --> Playing: play
+
+    Polling --> Stopping: stop controller
+    Stopping --> StoppedController: join threads and clear connection and path
+    StoppedController --> Starting: start controller again
+```
+
+### Potential inconsistent states or transitions
+
+- Stale player-path transition: when the stored player path disappears, the code logs and searches for a new path but does not clear the old path immediately on failure. This can keep the controller in a stale "path exists" branch instead of transitioning cleanly to "no path".
+- Duration unit inconsistency: one track parsing path converts `Duration` using microseconds to seconds (`/ 1_000_000.0`), while polling track parsing converts with milliseconds to seconds (`/ 1000.0`). That can create inconsistent song duration state depending on call path.
+- Auto-discover rediscovery gap on restart: after auto-discover resolves a concrete address once, restart logic only re-enables scanning when address is none. If that remembered address is no longer available, transitions to rediscover a different device are limited.
+
 ## Practical conclusion
 
 - The system has one active player pointer, not one active playback source.

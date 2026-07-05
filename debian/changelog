@@ -50,7 +50,7 @@ hifiberry-audiocontrol (0.7.14) stable; urgency=medium
   * Active monitor: add a 500ms debounce for Playing-triggered active switches
     to reduce active-player flapping under bursty state events.
 
- -- HiFiBerry <info@hifiberry.com>  Sat, 04 Jul 2026 02:30:00 +0000
+ -- ibiscum <ibiscum@magenta.de>  Sat, 04 Jul 2026 02:30:00 +0000
 
 hifiberry-audiocontrol (0.7.13) stable; urgency=medium
 
