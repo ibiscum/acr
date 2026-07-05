@@ -383,7 +383,7 @@ impl BasePlayerController {
         
         // Publish to the global event bus
         debug!("Publishing state change event to the global event bus");
-        crate::audiocontrol::eventbus::EventBus::instance().publish(event.clone());
+        crate::audiocontrol::event_bus::EventBus::instance().publish(event.clone());
         
     }    
     
@@ -404,7 +404,7 @@ impl BasePlayerController {
         
         // Publish to the global event bus
         debug!("Publishing song change event to the global event bus");
-        crate::audiocontrol::eventbus::EventBus::instance().publish(event.clone());
+        crate::audiocontrol::event_bus::EventBus::instance().publish(event.clone());
         
     }    
     
@@ -424,7 +424,7 @@ impl BasePlayerController {
         
         // Publish to the global event bus
         debug!("Publishing loop mode change event to the global event bus");
-        crate::audiocontrol::eventbus::EventBus::instance().publish(event.clone());
+        crate::audiocontrol::event_bus::EventBus::instance().publish(event.clone());
         
         // do not notify listeners anymore
         
@@ -444,7 +444,7 @@ impl BasePlayerController {
         
         // Publish to the global event bus
         debug!("Publishing random mode change event to the global event bus");
-        crate::audiocontrol::eventbus::EventBus::instance().publish(event.clone());
+        crate::audiocontrol::event_bus::EventBus::instance().publish(event.clone());
         
     }    
     
@@ -470,7 +470,7 @@ impl BasePlayerController {
         
         // Publish to the global event bus
         debug!("Publishing capabilities change event to the global event bus");
-        crate::audiocontrol::eventbus::EventBus::instance().publish(event.clone());
+        crate::audiocontrol::event_bus::EventBus::instance().publish(event.clone());
         
     }    
     
@@ -488,7 +488,7 @@ impl BasePlayerController {
         
         // Publish to the global event bus
         debug!("Publishing position change event to the global event bus");
-        crate::audiocontrol::eventbus::EventBus::instance().publish(event.clone());
+        crate::audiocontrol::event_bus::EventBus::instance().publish(event.clone());
     }
 
     /// Create a PlayerSource object for the current player
@@ -509,7 +509,7 @@ impl BasePlayerController {
         
         // Publish to the global event bus
         debug!("Publishing database update event to the global event bus");
-        crate::audiocontrol::eventbus::EventBus::instance().publish(event.clone());
+        crate::audiocontrol::event_bus::EventBus::instance().publish(event.clone());
         
     }    
     
@@ -521,7 +521,7 @@ impl BasePlayerController {
         
         // Publish to the global event bus
         debug!("Publishing queue changed event to the global event bus");
-        crate::audiocontrol::eventbus::EventBus::instance().publish(event.clone());
+        crate::audiocontrol::event_bus::EventBus::instance().publish(event.clone());
         
     }
     
@@ -534,7 +534,7 @@ impl BasePlayerController {
         
         // Publish to the global event bus
         debug!("Publishing active player changed event to the global event bus");
-        crate::audiocontrol::eventbus::EventBus::instance().publish(event.clone());
+        crate::audiocontrol::event_bus::EventBus::instance().publish(event.clone());
         
     }
 

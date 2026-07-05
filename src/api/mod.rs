@@ -46,8 +46,9 @@ pub mod plugins;
 // Export the library module
 pub mod library;
 
-// Export the imagecache module
-pub mod imagecache;
+// Export the image_cache module
+#[path = "image_cache.rs"]
+pub mod image_cache;
 
 // Export the coverart module
 pub mod coverart;
@@ -82,8 +83,9 @@ pub mod settings;
 // Export the cache module
 pub mod cache;
 
-// Export the backgroundjobs module
-pub mod backgroundjobs;
+// Export the background_jobs module
+#[path = "background_jobs.rs"]
+pub mod background_jobs;
 
 // Export the genres module
 pub mod genres;

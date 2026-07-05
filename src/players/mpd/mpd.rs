@@ -4,9 +4,9 @@ use crate::data::library::LibraryInterface;
 use crate::constants::API_PREFIX;
 use crate::helpers::retry::RetryHandler;
 use crate::helpers::url_encoding;
-use crate::helpers::songsplitmanager::SongSplitManager;
-use crate::helpers::attributecache;
-use crate::helpers::backgroundjobs::BackgroundJobs;
+use crate::helpers::song_split_manager::SongSplitManager;
+use crate::helpers::attribute_cache;
+use crate::helpers::background_jobs::BackgroundJobs;
 use delegate::delegate;
 use std::sync::Arc;
 use parking_lot::Mutex;
@@ -882,7 +882,7 @@ impl MPDPlayerController {
         if let Some(ref stream_url) = song.stream_url {
             let cache_key = format!("mpd.urlmeta.{}", stream_url);
             
-            match attributecache::get::<HashMap<String, serde_json::Value>>(&cache_key) {
+            match attribute_cache::get::<HashMap<String, serde_json::Value>>(&cache_key) {
                 Ok(Some(cached_metadata)) => {
                     debug!("Found cached metadata for URL: {}", stream_url);
                     
@@ -1746,7 +1746,7 @@ impl PlayerController for MPDPlayerController {
                                            uri, meta.metadata);
                                     let cache_key = format!("mpd.urlmeta.{}", uri);
                                     
-                                    match attributecache::set(&cache_key, &meta.metadata) {
+                                    match attribute_cache::set(&cache_key, &meta.metadata) {
                                         Ok(_) => {
                                             debug!("Successfully cached metadata for URI: {}", uri);
                                         },
@@ -2085,7 +2085,7 @@ mod tests {
         let temp_dir = TempDir::new().expect("Failed to create temp directory");
         
         // Initialize AttributeCache with the temporary directory
-        attributecache::AttributeCache::initialize_global(temp_dir.path()).expect("Failed to configure cache");
+        attribute_cache::AttributeCache::initialize_global(temp_dir.path()).expect("Failed to configure cache");
         
         let mut song = Song::default();
         song.stream_url = Some("http://example.com/not-cached.mp3".to_string());

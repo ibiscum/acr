@@ -12,7 +12,7 @@ static GLOBAL_FAVOURITE_MANAGER: Lazy<Mutex<FavouriteManager>> = Lazy::new(|| Mu
 pub enum FavouriteError {
     /// Network-related error (for remote providers like Last.fm)
     NetworkError(String),
-    /// Database/storage error (for local providers like settingsdb)
+    /// Database/storage error (for local providers like settings_db)
     StorageError(String),
     /// Authentication error (for providers requiring authentication)
     AuthError(String),
@@ -301,7 +301,7 @@ pub fn initialize_favourite_providers() {
     manager.add_provider(Box::new(crate::helpers::lastfm::LastfmFavouriteProvider::new()));
     
     // Add SettingsDB provider
-    manager.add_provider(Box::new(crate::helpers::settingsdb::SettingsDbFavouriteProvider::new()));
+    manager.add_provider(Box::new(crate::helpers::settings_db::SettingsDbFavouriteProvider::new()));
     
     // Add Spotify provider
     manager.add_provider(Box::new(crate::helpers::spotify::SpotifyFavouriteProvider::new()));

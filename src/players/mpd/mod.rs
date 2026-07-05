@@ -6,4 +6,5 @@ pub use mpd::MPDPlayerController;
 pub mod library;
 
 // Export the MPD library loader
-mod libraryloader;
+#[path = "library_loader.rs"]
+mod library_loader;

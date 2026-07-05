@@ -10,11 +10,11 @@ use serde_json::Value;
 use crate::data::{LoopMode, PlaybackState, PlayerCapabilitySet, PlayerCapability, PlayerCommand, Song, Track};
 use crate::data::library::LibraryInterface;
 use crate::players::player_controller::{BasePlayerController, PlayerController};
-use crate::players::lms::jsonrps::LmsRpcClient;
-use crate::players::lms::lmsserver::{get_local_mac_addresses};
-use crate::players::lms::lmspplayer::LMSPlayer;
+use crate::players::lms::json_rps::LmsRpcClient;
+use crate::players::lms::lms_server::{get_local_mac_addresses};
+use crate::players::lms::lms_player::LMSPlayer;
 use crate::players::lms::cli_listener::{LMSListener, AudioControllerRef};
-use crate::helpers::macaddress::normalize_mac_address;
+use crate::helpers::mac_address::normalize_mac_address;
 use crate::constants::API_PREFIX;
 
 /// Constant for LMS image API URL prefix including API prefix
@@ -147,13 +147,13 @@ impl LMSAudioController {
                 Ok(addresses) => {
                     // Format local MAC addresses as strings
                     let local_macs: Vec<String> = addresses.iter()
-                        .map(crate::helpers::macaddress::mac_to_lowercase_string)
+                        .map(crate::helpers::mac_address::mac_to_lowercase_string)
                         .collect();
                     
                     // Add local MACs that aren't already in the list (case insensitive comparison)
                     for local_mac in local_macs {
                         let already_exists = result.iter().any(|existing_mac| 
-                            crate::helpers::macaddress::mac_equal_ignore_case(existing_mac, &local_mac));
+                            crate::helpers::mac_address::mac_equal_ignore_case(existing_mac, &local_mac));
                         
                         if !already_exists {
                             result.push(local_mac);
@@ -426,11 +426,11 @@ impl LMSAudioController {
                     for player in &players {
                         match normalize_mac_address(&player.playerid) {
                             Ok(player_mac) => {
-                                let player_mac_str = crate::helpers::macaddress::mac_to_lowercase_string(&player_mac);
+                                let player_mac_str = crate::helpers::mac_address::mac_to_lowercase_string(&player_mac);
                                 
                                 // Check if this player matches any of our MAC addresses
                                 for mac in &all_mac_addresses {
-                                    if crate::helpers::macaddress::mac_equal_ignore_case(&player_mac_str, mac) {
+                                    if crate::helpers::mac_address::mac_equal_ignore_case(&player_mac_str, mac) {
                                         info!("Connecting to previously configured server: {}", saved_server_str);
                                         return (
                                             true,
@@ -465,7 +465,7 @@ impl LMSAudioController {
             
             // Use autodiscovery if enabled
             if config.autodiscovery {
-                match crate::players::lms::lmsserver::find_local_servers(Some(2)) {
+                match crate::players::lms::lms_server::find_local_servers(Some(2)) {
                     Ok(discovered_servers) => {
                         for server in discovered_servers {
                             if !servers_to_check.contains(&server.ip.to_string()) {
@@ -496,11 +496,11 @@ impl LMSAudioController {
                         for player in &players {
                             match normalize_mac_address(&player.playerid) {
                                 Ok(player_mac) => {
-                                    let player_mac_str = crate::helpers::macaddress::mac_to_lowercase_string(&player_mac);
+                                    let player_mac_str = crate::helpers::mac_address::mac_to_lowercase_string(&player_mac);
                                     
                                     // Check if this player matches any of our MAC addresses
                                     for mac in &all_mac_addresses {
-                                        if crate::helpers::macaddress::mac_equal_ignore_case(&player_mac_str, mac) {
+                                        if crate::helpers::mac_address::mac_equal_ignore_case(&player_mac_str, mac) {
                                             // Update the config with this server for future reconnections
                                             {
                                                 let mut config_write = self.config.write();

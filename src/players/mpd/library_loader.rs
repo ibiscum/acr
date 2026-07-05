@@ -5,7 +5,7 @@ use log::{debug, info, error, warn};
 use chrono::NaiveDate;
 use crate::data::LibraryError;
 use crate::players::mpd::mpd::MPDPlayerController;
-use crate::helpers::backgroundjobs::{register_job, update_job, complete_job};
+use crate::helpers::background_jobs::{register_job, update_job, complete_job};
 
 /// Number of songs to process before updating progress
 const PROGRESS_UPDATE_FREQUENCY: usize = 100;
@@ -447,7 +447,7 @@ impl MPDLibraryLoader {
             // If the album has no genres from file tags, try the attribute cache
             if album.genres.is_empty() {
                 let album_id = album.id.to_string();
-                if let Some(cached) = crate::helpers::albumupdater::load_cached_genres(&album_id) {
+                if let Some(cached) = crate::helpers::album_updater::load_cached_genres(&album_id) {
                     if !cached.is_empty() {
                         debug!("Loaded {} cached genre(s) for album '{}'", cached.len(), album.name);
                         album.genres = cached;

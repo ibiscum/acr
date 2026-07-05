@@ -34,7 +34,7 @@ pub enum OrderResult {
 ///
 /// # Examples
 /// ```no_run
-/// use audiocontrol::helpers::songtitlesplitter::split_song;
+/// use audiocontrol::helpers::song_title_splitter::split_song;
 /// 
 /// let result = split_song("The Beatles / Hey Jude");
 /// assert_eq!(result, Some(("The Beatles".to_string(), "Hey Jude".to_string())));
@@ -143,7 +143,7 @@ pub fn split_song_with_separator(input: &str, preferred_separator: Option<char>)
 ///
 /// # Examples
 /// ```no_run
-/// use audiocontrol::helpers::songtitlesplitter::{detect_order, OrderResult};
+/// use audiocontrol::helpers::song_title_splitter::{detect_order, OrderResult};
 /// 
 /// let result = detect_order("The Beatles", "Hey Jude");
 /// // Result depends on MusicBrainz database content
@@ -209,7 +209,7 @@ impl SongTitleSplitter {
     /// 
     /// # Examples
     /// ```no_run
-    /// use audiocontrol::helpers::songtitlesplitter::SongTitleSplitter;
+    /// use audiocontrol::helpers::song_title_splitter::SongTitleSplitter;
     /// 
     /// let splitter = SongTitleSplitter::new("track_123");
     /// ```
@@ -228,7 +228,7 @@ impl SongTitleSplitter {
     /// 
     /// # Examples
     /// ```no_run
-    /// use audiocontrol::helpers::songtitlesplitter::SongTitleSplitter;
+    /// use audiocontrol::helpers::song_title_splitter::SongTitleSplitter;
     /// 
     /// let splitter = SongTitleSplitter::with_cache_size("track_123", 100);
     /// ```
@@ -260,7 +260,7 @@ impl SongTitleSplitter {
     /// 
     /// # Examples
     /// ```no_run
-    /// use audiocontrol::helpers::songtitlesplitter::SongTitleSplitter;
+    /// use audiocontrol::helpers::song_title_splitter::SongTitleSplitter;
     /// 
     /// let mut splitter = SongTitleSplitter::new("track_123");
     /// if let Some((artist, song)) = splitter.split_song("The Beatles - Hey Jude") {
@@ -440,7 +440,7 @@ impl SongTitleSplitter {
     /// 
     /// # Examples
     /// ```no_run
-    /// use audiocontrol::helpers::songtitlesplitter::{SongTitleSplitter, OrderResult};
+    /// use audiocontrol::helpers::song_title_splitter::{SongTitleSplitter, OrderResult};
     /// 
     /// let mut splitter = SongTitleSplitter::new("track_123");
     /// match splitter.get_order("The Beatles - Hey Jude") {
@@ -481,7 +481,7 @@ impl SongTitleSplitter {
     /// 
     /// # Examples
     /// ```no_run
-    /// use audiocontrol::helpers::songtitlesplitter::SongTitleSplitter;
+    /// use audiocontrol::helpers::song_title_splitter::SongTitleSplitter;
     /// 
     /// let splitter = SongTitleSplitter::new("track_123");
     /// if let Some((part1, part2)) = splitter.get_raw_parts("The Beatles - Hey Jude") {
@@ -499,7 +499,7 @@ impl SongTitleSplitter {
     /// 
     /// # Examples
     /// ```no_run
-    /// use audiocontrol::helpers::songtitlesplitter::SongTitleSplitter;
+    /// use audiocontrol::helpers::song_title_splitter::SongTitleSplitter;
     /// 
     /// let splitter = SongTitleSplitter::new("track_123");
     /// assert_eq!(splitter.get_id(), "track_123");
@@ -672,7 +672,7 @@ impl SongTitleSplitter {
     /// 
     /// # Examples
     /// ```no_run
-    /// use audiocontrol::helpers::songtitlesplitter::SongTitleSplitter;
+    /// use audiocontrol::helpers::song_title_splitter::SongTitleSplitter;
     /// 
     /// let mut splitter = SongTitleSplitter::new("radio_station_url");
     /// // ... use the splitter to analyze songs and establish default order ...
@@ -704,7 +704,7 @@ impl SongTitleSplitter {
     /// 
     /// # Examples
     /// ```no_run
-    /// use audiocontrol::helpers::songtitlesplitter::SongTitleSplitter;
+    /// use audiocontrol::helpers::song_title_splitter::SongTitleSplitter;
     /// 
     /// let json = r#"{"id":"radio_station_url","order_stats":{},"default_order":null}"#;
     /// 
@@ -736,7 +736,7 @@ impl SongTitleSplitter {
     /// 
     /// # Examples
     /// ```no_run
-    /// use audiocontrol::helpers::songtitlesplitter::SongTitleSplitter;
+    /// use audiocontrol::helpers::song_title_splitter::SongTitleSplitter;
     /// 
     /// let splitter = SongTitleSplitter::new("radio_station_url");
     /// 
@@ -767,7 +767,7 @@ impl SongTitleSplitter {
     /// 
     /// # Examples
     /// ```no_run
-    /// use audiocontrol::helpers::songtitlesplitter::SongTitleSplitter;
+    /// use audiocontrol::helpers::song_title_splitter::SongTitleSplitter;
     /// 
     /// let mut original = SongTitleSplitter::new("station_1");
     /// // ... train the splitter with songs ...

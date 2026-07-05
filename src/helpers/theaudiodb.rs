@@ -6,8 +6,8 @@ use parking_lot::Mutex;
 use serde_json::{Value};
 use crate::config::get_service_config;
 use crate::helpers::http_client;
-use crate::helpers::attributecache;
-use crate::helpers::ratelimit;
+use crate::helpers::attribute_cache;
+use crate::helpers::rate_limit;
 use crate::data::artist::Artist;
 use crate::helpers::ArtistUpdater;
 
@@ -98,7 +98,7 @@ pub fn initialize_from_config(config: &serde_json::Value) {
             .and_then(|v| v.as_u64())
             .unwrap_or(500);
             
-        ratelimit::register_service("theaudiodb", rate_limit_ms);
+        rate_limit::register_service("theaudiodb", rate_limit_ms);
         info!("TheAudioDB rate limit set to {} ms", rate_limit_ms);
         
         let status = if enabled { "enabled" } else { "disabled" };
@@ -109,7 +109,7 @@ pub fn initialize_from_config(config: &serde_json::Value) {
         debug!("TheAudioDB configuration not found, lookups disabled");
         
         // Register default rate limit even if disabled
-        ratelimit::register_service("theaudiodb", 500);
+        rate_limit::register_service("theaudiodb", 500);
     }
 }
 
@@ -152,7 +152,7 @@ pub fn lookup_theaudiodb_by_mbid(mbid: &str) -> Result<serde_json::Value, String
     let not_found_cache_key = format!("theaudiodb::not_found::{}", mbid);
     
     // Check if we have a positive result cached
-    match attributecache::get::<Value>(&cache_key) {
+    match attribute_cache::get::<Value>(&cache_key) {
         Ok(Some(artist_data)) => {
             debug!("Found cached TheAudioDB data for MBID {}", mbid);
             return Ok(artist_data);
@@ -166,7 +166,7 @@ pub fn lookup_theaudiodb_by_mbid(mbid: &str) -> Result<serde_json::Value, String
     }
     
     // Check if we have a negative result cached
-    match attributecache::get::<bool>(&not_found_cache_key) {
+    match attribute_cache::get::<bool>(&not_found_cache_key) {
         Ok(Some(true)) => {
             debug!("MBID {} previously marked as not found in cache", mbid);
             return Err(format!("No artist found with MBID {} (from cache)", mbid));
@@ -187,7 +187,7 @@ pub fn lookup_theaudiodb_by_mbid(mbid: &str) -> Result<serde_json::Value, String
     };    debug!("Looking up artist with MBID {}", mbid);
     
     // Apply rate limiting before making the request
-    ratelimit::rate_limit("theaudiodb");
+    rate_limit::rate_limit("theaudiodb");
     
     // Construct the API URL
     let url = format!(
@@ -214,7 +214,7 @@ pub fn lookup_theaudiodb_by_mbid(mbid: &str) -> Result<serde_json::Value, String
                     debug!("No artist data found for MBID {}", mbid);
                     // Cache negative result
                     let not_found_cache_key = format!("theaudiodb::not_found::{}", mbid);
-                    if let Err(e) = attributecache::set(&not_found_cache_key, &true) {
+                    if let Err(e) = attribute_cache::set(&not_found_cache_key, &true) {
                         debug!("Failed to cache negative result for MBID {}: {}", mbid, e);
                     } else {
                         debug!("Cached negative result for MBID {}", mbid);
@@ -228,7 +228,7 @@ pub fn lookup_theaudiodb_by_mbid(mbid: &str) -> Result<serde_json::Value, String
                             debug!("Empty artists array for MBID {}", mbid);
                             // Cache negative result
                             let not_found_cache_key = format!("theaudiodb::not_found::{}", mbid);
-                            if let Err(e) = attributecache::set(&not_found_cache_key, &true) {
+                            if let Err(e) = attribute_cache::set(&not_found_cache_key, &true) {
                                 debug!("Failed to cache negative result for MBID {}: {}", mbid, e);
                             } else {
                                 debug!("Cached negative result for MBID {}", mbid);
@@ -241,7 +241,7 @@ pub fn lookup_theaudiodb_by_mbid(mbid: &str) -> Result<serde_json::Value, String
                             
                             // Cache the positive result
                             let cache_key = format!("theaudiodb::mbid::{}", mbid);
-                            if let Err(e) = attributecache::set(&cache_key, &artist_data) {
+                            if let Err(e) = attribute_cache::set(&cache_key, &artist_data) {
                                 debug!("Failed to cache artist data for MBID {}: {}", mbid, e);
                             } else {
                                 debug!("Cached positive result for MBID {}", mbid);
@@ -285,7 +285,7 @@ pub fn lookup_theaudiodb_by_artist_name(artist_name: &str) -> Result<serde_json:
     let not_found_cache_key = format!("theaudiodb::artist_not_found::{}", artist_name);
     
     // Check if we have a positive result cached
-    match attributecache::get::<Value>(&cache_key) {
+    match attribute_cache::get::<Value>(&cache_key) {
         Ok(Some(artist_data)) => {
             debug!("Found cached TheAudioDB data for artist '{}'", artist_name);
             return Ok(artist_data);
@@ -299,7 +299,7 @@ pub fn lookup_theaudiodb_by_artist_name(artist_name: &str) -> Result<serde_json:
     }
     
     // Check if we have a negative result cached
-    match attributecache::get::<bool>(&not_found_cache_key) {
+    match attribute_cache::get::<bool>(&not_found_cache_key) {
         Ok(Some(true)) => {
             debug!("Artist '{}' previously marked as not found in cache", artist_name);
             return Err(format!("No artist found with name '{}' (from cache)", artist_name));
@@ -322,7 +322,7 @@ pub fn lookup_theaudiodb_by_artist_name(artist_name: &str) -> Result<serde_json:
     debug!("Looking up artist by name '{}'", artist_name);
     
     // Apply rate limiting before making the request
-    ratelimit::rate_limit("theaudiodb");
+    rate_limit::rate_limit("theaudiodb");
     
     // Construct the API URL
     let url = format!(
@@ -349,7 +349,7 @@ pub fn lookup_theaudiodb_by_artist_name(artist_name: &str) -> Result<serde_json:
                 if artists.is_null() {
                     debug!("No artist data found for name '{}'", artist_name);
                     // Cache negative result
-                    if let Err(e) = attributecache::set(&not_found_cache_key, &true) {
+                    if let Err(e) = attribute_cache::set(&not_found_cache_key, &true) {
                         debug!("Failed to cache negative result for artist '{}': {}", artist_name, e);
                     } else {
                         debug!("Cached negative result for artist '{}'", artist_name);
@@ -361,7 +361,7 @@ pub fn lookup_theaudiodb_by_artist_name(artist_name: &str) -> Result<serde_json:
                     if artists_array.is_empty() {
                         debug!("Empty artists array for name '{}'", artist_name);
                         // Cache negative result
-                        if let Err(e) = attributecache::set(&not_found_cache_key, &true) {
+                        if let Err(e) = attribute_cache::set(&not_found_cache_key, &true) {
                             debug!("Failed to cache negative result for artist '{}': {}", artist_name, e);
                         } else {
                             debug!("Cached negative result for artist '{}'", artist_name);
@@ -372,7 +372,7 @@ pub fn lookup_theaudiodb_by_artist_name(artist_name: &str) -> Result<serde_json:
                         let search_result = json_data.clone();
                         
                         // Cache the positive result
-                        if let Err(e) = attributecache::set(&cache_key, &search_result) {
+                        if let Err(e) = attribute_cache::set(&cache_key, &search_result) {
                             debug!("Failed to cache artist data for name '{}': {}", artist_name, e);
                         } else {
                             debug!("Cached positive result for artist '{}'", artist_name);
@@ -410,7 +410,7 @@ pub fn lookup_theaudiodb_albums_by_artist(artist_name: &str) -> Result<serde_jso
     let not_found_cache_key = format!("theaudiodb::albums_not_found::{}", artist_name);
     
     // Check if we have a positive result cached
-    match attributecache::get::<Value>(&cache_key) {
+    match attribute_cache::get::<Value>(&cache_key) {
         Ok(Some(album_data)) => {
             debug!("Found cached TheAudioDB album data for artist '{}'", artist_name);
             return Ok(album_data);
@@ -424,7 +424,7 @@ pub fn lookup_theaudiodb_albums_by_artist(artist_name: &str) -> Result<serde_jso
     }
     
     // Check if we have a negative result cached
-    match attributecache::get::<bool>(&not_found_cache_key) {
+    match attribute_cache::get::<bool>(&not_found_cache_key) {
         Ok(Some(true)) => {
             debug!("Artist albums '{}' previously marked as not found in cache", artist_name);
             return Err(format!("No albums found for artist '{}' (from cache)", artist_name));
@@ -447,7 +447,7 @@ pub fn lookup_theaudiodb_albums_by_artist(artist_name: &str) -> Result<serde_jso
     debug!("Looking up albums for artist '{}'", artist_name);
     
     // Apply rate limiting before making the request
-    ratelimit::rate_limit("theaudiodb");
+    rate_limit::rate_limit("theaudiodb");
     
     // Construct the API URL
     let url = format!(
@@ -474,7 +474,7 @@ pub fn lookup_theaudiodb_albums_by_artist(artist_name: &str) -> Result<serde_jso
                 if albums.is_null() {
                     debug!("No album data found for artist '{}'", artist_name);
                     // Cache negative result
-                    if let Err(e) = attributecache::set(&not_found_cache_key, &true) {
+                    if let Err(e) = attribute_cache::set(&not_found_cache_key, &true) {
                         debug!("Failed to cache negative result for artist albums '{}': {}", artist_name, e);
                     } else {
                         debug!("Cached negative result for artist albums '{}'", artist_name);
@@ -486,7 +486,7 @@ pub fn lookup_theaudiodb_albums_by_artist(artist_name: &str) -> Result<serde_jso
                     if albums_array.is_empty() {
                         debug!("Empty albums array for artist '{}'", artist_name);
                         // Cache negative result
-                        if let Err(e) = attributecache::set(&not_found_cache_key, &true) {
+                        if let Err(e) = attribute_cache::set(&not_found_cache_key, &true) {
                             debug!("Failed to cache negative result for artist albums '{}': {}", artist_name, e);
                         } else {
                             debug!("Cached negative result for artist albums '{}'", artist_name);
@@ -497,7 +497,7 @@ pub fn lookup_theaudiodb_albums_by_artist(artist_name: &str) -> Result<serde_jso
                         let search_result = json_data.clone();
                         
                         // Cache the positive result
-                        if let Err(e) = attributecache::set(&cache_key, &search_result) {
+                        if let Err(e) = attribute_cache::set(&cache_key, &search_result) {
                             debug!("Failed to cache album data for artist '{}': {}", artist_name, e);
                         } else {
                             debug!("Cached positive result for artist albums '{}'", artist_name);
@@ -536,7 +536,7 @@ pub fn lookup_theaudiodb_album_by_name(artist_name: &str, album_name: &str) -> R
     let not_found_cache_key = format!("theaudiodb::album_not_found::{}::{}", artist_name, album_name);
     
     // Check if we have a positive result cached
-    match attributecache::get::<Value>(&cache_key) {
+    match attribute_cache::get::<Value>(&cache_key) {
         Ok(Some(album_data)) => {
             debug!("Found cached TheAudioDB data for album '{}' by '{}'", album_name, artist_name);
             return Ok(album_data);
@@ -550,7 +550,7 @@ pub fn lookup_theaudiodb_album_by_name(artist_name: &str, album_name: &str) -> R
     }
     
     // Check if we have a negative result cached
-    match attributecache::get::<bool>(&not_found_cache_key) {
+    match attribute_cache::get::<bool>(&not_found_cache_key) {
         Ok(Some(true)) => {
             debug!("Album '{}' by '{}' previously marked as not found in cache", album_name, artist_name);
             return Err(format!("No album '{}' found for artist '{}' (from cache)", album_name, artist_name));
@@ -573,7 +573,7 @@ pub fn lookup_theaudiodb_album_by_name(artist_name: &str, album_name: &str) -> R
     debug!("Looking up album '{}' by artist '{}'", album_name, artist_name);
     
     // Apply rate limiting before making the request
-    ratelimit::rate_limit("theaudiodb");
+    rate_limit::rate_limit("theaudiodb");
     
     // Construct the API URL
     let url = format!(
@@ -601,7 +601,7 @@ pub fn lookup_theaudiodb_album_by_name(artist_name: &str, album_name: &str) -> R
                 if albums.is_null() {
                     debug!("No album data found for '{}' by '{}'", album_name, artist_name);
                     // Cache negative result
-                    if let Err(e) = attributecache::set(&not_found_cache_key, &true) {
+                    if let Err(e) = attribute_cache::set(&not_found_cache_key, &true) {
                         debug!("Failed to cache negative result for album '{}' by '{}': {}", album_name, artist_name, e);
                     } else {
                         debug!("Cached negative result for album '{}' by '{}'", album_name, artist_name);
@@ -613,7 +613,7 @@ pub fn lookup_theaudiodb_album_by_name(artist_name: &str, album_name: &str) -> R
                     if albums_array.is_empty() {
                         debug!("Empty albums array for '{}' by '{}'", album_name, artist_name);
                         // Cache negative result
-                        if let Err(e) = attributecache::set(&not_found_cache_key, &true) {
+                        if let Err(e) = attribute_cache::set(&not_found_cache_key, &true) {
                             debug!("Failed to cache negative result for album '{}' by '{}': {}", album_name, artist_name, e);
                         } else {
                             debug!("Cached negative result for album '{}' by '{}'", album_name, artist_name);
@@ -624,7 +624,7 @@ pub fn lookup_theaudiodb_album_by_name(artist_name: &str, album_name: &str) -> R
                         let search_result = json_data.clone();
                         
                         // Cache the positive result
-                        if let Err(e) = attributecache::set(&cache_key, &search_result) {
+                        if let Err(e) = attribute_cache::set(&cache_key, &search_result) {
                             debug!("Failed to cache album data for '{}' by '{}': {}", album_name, artist_name, e);
                         } else {
                             debug!("Cached positive result for album '{}' by '{}'", album_name, artist_name);

@@ -1,5 +1,5 @@
-use audiocontrol::helpers::artistsplitter::ARTIST_SPLIT_CACHE_PREFIX;
-use audiocontrol::helpers::attributecache::{self, AttributeCache};
+use audiocontrol::helpers::artist_splitter::ARTIST_SPLIT_CACHE_PREFIX;
+use audiocontrol::helpers::attribute_cache::{self, AttributeCache};
 use audiocontrol::helpers::image_meta::IMAGE_META_CACHE_PREFIX;
 use audiocontrol::helpers::musicbrainz::{ARTIST_MBID_CACHE_PREFIX, ARTIST_NOT_FOUND_CACHE_PREFIX};
 use chrono::DateTime;
@@ -207,7 +207,7 @@ fn list_cache_entries(
     limit: Option<usize>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if detailed {
-        let entries = attributecache::list_entries(prefix)?;
+        let entries = attribute_cache::list_entries(prefix)?;
         let entries_to_show = if let Some(limit) = limit {
             &entries[..entries.len().min(limit)]
         } else {
@@ -260,7 +260,7 @@ fn list_cache_entries(
             );
         }
     } else {
-        let keys = attributecache::list_keys(prefix)?;
+        let keys = attribute_cache::list_keys(prefix)?;
         let keys_to_show = if let Some(limit) = limit {
             &keys[..keys.len().min(limit)]
         } else {
@@ -312,20 +312,20 @@ fn clean_cache_entries(
 
     if all {
         if dry_run {
-            let entries = attributecache::list_entries(None)?;
+            let entries = attribute_cache::list_entries(None)?;
             println!("Would delete {} cache entries (dry run)", entries.len());
             return Ok(());
         }
 
         warn!("Clearing ALL cache entries!");
-        attributecache::clear()?;
+        attribute_cache::clear()?;
         info!("All cache entries cleared");
         return Ok(());
     }
 
     if let Some(prefix) = prefix {
         if dry_run {
-            let entries = attributecache::list_entries(Some(prefix))?;
+            let entries = attribute_cache::list_entries(Some(prefix))?;
             println!(
                 "Would delete {} cache entries with prefix '{}' (dry run)",
                 entries.len(),
@@ -340,7 +340,7 @@ fn clean_cache_entries(
             return Ok(());
         }
 
-        let deleted = attributecache::remove_by_prefix(prefix)?;
+        let deleted = attribute_cache::remove_by_prefix(prefix)?;
         info!("Deleted {} cache entries with prefix '{}'", deleted, prefix);
         return Ok(());
     }
@@ -352,7 +352,7 @@ fn clean_cache_entries(
             "Cleaning entries older than {} days using cache cleanup function",
             days
         );
-        let deleted = attributecache::cleanup()?;
+        let deleted = attribute_cache::cleanup()?;
         info!("Deleted {} old cache entries", deleted);
         return Ok(());
     }
@@ -361,7 +361,7 @@ fn clean_cache_entries(
 }
 
 fn show_cache_stats(by_prefix: bool) -> Result<(), Box<dyn std::error::Error>> {
-    let entries = attributecache::list_entries(None)?;
+    let entries = attribute_cache::list_entries(None)?;
 
     if entries.is_empty() {
         info!("Cache is empty");
@@ -448,9 +448,73 @@ fn format_size(bytes: usize) -> String {
 }
 
 fn truncate_key(key: &str, max_len: usize) -> String {
+    if max_len == 0 {
+        return String::new();
+    }
+
     if key.len() <= max_len {
         key.to_string()
+    } else if max_len <= 3 {
+        ".".repeat(max_len)
     } else {
         format!("{}...", &key[..max_len - 3])
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn regression_determine_prefix_rejects_conflicting_shortcuts() {
+        let err = determine_prefix(None, true, true, false, false).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("Cannot specify multiple shortcut options"));
+    }
+
+    #[test]
+    fn regression_determine_prefix_rejects_prefix_plus_shortcut() {
+        let err = determine_prefix(Some("artist::"), true, false, false, false).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("Cannot specify both --prefix and shortcut options"));
+    }
+
+    #[test]
+    fn integration_determine_prefix_uses_shortcut_constants() {
+        let artist_mbid = determine_prefix(None, true, false, false, false).unwrap();
+        assert_eq!(
+            artist_mbid,
+            Some(ARTIST_MBID_CACHE_PREFIX.trim_end_matches("::").to_string())
+        );
+
+        let image_meta = determine_prefix(None, false, true, false, false).unwrap();
+        assert_eq!(
+            image_meta,
+            Some(IMAGE_META_CACHE_PREFIX.trim_end_matches("::").to_string())
+        );
+    }
+
+    #[test]
+    fn regression_extract_prefix_handles_unexpected_keys() {
+        assert_eq!(extract_prefix("no_delimiter"), "other");
+        assert_eq!(extract_prefix("artist::mbid::abc"), "artist::mbid::");
+        assert_eq!(extract_prefix("artist::only_one"), "artist::");
+    }
+
+    #[test]
+    fn regression_truncate_key_handles_small_max_len_without_panic() {
+        assert_eq!(truncate_key("abcdef", 0), "");
+        assert_eq!(truncate_key("abcdef", 1), ".");
+        assert_eq!(truncate_key("abcdef", 2), "..");
+        assert_eq!(truncate_key("abcdef", 3), "...");
+        assert_eq!(truncate_key("abcdef", 4), "a...");
+    }
+
+    #[test]
+    fn integration_format_size_boundaries_are_human_readable() {
+        assert_eq!(format_size(0), "0 B");
+        assert_eq!(format_size(1023), "1023 B");
+        assert_eq!(format_size(1024), "1.0 KB");
+        assert_eq!(format_size(1024 * 1024), "1.0 MB");
     }
 }

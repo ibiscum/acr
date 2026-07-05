@@ -6,7 +6,7 @@ use log::{debug, error, info, warn};
 use serde_json::Value;
 use chrono::NaiveDate;
 use crate::data::{Album, Track, Identifier, LibraryError};
-use crate::players::lms::jsonrps::LmsRpcClient;
+use crate::players::lms::json_rps::LmsRpcClient;
 use crate::helpers::musicbrainz;
 
 /// Number of items to fetch in a single request

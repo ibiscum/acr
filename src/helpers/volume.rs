@@ -6,7 +6,7 @@ use std::sync::Arc;
 use parking_lot::RwLock;
 
 use crate::data::PlayerEvent;
-use crate::audiocontrol::eventbus::EventBus;
+use crate::audiocontrol::event_bus::EventBus;
 
 /// Error types for volume control operations
 #[derive(Debug)]

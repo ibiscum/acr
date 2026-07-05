@@ -5,7 +5,7 @@ use rocket::serde::{Deserialize, Serialize};
 use log::{debug, info, warn, error};
 use crate::helpers::coverart::{get_coverart_manager, CoverartMethod, CoverartResult, ProviderInfo};
 use crate::helpers::url_encoding::decode_url_safe;
-use crate::helpers::settingsdb;
+use crate::helpers::settings_db;
 
 #[derive(Serialize, Deserialize)]
 pub struct CoverartResponse {
@@ -243,7 +243,7 @@ pub fn update_artist_image(artist_b64: String, request: Json<UpdateImageRequest>
     let settings_key = format!("artist.image.{}", artist_name);
     debug!("Storing custom image URL in settings: key={}, url={}", settings_key, request.url);
     
-    match settingsdb::set_string(&settings_key, &request.url) {
+    match settings_db::set_string(&settings_key, &request.url) {
         Ok(_) => {
             info!("Successfully stored custom image URL for artist '{}': {}", artist_name, request.url);
             

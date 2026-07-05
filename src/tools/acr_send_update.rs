@@ -119,6 +119,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 song["album"] = json!(album);
             }
             if let Some(length) = length {
+                ensure_non_negative("length", length)?;
                 song["duration"] = json!(length);
             }
             if let Some(uri) = uri {
@@ -140,14 +141,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             )?;
 
             // Send state change event (default to Playing)
-            let state_str = match state {
-                PlaybackState::Playing => "playing",
-                PlaybackState::Paused => "paused",
-                PlaybackState::Stopped => "stopped",
-                PlaybackState::Killed => "killed",
-                PlaybackState::Disconnected => "disconnected",
-                PlaybackState::Unknown => "unknown",
-            };
+            let state_str = playback_state_to_str(state);
 
             let state_event = json!({
                 "type": "state_changed",
@@ -165,14 +159,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
 
         Commands::State { state } => {
-            let state_str = match state {
-                PlaybackState::Playing => "playing",
-                PlaybackState::Paused => "paused",
-                PlaybackState::Stopped => "stopped",
-                PlaybackState::Killed => "killed",
-                PlaybackState::Disconnected => "disconnected",
-                PlaybackState::Unknown => "unknown",
-            };
+            let state_str = playback_state_to_str(state);
 
             let event = json!({
                 "type": "state_changed",
@@ -190,7 +177,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
 
         Commands::Shuffle { enabled } => {
-            let enabled_bool = enabled.to_lowercase() == "true";
+            let enabled_bool = parse_bool_like_arg(&enabled)?;
             let event = json!({
                 "type": "shuffle_changed",
                 "enabled": enabled_bool
@@ -229,6 +216,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
 
         Commands::Position { position } => {
+            ensure_non_negative("position", position)?;
             let event = json!({
                 "type": "position_changed",
                 "position": position
@@ -245,6 +233,36 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
     }
 
+    Ok(())
+}
+
+fn playback_state_to_str(state: PlaybackState) -> &'static str {
+    match state {
+        PlaybackState::Playing => "playing",
+        PlaybackState::Paused => "paused",
+        PlaybackState::Stopped => "stopped",
+        PlaybackState::Killed => "killed",
+        PlaybackState::Disconnected => "disconnected",
+        PlaybackState::Unknown => "unknown",
+    }
+}
+
+fn parse_bool_like_arg(value: &str) -> Result<bool, Box<dyn Error>> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "true" | "1" | "yes" | "on" => Ok(true),
+        "false" | "0" | "no" | "off" => Ok(false),
+        _ => Err(format!(
+            "Invalid boolean value '{}'. Use one of: true/false, yes/no, on/off, 1/0",
+            value
+        )
+        .into()),
+    }
+}
+
+fn ensure_non_negative(field_name: &str, value: f64) -> Result<(), Box<dyn Error>> {
+    if value.is_sign_negative() {
+        return Err(format!("{} must be >= 0", field_name).into());
+    }
     Ok(())
 }
 
@@ -297,4 +315,33 @@ fn send_event(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn regression_parse_bool_like_arg_rejects_invalid_input() {
+        assert_eq!(parse_bool_like_arg("true").unwrap(), true);
+        assert_eq!(parse_bool_like_arg("NO").unwrap(), false);
+        assert!(parse_bool_like_arg("invalid").is_err());
+    }
+
+    #[test]
+    fn integration_playback_state_to_str_maps_all_variants() {
+        assert_eq!(playback_state_to_str(PlaybackState::Playing), "playing");
+        assert_eq!(playback_state_to_str(PlaybackState::Paused), "paused");
+        assert_eq!(playback_state_to_str(PlaybackState::Stopped), "stopped");
+        assert_eq!(playback_state_to_str(PlaybackState::Killed), "killed");
+        assert_eq!(playback_state_to_str(PlaybackState::Disconnected), "disconnected");
+        assert_eq!(playback_state_to_str(PlaybackState::Unknown), "unknown");
+    }
+
+    #[test]
+    fn regression_ensure_non_negative_rejects_invalid_values() {
+        assert!(ensure_non_negative("position", 0.0).is_ok());
+        assert!(ensure_non_negative("length", 42.5).is_ok());
+        assert!(ensure_non_negative("position", -0.1).is_err());
+    }
 }

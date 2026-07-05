@@ -96,6 +96,7 @@ AudioControl supports the following command line options:
 - [Settings Database](doc/settingsdb.md)
 - [Library Management](doc/library.md)
 - [WebSocket Support](doc/websocket.md)
+- [Integration Test Guide](INTEGRATION_TESTS.md)
 
 ## Genre Cleanup Bootstrap from MusicBrainz Dumps
 

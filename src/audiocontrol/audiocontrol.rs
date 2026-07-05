@@ -7,7 +7,7 @@ use std::sync::{Arc, Weak, OnceLock};
 use parking_lot::RwLock;
 use std::any::Any;
 use log::{debug, warn, error};
-use crate::audiocontrol::eventbus::EventBus;
+use crate::audiocontrol::event_bus::EventBus;
 
 // Static singleton instance using OnceLock (safe, no unsafe needed)
 static AUDIO_CONTROLLER_INSTANCE: OnceLock<Arc<AudioController>> = OnceLock::new();

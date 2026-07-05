@@ -633,7 +633,7 @@ impl crate::helpers::favourites::FavouriteProvider for SettingsDbFavouriteProvid
     }
 
     fn provider_name(&self) -> &'static str {
-        "settingsdb"
+        "settings_db"
     }
 
     fn display_name(&self) -> &'static str {

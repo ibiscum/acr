@@ -8,6 +8,7 @@ import pytest
 import json
 import time
 import base64
+import os
 from pathlib import Path
 from conftest import AudioControlTestServer, TEST_PORTS
 import requests
@@ -26,7 +27,6 @@ def coverart_server():
     def create_custom_config():
         """Create config with cover art providers enabled"""
         import tempfile
-        import shutil
         
         # Create cache directories
         cache_dir = Path(f"test_cache_{server.port}")
@@ -82,6 +82,26 @@ def coverart_server():
                 config["services"]["fanarttv"]["api_key"] = ""
             if "rate_limit_ms" not in config["services"]["fanarttv"]:
                 config["services"]["fanarttv"]["rate_limit_ms"] = 500
+
+        # Configure Last.fm for this test suite only when real credentials are available.
+        # Placeholder keys from test configs are not usable against the public API.
+        lastfm_cfg = config["services"].get("lastfm", {})
+        api_key = os.environ.get("LASTFM_API_KEY", lastfm_cfg.get("api_key", ""))
+        api_secret = os.environ.get("LASTFM_API_SECRET", lastfm_cfg.get("api_secret", ""))
+
+        placeholder_values = {"", "test_api_key", "test_api_secret", "YOUR_API_KEY_HERE", "YOUR_API_SECRET_HERE"}
+        has_real_lastfm_credentials = api_key not in placeholder_values and api_secret not in placeholder_values
+
+        config["services"]["lastfm"] = {
+            "enable": has_real_lastfm_credentials,
+            "api_key": api_key,
+            "api_secret": api_secret,
+            "now_playing_enabled": False,
+            "scrobble": False
+        }
+
+        # Store this so LastFM-specific tests can skip with a clear reason.
+        server.lastfm_enabled_for_test = has_real_lastfm_credentials
         
         # Enable MusicBrainz (required for FanArt.tv)
         if "musicbrainz" not in config["services"]:
@@ -454,6 +474,9 @@ class TestCoverArtAPI:
 
     def test_coverart_lastfm_provider(self, coverart_server):
         """Test that LastFM provider is working and returns images for Metallica"""
+        if not getattr(coverart_server, "lastfm_enabled_for_test", False):
+            pytest.skip("LastFM integration test skipped: no real LASTFM_API_KEY/LASTFM_API_SECRET configured")
+
         # Start the server
         success = coverart_server.start_server()
         assert success, "Failed to start audiocontrol server"
