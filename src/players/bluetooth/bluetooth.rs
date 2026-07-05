@@ -102,6 +102,25 @@ impl Default for BluetoothPlayerController {
 }
 
 impl BluetoothPlayerController {
+    fn ensure_shared_dbus_connection(connection: &Arc<Mutex<Option<Connection>>>) -> bool {
+        let mut conn_guard = connection.lock();
+        if conn_guard.is_none() {
+            match Connection::new_system() {
+                Ok(conn) => {
+                    debug!("Established D-Bus system connection (shared)");
+                    *conn_guard = Some(conn);
+                    true
+                }
+                Err(e) => {
+                    error!("Failed to connect to D-Bus system bus (shared): {}", e);
+                    false
+                }
+            }
+        } else {
+            true
+        }
+    }
+
     /// Create a new BluetoothPlayerController with auto-discovery
     pub fn new() -> Self {
         Self::new_with_address(None)
@@ -618,6 +637,11 @@ impl BluetoothPlayerController {
     
     /// Start background scanning for devices
     fn start_scanning_thread(&self) {
+        if self.scan_thread.read().is_some() {
+            debug!("Bluetooth scanning thread already running");
+            return;
+        }
+
         // Don't start if we already have a device
         if self.device_address.read().is_some() {
             return;
@@ -631,6 +655,11 @@ impl BluetoothPlayerController {
         
         let handle = thread::spawn(move || {
             info!("Starting Bluetooth device scanning thread");
+
+            if !Self::ensure_shared_dbus_connection(&connection) {
+                debug!("Bluetooth scanning thread exiting due to missing D-Bus connection");
+                return;
+            }
             
             while !stop_flag.load(std::sync::atomic::Ordering::Relaxed) {
                 // Check if we still need to scan
@@ -871,6 +900,11 @@ impl BluetoothPlayerController {
 
     /// Start the status polling thread
     fn start_polling_thread(&self) {
+        if self.poll_thread.read().is_some() {
+            debug!("Bluetooth status polling thread already running");
+            return;
+        }
+
         debug!("Starting Bluetooth status polling thread");
         
         let player_path = Arc::clone(&self.player_path);
@@ -1023,6 +1057,10 @@ impl PlayerController for BluetoothPlayerController {
     fn start(&self) -> bool {
         let addr = self.device_address.read().clone();
         info!("Starting Bluetooth player controller for device: {:?}", addr);
+
+        // Ensure a fresh run for restart scenarios.
+        self.stop_polling.store(false, Ordering::Relaxed);
+        self.stop_scanning.store(false, Ordering::Relaxed);
         
         // Initialize D-Bus connection
         if !self.ensure_dbus_connection() {
@@ -1039,6 +1077,11 @@ impl PlayerController for BluetoothPlayerController {
             let addr = self.device_address.read().clone();
             warn!("MediaPlayer1 interface not found for device: {:?}", addr);
             // Don't return false here as the device might connect later
+
+            // If we are in auto-discover mode, keep scanning for a device.
+            if self.device_address.read().is_none() {
+                self.start_scanning_thread();
+            }
         }
         
         // Always start polling thread - it will wait for a device if none is available yet
@@ -1059,6 +1102,17 @@ impl PlayerController for BluetoothPlayerController {
         let addr = self.device_address.read().clone();
         info!("Stopping Bluetooth player controller for device: {:?}", addr);
         
+        // Signal scanning thread to stop
+        self.stop_scanning.store(true, Ordering::Relaxed);
+
+        // Wait for scanning thread to finish
+        {
+            let mut guard = self.scan_thread.write();
+            if let Some(handle) = guard.take() {
+                let _ = handle.join();
+            }
+        }
+
         // Signal polling thread to stop
         self.stop_polling.store(true, Ordering::Relaxed);
         

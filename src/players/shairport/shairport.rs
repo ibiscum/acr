@@ -118,7 +118,8 @@ impl ShairportController {
     pub fn from_config(config: &serde_json::Value) -> Self {
         let port = config.get("port")
             .and_then(|p| p.as_u64())
-            .unwrap_or(5555) as u16;
+            .and_then(|p| u16::try_from(p).ok())
+            .unwrap_or(5555);
         
         let systemd_unit = config.get("systemd_unit")
             .and_then(|s| s.as_str())
@@ -401,6 +402,20 @@ impl ShairportController {
                     Self::process_new_coverart_file(path, current_song, pending_song, base);
                 }
             }
+            EventKind::Modify(ModifyKind::Name(_)) => {
+                debug!("File rename event detected");
+                for path in &event.paths {
+                    debug!("Processing renamed file: {}", path.display());
+                    Self::process_new_coverart_file(path, current_song, pending_song, base);
+                }
+            }
+            EventKind::Modify(ModifyKind::Any) => {
+                debug!("Generic file modification event detected");
+                for path in &event.paths {
+                    debug!("Processing generically modified file: {}", path.display());
+                    Self::process_new_coverart_file(path, current_song, pending_song, base);
+                }
+            }
             _ => {
                 debug!("Ignoring filesystem event type: {:?}", event.kind);
             }
@@ -527,6 +542,9 @@ impl ShairportController {
         {
             let mut current = current_song.lock();
             if let Some(ref mut song) = *current {
+                if song.cover_art_url.as_deref() == Some(artwork_url.as_str()) {
+                    return;
+                }
                 song.cover_art_url = Some(artwork_url.clone());
                 base.notify_song_changed(Some(song));
                 return;
@@ -537,6 +555,9 @@ impl ShairportController {
         {
             let mut pending = pending_song.lock();
             if let Some(ref mut song) = *pending {
+                if song.cover_art_url.as_deref() == Some(artwork_url.as_str()) {
+                    return;
+                }
                 song.cover_art_url = Some(artwork_url.clone());
                 // Don't notify yet for pending songs
                 return;
@@ -853,11 +874,20 @@ impl PlayerController for ShairportController {
     
     fn start(&self) -> bool {
         info!("Starting ShairportSync player on port {}", self.port);
+
+        // Ensure restarts work after previous stop calls.
+        self.stop_listener.store(false, Ordering::SeqCst);
         
         let listener_started = self.start_listener();
         let watcher_started = self.start_watcher();
         
         let success = listener_started && watcher_started;
+        if listener_started && !watcher_started {
+            let _ = self.stop_listener();
+        }
+        if watcher_started && !listener_started {
+            let _ = self.stop_watcher();
+        }
         if success {
             info!("ShairportSync player started successfully");
         } else {
@@ -896,5 +926,135 @@ impl PlayerController for ShairportController {
 impl Default for ShairportController {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::players::create_player_from_json_str;
+    use serde_json::json;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn unique_temp_dir(prefix: &str) -> String {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time before UNIX epoch")
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("acr_{}_{}_{}", prefix, std::process::id(), nanos));
+        dir.to_string_lossy().to_string()
+    }
+
+    #[test]
+    fn test_from_config_invalid_types_use_defaults() {
+        let config = json!({
+            "port": "not-a-number",
+            "systemd_unit": 123,
+            "coverart_dir": false
+        });
+
+        let controller = ShairportController::from_config(&config);
+
+        assert_eq!(controller.port, 5555);
+        assert_eq!(controller.systemd_unit, None);
+        assert_eq!(controller.coverart_dir, "/tmp/shairport-sync/.cache/coverart");
+    }
+
+    #[test]
+    fn test_from_config_out_of_range_port_falls_back_to_default() {
+        let config = json!({
+            "port": 70000
+        });
+
+        let controller = ShairportController::from_config(&config);
+        assert_eq!(controller.port, 5555);
+    }
+
+    #[test]
+    fn test_from_config_max_valid_port_is_kept() {
+        let config = json!({
+            "port": 65535
+        });
+
+        let controller = ShairportController::from_config(&config);
+        assert_eq!(controller.port, 65535);
+    }
+
+    #[test]
+    fn test_image_file_detection_edge_cases() {
+        assert!(ShairportController::is_image_file("cover.JPG"));
+        assert!(ShairportController::is_image_file("folder-art.WeBp"));
+        assert!(ShairportController::is_image_file("photo.HEIC"));
+
+        assert!(!ShairportController::is_image_file("README"));
+        assert!(!ShairportController::is_image_file("cover.jpg.tmp"));
+        assert!(!ShairportController::is_image_file("tmpfile"));
+    }
+
+    #[test]
+    fn test_capabilities_without_and_with_systemd_unit() {
+        let no_systemd = ShairportController::with_config(5555, None);
+        let no_systemd_caps = no_systemd.get_capabilities();
+        assert!(no_systemd_caps.has_capability(PlayerCapability::Metadata));
+        assert!(no_systemd_caps.has_capability(PlayerCapability::AlbumArt));
+        assert!(!no_systemd_caps.has_capability(PlayerCapability::Play));
+        assert!(!no_systemd_caps.has_capability(PlayerCapability::Pause));
+        assert!(!no_systemd_caps.has_capability(PlayerCapability::Stop));
+
+        let with_systemd = ShairportController::with_config(5555, Some("shairport-sync.service".to_string()));
+        let with_systemd_caps = with_systemd.get_capabilities();
+        assert!(with_systemd_caps.has_capability(PlayerCapability::Metadata));
+        assert!(with_systemd_caps.has_capability(PlayerCapability::AlbumArt));
+        assert!(with_systemd_caps.has_capability(PlayerCapability::Play));
+        assert!(with_systemd_caps.has_capability(PlayerCapability::Pause));
+        assert!(with_systemd_caps.has_capability(PlayerCapability::Stop));
+    }
+
+    #[test]
+    fn test_send_command_without_systemd_returns_false_for_all_commands() {
+        let controller = ShairportController::with_config(5555, None);
+
+        assert!(!controller.send_command(PlayerCommand::Play));
+        assert!(!controller.send_command(PlayerCommand::Pause));
+        assert!(!controller.send_command(PlayerCommand::Stop));
+        assert!(!controller.send_command(PlayerCommand::Next));
+    }
+
+    #[test]
+    fn test_start_stop_lifecycle_and_double_start_regression() {
+        let coverart_dir = unique_temp_dir("shairport_coverart");
+        let controller = ShairportController::with_full_config(0, None, coverart_dir.clone());
+
+        assert!(controller.start());
+        assert!(!controller.start());
+        assert!(controller.stop());
+        assert!(controller.stop());
+        assert!(controller.start());
+        assert!(controller.stop());
+
+        let _ = fs::remove_dir_all(coverart_dir);
+    }
+
+    #[test]
+    fn test_factory_integration_ignores_invalid_shairport_parameters() {
+        let config = r#"
+        {
+            "shairport": {
+                "port": "invalid-port",
+                "systemd_unit": 10,
+                "coverart_dir": ["not", "a", "string"]
+            }
+        }
+        "#;
+
+        let controller = create_player_from_json_str(config).expect("factory should create shairport player");
+        assert_eq!(controller.get_player_name(), "shairport");
+        assert_eq!(controller.get_player_id(), "shairport");
+
+        let caps = controller.get_capabilities();
+        assert!(caps.has_capability(PlayerCapability::Metadata));
+        assert!(caps.has_capability(PlayerCapability::AlbumArt));
+        assert!(!caps.has_capability(PlayerCapability::Play));
     }
 }

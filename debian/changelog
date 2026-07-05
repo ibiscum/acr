@@ -14,6 +14,24 @@ hifiberry-audiocontrol (0.7.14) stable; urgency=medium
     tarball generation.
   * Tool naming: normalize src/tools source filenames to acr_* while keeping
     installed CLI binaries on audiocontrol_* names.
+  * Shairport: add regression/integration-style unit tests for invalid config
+    parameters, edge-case file handling, start/stop lifecycle behavior, and
+    player-factory wiring.
+  * Shairport: fix restart behavior by resetting the internal stop flag on
+    startup and rolling back partial startup when listener/watcher init fails.
+  * Shairport: validate configured UDP port range and fall back to default
+    instead of truncating out-of-range values.
+  * Shairport: handle additional cover-art filesystem modify/rename events and
+    avoid duplicate song-change notifications when artwork URL is unchanged.
+  * Bluetooth: harden thread lifecycle by preventing duplicate scan/poll thread
+    startup, resetting stop flags on restart, and stopping/joining scanning
+    during controller stop.
+  * Bluetooth: make background auto-discovery establish a D-Bus connection
+    inside the scan worker so discovery no longer depends on pre-existing
+    connection state.
+  * Bluetooth tests: add regression/integration-style coverage for
+    auto-discover id, empty/invalid device_address parameters, unsupported
+    commands, and idempotent stop behavior.
 
  -- HiFiBerry <info@hifiberry.com>  Sat, 04 Jul 2026 02:30:00 +0000
 
