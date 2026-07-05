@@ -1044,7 +1044,7 @@ impl PlayerController for BluetoothPlayerController {
             PlayerCommand::Next => self.send_dbus_command("Next"),
             PlayerCommand::Previous => self.send_dbus_command("Previous"),
             _ => {
-                warn!("Unsupported command for Bluetooth device: {}", command);
+                debug!("Unsupported command for Bluetooth device: {}", command);
                 false
             }
         }

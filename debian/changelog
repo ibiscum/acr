@@ -32,6 +32,23 @@ hifiberry-audiocontrol (0.7.14) stable; urgency=medium
   * Bluetooth tests: add regression/integration-style coverage for
     auto-discover id, empty/invalid device_address parameters, unsupported
     commands, and idempotent stop behavior.
+  * MPD: keep BasePlayerController source id in sync when set_connection updates
+    host/port, ensuring consistent event source metadata after runtime
+    connection changes.
+  * MPD: improve listener lifecycle by joining previous listener threads on
+    restart, tracking listener thread handles per instance, and making stop
+    idempotent.
+  * MPD tests: add regression/integration-style coverage for connection/id sync,
+    repeated start/stop lifecycle behavior, and invalid/fallback config
+    parameter handling in factory creation.
+  * Playback progress: reject invalid numeric positions (NaN/+/-Infinity) in
+    set_position to prevent corrupt runtime progress state.
+  * Playback progress tests: add regression/integration-style coverage for
+    invalid numeric input handling and play/pause/set-position edge sequences.
+  * Active selection: publish ActivePlayerChanged whenever
+    AudioController::set_active_controller changes the active player.
+  * Active monitor: add a 500ms debounce for Playing-triggered active switches
+    to reduce active-player flapping under bursty state events.
 
  -- HiFiBerry <info@hifiberry.com>  Sat, 04 Jul 2026 02:30:00 +0000
 

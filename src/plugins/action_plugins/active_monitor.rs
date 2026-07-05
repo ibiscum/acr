@@ -1,5 +1,7 @@
 use std::sync::{Arc, Weak};
 use std::any::Any;
+use std::time::{Duration, Instant};
+use parking_lot::Mutex;
 use crate::data::{PlayerEvent, PlaybackState};
 use crate::plugins::plugin::Plugin;
 use crate::plugins::action_plugin::{ActionPlugin, BaseActionPlugin};
@@ -12,6 +14,12 @@ use delegate::delegate;
 pub struct ActiveMonitor {
     /// Base implementation for common functionality
     base: BaseActionPlugin,
+
+    /// Timestamp of the last successful active-player switch.
+    last_switch_at: Arc<Mutex<Option<Instant>>>,
+
+    /// Debounce window to avoid rapid active-player flapping.
+    switch_debounce: Duration,
 }
 
 impl Default for ActiveMonitor {
@@ -25,6 +33,8 @@ impl ActiveMonitor {
     pub fn new() -> Self {
         Self {
             base: BaseActionPlugin::new("ActiveMonitor"),
+            last_switch_at: Arc::new(Mutex::new(None)),
+            switch_debounce: Duration::from_millis(500),
         }
     }
     
@@ -57,8 +67,25 @@ impl ActiveMonitor {
 
             // Now set the active controller after all locks have been released
             if let Some(idx) = target_index {
+                let now = Instant::now();
+                {
+                    let last_switch = self.last_switch_at.lock();
+                    if let Some(last) = *last_switch {
+                        if now.duration_since(last) < self.switch_debounce {
+                            debug!(
+                                "ActiveMonitor: Debounced active switch to {}:{} (within {:?})",
+                                player_name,
+                                player_id,
+                                self.switch_debounce
+                            );
+                            return;
+                        }
+                    }
+                }
+
                 info!("ActiveMonitor: Setting player {}:{} as active", player_name, player_id);
                 if controller.set_active_controller(idx) {
+                    *self.last_switch_at.lock() = Some(now);
                     info!("ActiveMonitor: Successfully set active player to {}:{}",
                           player_name, player_id);
                 } else {
@@ -143,6 +170,8 @@ impl Clone for ActiveMonitor {
         
         Self {
             base: new_base,
+            last_switch_at: Arc::clone(&self.last_switch_at),
+            switch_debounce: self.switch_debounce,
         }
     }
 }
