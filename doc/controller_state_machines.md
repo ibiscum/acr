@@ -2,7 +2,7 @@
 
 This document describes the runtime state machines for player orchestration and service startup/shutdown in AudioControl.
 
-## 1) Global Controller and Service State Machine
+## Global Controller and Service State Machine
 
 ```mermaid
 stateDiagram-v2
@@ -49,7 +49,7 @@ stateDiagram-v2
 - Playback is not exclusive: multiple players can be in `Playing` simultaneously.
 - Collision behavior: if multiple players emit `Playing` close together inside the debounce window, later events are ignored; outside the window, event order still decides which one ends up active.
 
-## 2) Backend-Specific Player State Machine (MPD, Bluetooth, Shairport, Librespot)
+## Backend-Specific Player State Machine (MPD, Bluetooth, Shairport, Librespot)
 
 ```mermaid
 stateDiagram-v2
@@ -121,7 +121,7 @@ stateDiagram-v2
 - Shairport: UDP control messages define transitions explicitly (`PAUSE`, `RESUME`, `AUDIO_BEGIN`, `SESSION_END`).
 - Librespot: state is primarily event-driven via incoming API events; commands use Spotify API when token is valid.
 
-## 3) Bluetooth Controller Runtime State Machine (Current Code)
+## Bluetooth Controller Runtime State Machine Details
 
 ```mermaid
 stateDiagram-v2
@@ -129,7 +129,7 @@ stateDiagram-v2
     Constructed --> AutoDiscoverMode: new_with_address none
     Constructed --> FixedAddressMode: new_with_address with address
 
-    AutoDiscoverMode --> Scanning: start scan thread
+    AutoDiscoverMode --> Scanning: scan when no player path
     Scanning --> DeviceResolved: device and player path found
 
     FixedAddressMode --> DeviceResolved: find player path success
@@ -139,9 +139,10 @@ stateDiagram-v2
     WaitingForPlayerPath --> Starting: start controller
 
     Starting --> Polling: start polling thread
-    Polling --> Polling: check active player path
+    Polling --> Polling: validate or switch player path
     Polling --> WaitingForPlayerPath: no valid player path
-    WaitingForPlayerPath --> DeviceResolved: path discovered later
+    WaitingForPlayerPath --> Scanning: auto discover mode and no path
+    WaitingForPlayerPath --> DeviceResolved: replacement path discovered
 
     Polling --> Playing: status playing
     Polling --> Paused: status paused
@@ -156,13 +157,64 @@ stateDiagram-v2
     Polling --> Stopping: stop controller
     Stopping --> StoppedController: join threads and clear connection and path
     StoppedController --> Starting: start controller again
+
+    Polling --> WaitingForPlayerPath: rescan clears address path and name
+    WaitingForPlayerPath --> Scanning: rescan in auto discover mode
 ```
 
-### Potential inconsistent states or transitions
+### Notes on behavior
 
-- Stale player-path transition: when the stored player path disappears, the code logs and searches for a new path but does not clear the old path immediately on failure. This can keep the controller in a stale "path exists" branch instead of transitioning cleanly to "no path".
-- Duration unit inconsistency: one track parsing path converts `Duration` using microseconds to seconds (`/ 1_000_000.0`), while polling track parsing converts with milliseconds to seconds (`/ 1000.0`). That can create inconsistent song duration state depending on call path.
-- Auto-discover rediscovery gap on restart: after auto-discover resolves a concrete address once, restart logic only re-enables scanning when address is none. If that remembered address is no longer available, transitions to rediscover a different device are limited.
+- Stale player-path handling is explicit: invalid path transitions now clear to no-path when no replacement is found.
+- Auto-discover restart and rescan behavior now keys off missing player path in auto-discover mode, so rediscovery can continue after path loss.
+
+## Generic Controller State Machine Details
+
+```mermaid
+stateDiagram-v2
+    [*] --> Constructed: new or from_config
+    Constructed --> Started: start
+    Started --> StoppedController: stop
+    StoppedController --> Started: start again
+
+    state PlaybackStateMachine {
+        [*] --> Unknown
+        Unknown --> Playing: command Play PlayPause or event state_changed playing
+        Unknown --> Paused: command Pause or event state_changed paused
+        Unknown --> Stopped: command Stop or event state_changed stopped
+        Unknown --> Killed: event state_changed killed
+        Unknown --> Disconnected: event state_changed disconnected
+
+        Playing --> Paused: command Pause PlayPause or event paused
+        Playing --> Stopped: command Stop or event stopped
+        Paused --> Playing: command Play PlayPause or event playing
+        Stopped --> Playing: command Play or event playing
+
+        Unknown --> Unknown: invalid event state rejected
+        Playing --> Playing: invalid event state rejected
+        Paused --> Paused: invalid event state rejected
+        Stopped --> Stopped: invalid event state rejected
+    }
+
+    state MetadataAndControls {
+        [*] --> IdleMeta
+        IdleMeta --> SongSet: event song_changed with song payload
+        SongSet --> SongCleared: event song_changed without song payload
+        IdleMeta --> PositionSet: command Seek or event position_changed valid numeric
+        PositionSet --> PositionSet: command Seek or event position_changed valid numeric
+        IdleMeta --> IdleMeta: invalid or negative position rejected
+        PositionSet --> PositionSet: invalid or negative position rejected
+        IdleMeta --> LoopSet: command SetLoopMode or event loop_mode_changed
+        IdleMeta --> ShuffleSet: command SetRandom or event shuffle_changed
+    }
+```
+
+### Current behavior notes
+
+- Command and API-event paths are now aligned for state/loop/shuffle/position transitions: both update local state and emit corresponding notifications.
+- Invalid state_changed strings are rejected and do not force a transition to Unknown.
+- Seek and position_changed reject invalid numeric input (non-finite or negative values).
+- PlayPause is implemented and included in default generic capabilities.
+- Lifecycle transitions remain intentionally shallow: start and stop do not force playback-state changes.
 
 ## Practical conclusion
 

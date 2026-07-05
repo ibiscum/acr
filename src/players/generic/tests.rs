@@ -205,6 +205,117 @@ mod tests {
     }
 
     #[test]
+    fn test_state_changed_event_terminal_states() {
+        let controller = create_test_controller();
+
+        let killed_event = json!({
+            "type": "state_changed",
+            "state": "killed"
+        });
+        assert!(controller.process_api_event(&killed_event));
+        assert_eq!(controller.get_playback_state(), PlaybackState::Killed);
+
+        let disconnected_event = json!({
+            "type": "state_changed",
+            "state": "disconnected"
+        });
+        assert!(controller.process_api_event(&disconnected_event));
+        assert_eq!(controller.get_playback_state(), PlaybackState::Disconnected);
+    }
+
+    #[test]
+    fn test_state_changed_event_unknown_state_is_rejected() {
+        let controller = create_test_controller();
+        let previous_state = controller.get_playback_state();
+
+        let unknown_event = json!({
+            "type": "state_changed",
+            "state": "totally-invalid-state"
+        });
+
+        assert!(!controller.process_api_event(&unknown_event));
+        assert_eq!(controller.get_playback_state(), previous_state);
+    }
+
+    #[test]
+    fn test_shuffle_event_enabled_field_backward_compatibility() {
+        let controller = create_test_controller();
+
+        let shuffle_event = json!({
+            "type": "shuffle_changed",
+            "enabled": true
+        });
+
+        assert!(controller.process_api_event(&shuffle_event));
+        assert!(controller.get_shuffle());
+    }
+
+    #[test]
+    fn test_song_changed_without_song_payload_clears_song() {
+        let controller = create_test_controller();
+
+        let song_event = json!({
+            "type": "song_changed",
+            "song": {
+                "title": "Before Clear"
+            }
+        });
+        assert!(controller.process_api_event(&song_event));
+        assert!(controller.get_song().is_some());
+
+        let clear_event = json!({
+            "type": "song_changed"
+        });
+        assert!(controller.process_api_event(&clear_event));
+        assert!(controller.get_song().is_none());
+    }
+
+    #[test]
+    fn test_position_event_requires_numeric_payload() {
+        let controller = create_test_controller();
+
+        let valid_event = json!({
+            "type": "position_changed",
+            "position": 12.5
+        });
+        assert!(controller.process_api_event(&valid_event));
+        assert_eq!(controller.get_position(), Some(12.5));
+
+        let invalid_event = json!({
+            "type": "position_changed",
+            "position": "not-a-number"
+        });
+        assert!(!controller.process_api_event(&invalid_event));
+        assert_eq!(controller.get_position(), Some(12.5));
+
+        let negative_event = json!({
+            "type": "position_changed",
+            "position": -1.0
+        });
+        assert!(!controller.process_api_event(&negative_event));
+        assert_eq!(controller.get_position(), Some(12.5));
+    }
+
+    #[test]
+    fn test_send_command_seek_rejects_negative_position() {
+        let controller = create_test_controller();
+
+        assert!(!controller.send_command(PlayerCommand::Seek(-5.0)));
+        assert_eq!(controller.get_position(), None);
+    }
+
+    #[test]
+    fn test_send_command_playpause_toggles_state() {
+        let controller = create_test_controller();
+
+        assert!(controller.send_command(PlayerCommand::PlayPause));
+        assert_eq!(controller.get_playback_state(), PlaybackState::Playing);
+
+        assert!(controller.send_command(PlayerCommand::PlayPause));
+        assert_eq!(controller.get_playback_state(), PlaybackState::Paused);
+    }
+
+    #[test]
     fn test_invalid_event() {
         let controller = create_test_controller();
         

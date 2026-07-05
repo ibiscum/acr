@@ -214,8 +214,8 @@ def test_settings_unicode_keys(generic_server):
     assert get_response['exists'] is True
 
 
-def test_settings_empty_key(generic_server):
-    """Test handling of empty key"""
+def test_settings_empty_key_rejected(generic_server):
+    """Empty keys are rejected by the settings API."""
     test_key = ""
     test_value = "value for empty key"
     
@@ -226,9 +226,8 @@ def test_settings_empty_key(generic_server):
     })
     
     assert isinstance(set_response, dict)
-    assert set_response['success'] is True
-    assert set_response['key'] == test_key
-    assert set_response['value'] == test_value
+    assert set_response['success'] is False
+    assert 'must not be empty' in set_response['message']
     
     # Get the value
     get_response = generic_server.api_request('POST', '/api/settings/get', {
@@ -236,10 +235,30 @@ def test_settings_empty_key(generic_server):
     })
     
     assert isinstance(get_response, dict)
-    assert get_response['success'] is True
-    assert get_response['key'] == test_key
-    assert get_response['value'] == test_value
-    assert get_response['exists'] is True
+    assert get_response['success'] is False
+    assert 'must not be empty' in get_response['message']
+
+
+def test_settings_whitespace_key_rejected(generic_server):
+    """Whitespace-only keys are rejected by the settings API."""
+    test_key = "   \t\n  "
+
+    set_response = generic_server.api_request('POST', '/api/settings/set', {
+        'key': test_key,
+        'value': 'value for whitespace key'
+    })
+
+    assert isinstance(set_response, dict)
+    assert set_response['success'] is False
+    assert 'must not be empty' in set_response['message']
+
+    get_response = generic_server.api_request('POST', '/api/settings/get', {
+        'key': test_key
+    })
+
+    assert isinstance(get_response, dict)
+    assert get_response['success'] is False
+    assert 'must not be empty' in get_response['message']
 
 
 def test_settings_null_value(generic_server):

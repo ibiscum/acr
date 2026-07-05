@@ -49,6 +49,17 @@ hifiberry-audiocontrol (0.7.14) stable; urgency=medium
     AudioController::set_active_controller changes the active player.
   * Active monitor: add a 500ms debounce for Playing-triggered active switches
     to reduce active-player flapping under bursty state events.
+  * Bluetooth: clear stale player_path when the active BlueZ MediaPlayer1 path
+    disappears and no replacement path is found, improving state transitions
+    to no-path/recovery states.
+  * Bluetooth: normalize MediaPlayer1 Track.Duration handling to milliseconds
+    via a shared conversion helper before storing Song.duration.
+  * Bluetooth: change auto-discover scan retry timing to stepped backoff in
+    5-second increments capped at 60 seconds.
+  * Bluetooth tests: add regression coverage for stale-path transition
+    resolution, scan-start decision logic, and scan interval backoff behavior.
+  * Docs: update Bluetooth controller state-machine notes/diagram to reflect
+    stale-path clearing, consistent duration units, and scan backoff behavior.
 
  -- ibiscum <ibiscum@magenta.de>  Sat, 04 Jul 2026 02:30:00 +0000
 

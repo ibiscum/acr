@@ -42,6 +42,16 @@ pub struct ErrorResponse {
     pub message: String,
 }
 
+fn validate_setting_key(key: &str) -> Result<(), ErrorResponse> {
+    if key.trim().is_empty() {
+        return Err(ErrorResponse {
+            success: false,
+            message: "Setting key must not be empty or whitespace".to_string(),
+        });
+    }
+    Ok(())
+}
+
 /// Get a setting value from the settings database
 /// 
 /// This endpoint retrieves the value of a specific setting key from the database.
@@ -49,6 +59,13 @@ pub struct ErrorResponse {
 #[post("/get", data = "<request>")]
 pub fn get_setting(request: Json<GetSettingRequest>) -> Json<serde_json::Value> {
     debug!("Getting setting for key: {}", request.key);
+
+    if let Err(response) = validate_setting_key(&request.key) {
+        return Json(serde_json::to_value(response).unwrap_or_else(|e| {
+            error!("Failed to serialize error response: {}", e);
+            serde_json::json!({"success": false, "message": "Internal serialization error"})
+        }));
+    }
     
     // Try to get the value from the settings database
     match settings_db::get::<serde_json::Value>(&request.key) {
@@ -88,6 +105,13 @@ pub fn get_setting(request: Json<GetSettingRequest>) -> Json<serde_json::Value> 
 #[post("/set", data = "<request>")]
 pub fn set_setting(request: Json<SetSettingRequest>) -> Json<serde_json::Value> {
     debug!("Setting value for key: {} = {:?}", request.key, request.value);
+
+    if let Err(response) = validate_setting_key(&request.key) {
+        return Json(serde_json::to_value(response).unwrap_or_else(|e| {
+            error!("Failed to serialize error response: {}", e);
+            serde_json::json!({"success": false, "message": "Internal serialization error"})
+        }));
+    }
     
     // First, try to get the current value to return as previous_value
     let previous_value = match settings_db::get::<serde_json::Value>(&request.key) {
@@ -130,6 +154,7 @@ pub fn set_setting(request: Json<SetSettingRequest>) -> Json<serde_json::Value> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rocket::serde::json::Json;
     use serde_json::json;
     use serial_test::serial;
     use tempfile::TempDir;
@@ -286,5 +311,120 @@ mod tests {
         let retrieved: Result<Option<serde_json::Value>, String> = settings_db::get_settings_db().get(test_key);
         assert!(retrieved.is_ok());
         assert!(retrieved.unwrap().is_none());
+    }
+
+    // Endpoint behavior tests - pin current API contract
+
+    #[test]
+    #[serial]
+    fn test_get_setting_endpoint_for_missing_key() {
+        let _temp_dir = setup_test_env();
+
+        let request = Json(GetSettingRequest {
+            key: "missing_key_endpoint".to_string(),
+        });
+
+        let response = get_setting(request).into_inner();
+        assert_eq!(response["success"], json!(true));
+        assert_eq!(response["key"], json!("missing_key_endpoint"));
+        assert_eq!(response["exists"], json!(false));
+        assert_eq!(response["value"], serde_json::Value::Null);
+    }
+
+    #[test]
+    #[serial]
+    fn test_set_and_get_setting_endpoint_roundtrip() {
+        let _temp_dir = setup_test_env();
+
+        let key = "endpoint_roundtrip_key".to_string();
+        let value = json!({"nested": [1, 2, 3], "flag": true});
+
+        let set_request = Json(SetSettingRequest {
+            key: key.clone(),
+            value: value.clone(),
+        });
+
+        let set_response = set_setting(set_request).into_inner();
+        assert_eq!(set_response["success"], json!(true));
+        assert_eq!(set_response["key"], json!(key.clone()));
+        assert_eq!(set_response["value"], value);
+        assert_eq!(set_response["previous_value"], serde_json::Value::Null);
+
+        let get_request = Json(GetSettingRequest { key: key.clone() });
+        let get_response = get_setting(get_request).into_inner();
+
+        assert_eq!(get_response["success"], json!(true));
+        assert_eq!(get_response["key"], json!(key));
+        assert_eq!(get_response["exists"], json!(true));
+        assert_eq!(get_response["value"], json!({"nested": [1, 2, 3], "flag": true}));
+    }
+
+    #[test]
+    #[serial]
+    fn test_set_setting_endpoint_returns_previous_value_on_overwrite() {
+        let _temp_dir = setup_test_env();
+
+        let key = "overwrite_key".to_string();
+
+        let first = Json(SetSettingRequest {
+            key: key.clone(),
+            value: json!("first"),
+        });
+        let first_response = set_setting(first).into_inner();
+        assert_eq!(first_response["success"], json!(true));
+        assert_eq!(first_response["previous_value"], serde_json::Value::Null);
+
+        let second = Json(SetSettingRequest {
+            key: key.clone(),
+            value: json!("second"),
+        });
+        let second_response = set_setting(second).into_inner();
+        assert_eq!(second_response["success"], json!(true));
+        assert_eq!(second_response["previous_value"], json!("first"));
+        assert_eq!(second_response["value"], json!("second"));
+    }
+
+    #[test]
+    #[serial]
+    fn test_set_setting_endpoint_empty_key_is_rejected() {
+        let _temp_dir = setup_test_env();
+
+        let set_request = Json(SetSettingRequest {
+            key: "".to_string(),
+            value: json!("empty-key-value"),
+        });
+
+        let set_response = set_setting(set_request).into_inner();
+        assert_eq!(set_response["success"], json!(false));
+        assert!(set_response["message"].as_str().unwrap_or_default().contains("must not be empty"));
+
+        let get_request = Json(GetSettingRequest {
+            key: "".to_string(),
+        });
+        let get_response = get_setting(get_request).into_inner();
+        assert_eq!(get_response["success"], json!(false));
+        assert!(get_response["message"].as_str().unwrap_or_default().contains("must not be empty"));
+    }
+
+    #[test]
+    #[serial]
+    fn test_set_setting_endpoint_whitespace_key_is_rejected() {
+        let _temp_dir = setup_test_env();
+
+        let set_request = Json(SetSettingRequest {
+            key: "   \t\n ".to_string(),
+            value: json!("value"),
+        });
+
+        let set_response = set_setting(set_request).into_inner();
+        assert_eq!(set_response["success"], json!(false));
+        assert!(set_response["message"].as_str().unwrap_or_default().contains("must not be empty"));
+
+        let get_request = Json(GetSettingRequest {
+            key: "  ".to_string(),
+        });
+        let get_response = get_setting(get_request).into_inner();
+        assert_eq!(get_response["success"], json!(false));
+        assert!(get_response["message"].as_str().unwrap_or_default().contains("must not be empty"));
     }
 }
