@@ -516,7 +516,7 @@ class TestCoverArtAPI:
 
         # Test artist: Metallica (should have images on LastFM)
         artist_name = "Metallica"
-        artist_b64 = base64.b64encode(artist_name.encode('utf-8')).decode('utf-8')
+        artist_b64 = base64.urlsafe_b64encode(artist_name.encode()).decode().rstrip('=')
 
         print(f"Testing LastFM provider with artist: {artist_name}")
         print(f"Base64 encoded artist: {artist_b64}")
@@ -739,15 +739,13 @@ class TestCoverArtAPI:
         assert success, "Failed to start audiocontrol server"
 
         # Test with invalid base64 encoding
-        invalid_b64 = "invalid_base64_!@#"
+        invalid_b64 = "invalid_base64!"
         image_url = f"{coverart_server.server_url}/api/coverart/artist/{invalid_b64}/image"
         print(f"Testing invalid base64: {image_url}")
 
         response = requests.get(image_url, timeout=10)
         print(f"Response status: {response.status_code}")
-        # The server appears to be more permissive and handles invalid base64 gracefully
-        # Instead of expecting a 400, we should expect either 404 (not found) or 200 with no image
-        assert response.status_code in [200, 404], f"Expected 200 or 404 for invalid base64, got {response.status_code}"
+        assert response.status_code == 400, f"Expected 400 for invalid base64, got {response.status_code}"
 
         # Test with valid base64 but non-existent artist
         nonexistent_artist = "NonexistentArtistXYZ123"
