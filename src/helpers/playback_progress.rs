@@ -34,8 +34,8 @@ impl PlayerProgress {
     /// Set the current position in seconds
     /// Position must be non-negative
     pub fn set_position(&self, position: f64) {
-        if position < 0.0 {
-            return; // Ignore negative positions
+        if !position.is_finite() || position < 0.0 {
+            return; // Ignore invalid and negative positions
         }
 
         let mut inner = self.inner.lock();
@@ -312,5 +312,65 @@ mod tests {
         let progress = PlayerProgress::default();
         assert_eq!(progress.get_position(), 0.0);
         assert!(!progress.is_playing());
+    }
+
+    #[test]
+    fn test_nan_position_ignored() {
+        let progress = PlayerProgress::new();
+        progress.set_position(12.0);
+
+        progress.set_position(f64::NAN);
+        assert_eq!(progress.get_position(), 12.0);
+    }
+
+    #[test]
+    fn test_infinite_positions_ignored() {
+        let progress = PlayerProgress::new();
+        progress.set_position(7.5);
+
+        progress.set_position(f64::INFINITY);
+        assert_eq!(progress.get_position(), 7.5);
+
+        progress.set_position(f64::NEG_INFINITY);
+        assert_eq!(progress.get_position(), 7.5);
+    }
+
+    #[test]
+    fn test_set_position_while_playing_rebases_progress() {
+        let progress = PlayerProgress::new();
+        progress.set_position(1.0);
+        progress.set_playing(true);
+
+        thread::sleep(Duration::from_millis(100));
+        let before_rebase = progress.get_position();
+        assert!(before_rebase > 1.0);
+
+        progress.set_position(20.0);
+        assert!(progress.get_position() >= 20.0);
+
+        thread::sleep(Duration::from_millis(100));
+        let after_rebase = progress.get_position();
+        assert!(after_rebase > 20.0);
+    }
+
+    #[test]
+    fn test_play_pause_play_sequence_progress_behavior() {
+        let progress = PlayerProgress::new();
+        progress.set_position(0.0);
+
+        progress.set_playing(true);
+        thread::sleep(Duration::from_millis(80));
+        let first_run = progress.get_position();
+        assert!(first_run > 0.0);
+
+        progress.set_playing(false);
+        thread::sleep(Duration::from_millis(80));
+        let paused = progress.get_position();
+        assert!((paused - first_run).abs() < 0.02);
+
+        progress.set_playing(true);
+        thread::sleep(Duration::from_millis(80));
+        let second_run = progress.get_position();
+        assert!(second_run > paused);
     }
 }

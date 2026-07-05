@@ -172,6 +172,7 @@ impl GenericPlayerController {
         let mut capabilities = PlayerCapabilitySet::empty();
         capabilities.add_capability(PlayerCapability::Killable);
         capabilities.add_capability(PlayerCapability::Play);
+        capabilities.add_capability(PlayerCapability::PlayPause);
         capabilities.add_capability(PlayerCapability::Pause);
         capabilities.add_capability(PlayerCapability::Stop);
         capabilities.add_capability(PlayerCapability::Next);
@@ -219,7 +220,13 @@ impl GenericPlayerController {
                 "killed" => PlaybackState::Killed,
                 "disconnected" => PlaybackState::Disconnected,
                 "unknown" => PlaybackState::Unknown,
-                _ => PlaybackState::Unknown,
+                _ => {
+                    warn!(
+                        "Generic player '{}' received invalid state_changed value: {}",
+                        self.player_name, state_str
+                    );
+                    return false;
+                }
             };
             
             // Update the state first, then release the lock before notifying
@@ -261,6 +268,14 @@ impl GenericPlayerController {
     /// Handle position change events
     fn handle_position_change_event(&self, event_data: &Value) -> bool {
         if let Some(position) = event_data.get("position").and_then(|p| p.as_f64()) {
+            if !position.is_finite() || position < 0.0 {
+                warn!(
+                    "Generic player '{}' received invalid position_changed value: {}",
+                    self.player_name, position
+                );
+                return false;
+            }
+
             // Update the state first, then release the lock before notifying
             {
                 let mut pos = self.current_position.write();
@@ -436,36 +451,63 @@ impl PlayerController for GenericPlayerController {
                 let mut state = self.current_state.write();
                 *state = PlaybackState::Playing;
                 drop(state);
+                self.base.notify_state_changed(PlaybackState::Playing);
                 true
             }
             PlayerCommand::Pause => {
                 let mut state = self.current_state.write();
                 *state = PlaybackState::Paused;
                 drop(state);
+                self.base.notify_state_changed(PlaybackState::Paused);
+                true
+            }
+            PlayerCommand::PlayPause => {
+                let new_state = {
+                    let mut state = self.current_state.write();
+                    *state = if *state == PlaybackState::Playing {
+                        PlaybackState::Paused
+                    } else {
+                        PlaybackState::Playing
+                    };
+                    *state
+                };
+                self.base.notify_state_changed(new_state);
                 true
             }
             PlayerCommand::Stop => {
                 let mut state = self.current_state.write();
                 *state = PlaybackState::Stopped;
                 drop(state);
+                self.base.notify_state_changed(PlaybackState::Stopped);
                 true
             }
             PlayerCommand::SetLoopMode(mode) => {
                 let mut loop_mode = self.current_loop_mode.write();
                 *loop_mode = mode;
                 drop(loop_mode);
+                self.base.notify_loop_mode_changed(mode);
                 true
             }
             PlayerCommand::SetRandom(enabled) => {
                 let mut shuffle = self.current_shuffle.write();
                 *shuffle = enabled;
                 drop(shuffle);
+                self.base.notify_random_changed(enabled);
                 true
             }
             PlayerCommand::Seek(position) => {
+                if !position.is_finite() || position < 0.0 {
+                    warn!(
+                        "Generic player '{}' received invalid seek position: {}",
+                        self.player_name, position
+                    );
+                    return false;
+                }
+
                 let mut pos = self.current_position.write();
                 *pos = Some(position);
                 drop(pos);
+                self.base.notify_position_changed(position);
                 true
             }
             _ => {

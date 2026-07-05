@@ -42,7 +42,11 @@
         "name": "test_player",
         "enable": true,
         "supports_api_events": true,
-        "capabilities": ["play", "pause", "stop"],
+        "capabilities": [
+          "play",
+          "pause",
+          "stop"
+        ],
         "initial_state": "stopped",
         "shuffle": false,
         "loop_mode": "none"

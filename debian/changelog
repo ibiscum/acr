@@ -15,8 +15,54 @@ hifiberry-audiocontrol (0.7.14) stable; urgency=medium
   * Tool naming: normalize src/tools source filenames to acr_* while keeping
     installed CLI binaries on audiocontrol_* names.
   * Documentation: clarify Librespot player controller implementation notes.
+  * Shairport: add regression/integration-style unit tests for invalid config
+    parameters, edge-case file handling, start/stop lifecycle behavior, and
+    player-factory wiring.
+  * Shairport: fix restart behavior by resetting the internal stop flag on
+    startup and rolling back partial startup when listener/watcher init fails.
+  * Shairport: validate configured UDP port range and fall back to default
+    instead of truncating out-of-range values.
+  * Shairport: handle additional cover-art filesystem modify/rename events and
+    avoid duplicate song-change notifications when artwork URL is unchanged.
+  * Bluetooth: harden thread lifecycle by preventing duplicate scan/poll thread
+    startup, resetting stop flags on restart, and stopping/joining scanning
+    during controller stop.
+  * Bluetooth: make background auto-discovery establish a D-Bus connection
+    inside the scan worker so discovery no longer depends on pre-existing
+    connection state.
+  * Bluetooth tests: add regression/integration-style coverage for
+    auto-discover id, empty/invalid device_address parameters, unsupported
+    commands, and idempotent stop behavior.
+  * MPD: keep BasePlayerController source id in sync when set_connection updates
+    host/port, ensuring consistent event source metadata after runtime
+    connection changes.
+  * MPD: improve listener lifecycle by joining previous listener threads on
+    restart, tracking listener thread handles per instance, and making stop
+    idempotent.
+  * MPD tests: add regression/integration-style coverage for connection/id sync,
+    repeated start/stop lifecycle behavior, and invalid/fallback config
+    parameter handling in factory creation.
+  * Playback progress: reject invalid numeric positions (NaN/+/-Infinity) in
+    set_position to prevent corrupt runtime progress state.
+  * Playback progress tests: add regression/integration-style coverage for
+    invalid numeric input handling and play/pause/set-position edge sequences.
+  * Active selection: publish ActivePlayerChanged whenever
+    AudioController::set_active_controller changes the active player.
+  * Active monitor: add a 500ms debounce for Playing-triggered active switches
+    to reduce active-player flapping under bursty state events.
+  * Bluetooth: clear stale player_path when the active BlueZ MediaPlayer1 path
+    disappears and no replacement path is found, improving state transitions
+    to no-path/recovery states.
+  * Bluetooth: normalize MediaPlayer1 Track.Duration handling to milliseconds
+    via a shared conversion helper before storing Song.duration.
+  * Bluetooth: change auto-discover scan retry timing to stepped backoff in
+    5-second increments capped at 60 seconds.
+  * Bluetooth tests: add regression coverage for stale-path transition
+    resolution, scan-start decision logic, and scan interval backoff behavior.
+  * Docs: update Bluetooth controller state-machine notes/diagram to reflect
+    stale-path clearing, consistent duration units, and scan backoff behavior.
 
- -- HiFiBerry <info@hifiberry.com>  Sat, 04 Jul 2026 02:30:00 +0000
+ -- ibiscum <ibiscum@magenta.de>  Sat, 04 Jul 2026 02:30:00 +0000
 
 hifiberry-audiocontrol (0.7.13) stable; urgency=medium
 

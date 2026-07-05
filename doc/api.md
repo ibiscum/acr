@@ -100,10 +100,57 @@ This document describes the REST API endpoints available in the Audio Control RE
 
 ## Base Information
 
-- **Base URL**: `http://<device-ip>:1080`
+- **Base URL** (default local): `http://localhost:1080`
 - **API Prefix**: All endpoints are prefixed with `/api`
 - **Content Type**: All responses are in JSON format
 - **Version**: As per current package version
+
+### Using Curl
+
+Use the default local API base URL in examples:
+
+```bash
+API_BASE_URL="http://localhost:1080/api"
+```
+
+Common endpoint examples:
+
+```bash
+# Health/version
+curl "$API_BASE_URL/version"
+
+# Active player
+curl "$API_BASE_URL/player"
+
+# List players
+curl "$API_BASE_URL/players"
+
+# Send command to active player
+curl -X POST "$API_BASE_URL/player/active/send/play"
+
+# Send command to specific player
+curl -X POST "$API_BASE_URL/player/mpd/command/pause"
+
+# Volume status
+curl "$API_BASE_URL/volume"
+
+# Library stats (for a specific player)
+curl "$API_BASE_URL/library/mpd/stats"
+
+# Cover art methods/providers
+curl "$API_BASE_URL/coverart/methods"
+
+# Read setting
+curl "$API_BASE_URL/settings/logging.level"
+
+# Write setting
+curl -X POST "$API_BASE_URL/settings" \
+  -H "Content-Type: application/json" \
+  -d '{"key":"logging.level","value":"info"}'
+
+# Background jobs
+curl "$API_BASE_URL/background"
+```
 
 ## Events
 
@@ -142,7 +189,7 @@ Retrieves the current version of the API.
 
 #### Example
 ```bash
-curl http://<device-ip>:1080/api/version
+curl "$API_BASE_URL/version"
 ```
 
 
@@ -172,13 +219,13 @@ Pauses all available players. If a player does not support pause, it will be sto
 #### Examples
 ```bash
 # Pause all players
-curl -X POST http://<device-ip>:1080/api/players/pause-all
+curl -X POST "$API_BASE_URL/players/pause-all"
 
 # Pause all players except the one named "spotify"
-curl -X POST "http://<device-ip>:1080/api/players/pause-all?except=spotify"
+curl -X POST "$API_BASE_URL/players/pause-all?except=spotify"
 
 # Pause all players except Spotify (using alias)
-curl -X POST "http://<device-ip>:1080/api/players/pause-all?except=librespot"
+curl -X POST "$API_BASE_URL/players/pause-all?except=librespot"
 ```
 
 ### Stop All Players
@@ -205,13 +252,13 @@ Stops all available players. If a player does not support stop, it will be pause
 #### Examples
 ```bash
 # Stop all players
-curl -X POST http://<device-ip>:1080/api/players/stop-all
+curl -X POST "$API_BASE_URL/players/stop-all"
 
 # Stop all players except the one with ID "mpd:localhost:6600"
-curl -X POST "http://<device-ip>:1080/api/players/stop-all?except=mpd:localhost:6600"
+curl -X POST "$API_BASE_URL/players/stop-all?except=mpd:localhost:6600"
 
 # Stop all players except Roon (using alias)
-curl -X POST "http://<device-ip>:1080/api/players/stop-all?except=roon"
+curl -X POST "$API_BASE_URL/players/stop-all?except=roon"
 ```
 
 ### Get Current Player
@@ -232,7 +279,7 @@ Retrieves information about the currently active player.
 
 #### Example
 ```bash
-curl http://<device-ip>:1080/api/player
+curl "$API_BASE_URL/player"
 ```
 
 ### List Available Players
@@ -259,7 +306,7 @@ Retrieves a list of all available audio players.
 
 #### Example
 ```bash
-curl http://<device-ip>:1080/api/players
+curl "$API_BASE_URL/players"
 ```
 
 ### Send Command to Active Player
@@ -293,25 +340,25 @@ Sends a playback command to the currently active player.
 #### Examples
 ```bash
 # Simple command
-curl -X POST http://<device-ip>:1080/api/player/active/send/play
+curl -X POST "$API_BASE_URL/player/active/send/play"
 
 # Stop playback
-curl -X POST http://<device-ip>:1080/api/player/active/send/stop
+curl -X POST "$API_BASE_URL/player/active/send/stop"
 
 # Play/pause toggle
-curl -X POST http://<device-ip>:1080/api/player/active/send/playpause
+curl -X POST "$API_BASE_URL/player/active/send/playpause"
 
 # Next track
-curl -X POST http://<device-ip>:1080/api/player/active/send/next
+curl -X POST "$API_BASE_URL/player/active/send/next"
 
 # Set loop mode to playlist
-curl -X POST http://<device-ip>:1080/api/player/active/send/set_loop:playlist
+curl -X POST "$API_BASE_URL/player/active/send/set_loop:playlist"
 
 # Seek to 30 seconds
-curl -X POST http://<device-ip>:1080/api/player/active/send/seek:30.0
+curl -X POST "$API_BASE_URL/player/active/send/seek:30.0"
 
 # Enable shuffle
-curl -X POST http://<device-ip>:1080/api/player/active/send/set_random:true
+curl -X POST "$API_BASE_URL/player/active/send/set_random:true"
 ```
 
 ### Send Command to Specific Player
@@ -345,36 +392,36 @@ Sends a playback command to a specific player by name.
 **Basic playback commands:**
 ```bash
 # Play on a specific player
-curl -X POST http://<device-ip>:1080/api/player/spotify/command/play
+curl -X POST "$API_BASE_URL/player/spotify/command/play"
 
 # Pause a specific player
-curl -X POST http://<device-ip>:1080/api/player/raat/command/pause
+curl -X POST "$API_BASE_URL/player/raat/command/pause"
 
 # Send a command to the currently active player (alternative to /api/player/active/send/)
-curl -X POST http://<device-ip>:1080/api/player/active/command/play
+curl -X POST "$API_BASE_URL/player/active/command/play"
 
 # Set loop mode to playlist
-curl -X POST http://<device-ip>:1080/api/player/mpd/command/set_loop:playlist
+curl -X POST "$API_BASE_URL/player/mpd/command/set_loop:playlist"
 
 # Seek to 2 minutes (120 seconds)
-curl -X POST http://<device-ip>:1080/api/player/mpd/command/seek:120.0
+curl -X POST "$API_BASE_URL/player/mpd/command/seek:120.0"
 ```
 
 **Queue management commands** (see [Queue Management Commands](#queue-management-commands) for full details):
 ```bash
 # Add a track to the queue (requires JSON body)
-curl -X POST http://<device-ip>:1080/api/player/mpd/command/add_track \
+curl -X POST "$API_BASE_URL/player/mpd/command/add_track" \
   -H "Content-Type: application/json" \
   -d '{"uri": "artist/album/song.mp3"}'
 
 # Remove a track from the queue at position 2  
-curl -X POST http://<device-ip>:1080/api/player/lms/command/remove_track:2
+curl -X POST "$API_BASE_URL/player/lms/command/remove_track:2"
 
 # Clear the entire queue
-curl -X POST http://<device-ip>:1080/api/player/lms/command/clear_queue
+curl -X POST "$API_BASE_URL/player/lms/command/clear_queue"
 
 # Play the track at index 3 in the queue
-curl -X POST http://<device-ip>:1080/api/player/lms/command/play_queue_index:3
+curl -X POST "$API_BASE_URL/player/lms/command/play_queue_index:3"
 ```
 
 ### Player Event Update
@@ -411,7 +458,7 @@ Receives player events via API endpoint. This endpoint allows external systems t
 
 ```bash
 # Send a track_changed event to Librespot
-curl -X POST http://<device-ip>:1080/api/player/librespot/update \
+curl -X POST "$API_BASE_URL/player/librespot/update" \
   -H "Content-Type: application/json" \
   -d '{
     "event": "track_changed",
@@ -423,7 +470,7 @@ curl -X POST http://<device-ip>:1080/api/player/librespot/update \
   }'
 
 # Send a playing event to Librespot
-curl -X POST http://<device-ip>:1080/api/player/librespot/update \
+curl -X POST "$API_BASE_URL/player/librespot/update" \
   -H "Content-Type: application/json" \
   -d '{
     "event": "playing",
@@ -432,7 +479,7 @@ curl -X POST http://<device-ip>:1080/api/player/librespot/update \
   }'
 
 # Try to send an event to a player that doesn't support API events
-curl -X POST http://<device-ip>:1080/api/player/mpd/update \
+curl -X POST "$API_BASE_URL/player/mpd/update" \
   -H "Content-Type: application/json" \
   -d '{
     "event": "some_event"
@@ -470,7 +517,7 @@ Retrieves information about the currently playing track and player status.
 
 #### Example
 ```bash
-curl http://<device-ip>:1080/api/now-playing
+curl "$API_BASE_URL/now-playing"
 ```
 
 ### Get Player Queue
@@ -528,13 +575,13 @@ Retrieves the current queue for a specific player.
 #### Examples
 ```bash
 # Get queue for MPD player
-curl http://<device-ip>:1080/api/player/mpd/queue
+curl "$API_BASE_URL/player/mpd/queue"
 
 # Get queue for LMS player
-curl http://<device-ip>:1080/api/player/lms/queue
+curl "$API_BASE_URL/player/lms/queue"
 
 # Get queue for the currently active player
-curl http://<device-ip>:1080/api/player/active/queue
+curl "$API_BASE_URL/player/active/queue"
 ```
 
 ### Queue Management Commands
@@ -634,17 +681,17 @@ Starts playback of a track at a specific position in the queue.
 
 ```bash
 # Add a local file to MPD queue
-curl -X POST http://<device-ip>:1080/api/player/mpd/command/add_track \
+curl -X POST "$API_BASE_URL/player/mpd/command/add_track" \
   -H "Content-Type: application/json" \
   -d '{"uri": "artist/album/song.mp3"}'
 
 # Add an HTTP stream to LMS queue
-curl -X POST http://<device-ip>:1080/api/player/lms/command/add_track \
+curl -X POST "$API_BASE_URL/player/lms/command/add_track" \
   -H "Content-Type: application/json" \
   -d '{"uri": "https://stream.example.com/radio.mp3"}'
 
 # Add a track with metadata for future use
-curl -X POST http://<device-ip>:1080/api/player/generic_player_1/command/add_track \
+curl -X POST "$API_BASE_URL/player/generic_player_1/command/add_track" \
   -H "Content-Type: application/json" \
   -d '{
     "uri": "file:///music/beatles/yellow_submarine.mp3",
@@ -660,26 +707,26 @@ curl -X POST http://<device-ip>:1080/api/player/generic_player_1/command/add_tra
   }'
 
 # Remove track at position 2 from the queue
-curl -X POST http://<device-ip>:1080/api/player/mpd/command/remove_track:2
+curl -X POST "$API_BASE_URL/player/mpd/command/remove_track:2"
 
 # Clear the entire queue
-curl -X POST http://<device-ip>:1080/api/player/lms/command/clear_queue
+curl -X POST "$API_BASE_URL/player/lms/command/clear_queue"
 
 # Play the track at index 3 in the queue (4th track)
-curl -X POST http://<device-ip>:1080/api/player/mpd/command/play_queue_index:3
+curl -X POST "$API_BASE_URL/player/mpd/command/play_queue_index:3"
 
 # Error example: Missing required 'uri' field
-curl -X POST http://<device-ip>:1080/api/player/mpd/command/add_track \
+curl -X POST "$API_BASE_URL/player/mpd/command/add_track" \
   -H "Content-Type: application/json" \
   -d '{"title": "Some Song"}'
 # Response: {"success": false, "message": "Invalid command: add_track - add_track command requires JSON body with 'uri' field"}
 
 # Error example: Invalid position (negative index)
-curl -X POST http://<device-ip>:1080/api/player/mpd/command/remove_track:-1
+curl -X POST "$API_BASE_URL/player/mpd/command/remove_track:-1"
 # Response: {"success": false, "message": "Invalid command format"}
 
 # Error example: Trying queue operation on unsupported player
-curl -X POST http://<device-ip>:1080/api/player/spotify/command/add_track \
+curl -X POST "$API_BASE_URL/player/spotify/command/add_track" \
   -H "Content-Type: application/json" \
   -d '{"uri": "spotify:track:4uLU6hMCjMI75M1A2tKUQC"}'
 # Response: {"success": false, "message": "Queue operations not supported by this player type"}
@@ -760,10 +807,10 @@ Retrieves all metadata for a specific player.
 
 #### Example
 ```bash
-curl http://<device-ip>:1080/api/player/mpd/meta
+curl "$API_BASE_URL/player/mpd/meta"
 
 # Get metadata for the currently active player
-curl http://<device-ip>:1080/api/player/active/meta
+curl "$API_BASE_URL/player/active/meta"
 ```
 
 ### Get Specific Player Metadata Key
@@ -787,10 +834,10 @@ Retrieves a specific metadata key for a player.
 
 #### Example
 ```bash
-curl http://<device-ip>:1080/api/player/mpd/meta/volume
+curl "$API_BASE_URL/player/mpd/meta/volume"
 
 # Get specific metadata for the currently active player
-curl http://<device-ip>:1080/api/player/active/meta/volume
+curl "$API_BASE_URL/player/active/meta/volume"
 ```
 
 ### Player Capabilities and Support Matrix
@@ -879,10 +926,10 @@ You can query a player's capabilities programmatically:
 
 ```bash
 # Get capabilities for a specific player (through metadata)
-curl http://<device-ip>:1080/api/player/mpd/meta
+curl "$API_BASE_URL/player/mpd/meta"
 
 # Check if a player supports queue operations before attempting them
-curl http://<device-ip>:1080/api/player/mpd/queue
+curl "$API_BASE_URL/player/mpd/queue"
 ```
 
 When building applications, always check player capabilities before attempting operations to provide appropriate fallbacks or UI elements.
@@ -935,7 +982,7 @@ Retrieves information about the available volume control and current state.
 
 #### Example
 ```bash
-curl http://<device-ip>:1080/api/volume/info
+curl "$API_BASE_URL/volume/info"
 ```
 
 ### Get Current Volume State
@@ -963,7 +1010,7 @@ Retrieves only the current volume state information.
 
 #### Example
 ```bash
-curl http://<device-ip>:1080/api/volume/state
+curl "$API_BASE_URL/volume/state"
 ```
 
 ### Set Volume Level
@@ -1005,17 +1052,17 @@ Sets the volume to a specific level using percentage, decibels, or raw value.
 #### Examples
 ```bash
 # Set volume to 50%
-curl -X POST http://<device-ip>:1080/api/volume/set \
+curl -X POST "$API_BASE_URL/volume/set" \
   -H "Content-Type: application/json" \
   -d '{"percentage": 50.0}'
 
 # Set volume to -20dB
-curl -X POST http://<device-ip>:1080/api/volume/set \
+curl -X POST "$API_BASE_URL/volume/set" \
   -H "Content-Type: application/json" \
   -d '{"decibels": -20.0}'
 
 # Set volume using raw hardware value
-curl -X POST http://<device-ip>:1080/api/volume/set \
+curl -X POST "$API_BASE_URL/volume/set" \
   -H "Content-Type: application/json" \
   -d '{"raw_value": 100}'
 ```
@@ -1044,10 +1091,10 @@ Increases the volume by a specified percentage amount.
 #### Examples
 ```bash
 # Increase volume by default amount (5%)
-curl -X POST http://<device-ip>:1080/api/volume/increase
+curl -X POST "$API_BASE_URL/volume/increase"
 
 # Increase volume by 10%
-curl -X POST "http://<device-ip>:1080/api/volume/increase?amount=10.0"
+curl -X POST "$API_BASE_URL/volume/increase?amount=10.0"
 ```
 
 ### Decrease Volume
@@ -1074,10 +1121,10 @@ Decreases the volume by a specified percentage amount.
 #### Examples
 ```bash
 # Decrease volume by default amount (5%)
-curl -X POST http://<device-ip>:1080/api/volume/decrease
+curl -X POST "$API_BASE_URL/volume/decrease"
 
 # Decrease volume by 15%
-curl -X POST "http://<device-ip>:1080/api/volume/decrease?amount=15.0"
+curl -X POST "$API_BASE_URL/volume/decrease?amount=15.0"
 ```
 
 ### Toggle Mute
@@ -1101,7 +1148,7 @@ Toggles between muted (0% volume) and unmuted (50% volume) states.
 
 #### Example
 ```bash
-curl -X POST http://<device-ip>:1080/api/volume/mute
+curl -X POST "$API_BASE_URL/volume/mute"
 ```
 
 ### Volume Control Notes
@@ -1135,7 +1182,7 @@ Retrieves a list of all active action plugins.
 
 #### Example
 ```bash
-curl http://<device-ip>:1080/api/plugins/actions
+curl "$API_BASE_URL/plugins/actions"
 ```
 
 ### List Event Filters
@@ -1158,7 +1205,7 @@ Retrieves a list of all active event filters.
 
 #### Example
 ```bash
-curl http://<device-ip>:1080/api/plugins/event-filters
+curl "$API_BASE_URL/plugins/event-filters"
 ```
 
 ## Library API
@@ -1191,7 +1238,7 @@ Retrieves a list of all players and shows whether they offer library functionali
 
 #### Example
 ```bash
-curl http://<device-ip>:1080/api/library
+curl "$API_BASE_URL/library"
 ```
 
 ### Get Library Information
@@ -1217,7 +1264,7 @@ Retrieves library information for a specific player.
 
 #### Example
 ```bash
-curl http://<device-ip>:1080/api/library/mpd
+curl "$API_BASE_URL/library/mpd"
 ```
 
 ### Get Player Albums
@@ -1242,7 +1289,7 @@ Retrieves all albums for a specific player.
 
 #### Examples
 ```bash
-curl http://<device-ip>:1080/api/library/mpd/albums
+curl "$API_BASE_URL/library/mpd/albums"
 ```
 
 ### Get Player Artists
@@ -1274,7 +1321,7 @@ Retrieves all artists for a specific player.
 
 #### Examples
 ```bash
-curl http://<device-ip>:1080/api/library/mpd/artists
+curl "$API_BASE_URL/library/mpd/artists"
 ```
 
 ### Get Album by ID
@@ -1300,7 +1347,7 @@ Retrieves a specific album by its unique identifier.
 
 #### Examples
 ```bash
-curl "http://<device-ip>:1080/api/library/mpd/album/by-id/12345678"
+curl "$API_BASE_URL/library/mpd/album/by-id/12345678"
 ```
 
 ### Get Artist by Name
@@ -1334,7 +1381,7 @@ Retrieves complete information for a specific artist by name.
 
 #### Example
 ```bash
-curl "http://<device-ip>:1080/api/library/mpd/artist/by-name/Pink%20Floyd"
+curl "$API_BASE_URL/library/mpd/artist/by-name/Pink%20Floyd"
 ```
 
 ### Get Artist by ID
@@ -1351,7 +1398,7 @@ Retrieves complete information for a specific artist by ID.
 
 #### Example
 ```bash
-curl "http://<device-ip>:1080/api/library/mpd/artist/by-id/12345678"
+curl "$API_BASE_URL/library/mpd/artist/by-id/12345678"
 ```
 
 ### Get Artist by MusicBrainz ID
@@ -1368,7 +1415,7 @@ Retrieves complete information for a specific artist by MusicBrainz ID.
 
 #### Example
 ```bash
-curl "http://<device-ip>:1080/api/library/mpd/artist/by-mbid/83d91898-7763-47d7-b03b-b92132375c47"
+curl "$API_BASE_URL/library/mpd/artist/by-mbid/83d91898-7763-47d7-b03b-b92132375c47"
 ```
 
 ### Get Albums by Artist Name
@@ -1395,7 +1442,7 @@ Retrieves all albums by a specific artist for a player.
 
 #### Examples
 ```bash
-curl "http://<device-ip>:1080/api/library/mpd/albums/by-artist/Pink%20Floyd"
+curl "$API_BASE_URL/library/mpd/albums/by-artist/Pink%20Floyd"
 ```
 
 ### Get Albums by Artist ID
@@ -1412,7 +1459,7 @@ Retrieves all albums by a specific artist ID for a player.
 
 #### Examples
 ```bash
-curl "http://<device-ip>:1080/api/library/mpd/albums/by-artist-id/12345678"
+curl "$API_BASE_URL/library/mpd/albums/by-artist-id/12345678"
 ```
 
 ### Refresh Player Library
@@ -1428,7 +1475,7 @@ Triggers a refresh of the library for a specific player.
 
 #### Example
 ```bash
-curl http://<device-ip>:1080/api/library/mpd/refresh
+curl "$API_BASE_URL/library/mpd/refresh"
 ```
 
 ### Update Player Library Media Database
@@ -1477,7 +1524,7 @@ Retrieves all metadata for a player's library.
 
 #### Example
 ```bash
-curl http://<device-ip>:1080/api/library/mpd/meta
+curl "$API_BASE_URL/library/mpd/meta"
 ```
 
 ### Get Specific Library Metadata Key
@@ -1501,7 +1548,7 @@ Retrieves a specific metadata key for a player's library.
 
 #### Example
 ```bash
-curl http://<device-ip>:1080/api/library/mpd/meta/album_count
+curl "$API_BASE_URL/library/mpd/meta/album_count"
 ```
 
 ### Get Image from Library
@@ -1518,7 +1565,7 @@ Retrieves an image (such as album art) from a player's library.
 
 #### Example
 ```bash
-curl http://<device-ip>:1080/api/library/mpd/image/album:12345 --output cover.jpg
+curl "$API_BASE_URL/library/mpd/image/album:12345" --output cover.jpg
 ```
 
 ### Browse Genres
@@ -1693,7 +1740,7 @@ Retrieves artist information from TheAudioDB by MusicBrainz ID. This endpoint is
 #### TheAudioDB API Example
 
 ```bash
-curl http://<device-ip>:1080/api/audiodb/mbid/53b106e7-0cc6-42cc-ac95-ed8d30a3a98e
+curl "$API_BASE_URL/audiodb/mbid/53b106e7-0cc6-42cc-ac95-ed8d30a3a98e"
 ```
 
 #### John Williams Response Example
@@ -1972,7 +2019,7 @@ Retrieves information about available and enabled favourite providers.
 
 **Example**:
 ```bash
-curl http://<device-ip>:1080/api/favourites/providers
+curl "$API_BASE_URL/favourites/providers"
 ```
 
 #### Check if Song is Favourite
@@ -2010,7 +2057,7 @@ Checks whether a song is marked as favourite by any enabled provider.
 
 **Example**:
 ```bash
-curl "http://<device-ip>:1080/api/favourites/is_favourite?artist=The%20Beatles&title=Hey%20Jude"
+curl "$API_BASE_URL/favourites/is_favourite?artist=The%20Beatles&title=Hey%20Jude"
 ```
 
 #### Add Song to Favourites
@@ -2064,7 +2111,7 @@ Adds a song to favourites across all enabled providers.
 
 **Example**:
 ```bash
-curl -X POST http://<device-ip>:1080/api/favourites/add \
+curl -X POST "$API_BASE_URL/favourites/add" \
   -H "Content-Type: application/json" \
   -d '{"artist": "The Beatles", "title": "Hey Jude"}'
 ```
@@ -2110,7 +2157,7 @@ Removes a song from favourites across all enabled providers.
 
 **Example**:
 ```bash
-curl -X DELETE http://<device-ip>:1080/api/favourites/remove \
+curl -X DELETE "$API_BASE_URL/favourites/remove" \
   -H "Content-Type: application/json" \
   -d '{"artist": "The Beatles", "title": "Hey Jude"}'
 ```
@@ -2546,7 +2593,7 @@ echo -n "The Beatles" | base64 -w 0 | tr '+/' '-_' | tr -d '='
 # Result: VGhlIEJlYXRsZXM
 
 # Then make the API request
-curl http://<device-ip>:1080/api/coverart/artist/VGhlIEJlYXRsZXM
+curl "$API_BASE_URL/coverart/artist/VGhlIEJlYXRsZXM"
 ```
 
 ### Get Artist Image File
@@ -2572,23 +2619,23 @@ echo -n "The Beatles" | base64 -w 0 | tr '+/' '-_' | tr -d '='
 # Result: VGhlIEJlYXRsZXM
 
 # Get the image file directly (returns binary image data)
-curl http://<device-ip>:1080/api/coverart/artist/VGhlIEJlYXRsZXM/image
+curl "$API_BASE_URL/coverart/artist/VGhlIEJlYXRsZXM/image"
 
 # Save image to file
-curl http://<device-ip>:1080/api/coverart/artist/VGhlIEJlYXRsZXM/image -o beatles.jpg
+curl "$API_BASE_URL/coverart/artist/VGhlIEJlYXRsZXM/image" -o beatles.jpg
 
 # Use in HTML
-# <img src="http://<device-ip>:1080/api/coverart/artist/VGhlIEJlYXRsZXM/image" alt="The Beatles">
+# <img src="$API_BASE_URL/coverart/artist/VGhlIEJlYXRsZXM/image" alt="The Beatles">
 ```
 
 **Error responses:**
 ```bash
 # Artist not found or no cached image
-curl http://<device-ip>:1080/api/coverart/artist/Tm9uZXhpc3RlbnQ/image
+curl "$API_BASE_URL/coverart/artist/Tm9uZXhpc3RlbnQ/image"
 # Returns: 404 with {"error": "No image found for artist 'Nonexistent'"}
 
 # Invalid encoding
-curl http://<device-ip>:1080/api/coverart/artist/invalid!/image  
+curl "$API_BASE_URL/coverart/artist/invalid!/image"  
 # Returns: 400 with {"error": "Invalid artist name encoding"}
 ```
 
@@ -2651,12 +2698,12 @@ echo -n "The Beatles" | base64 -w 0 | tr '+/' '-_' | tr -d '='
 # Result: VGhlIEJlYXRsZXM
 
 # Then make the API request
-curl http://<device-ip>:1080/api/coverart/song/WWVsbG93IFN1Ym1hcmluZQ/VGhlIEJlYXRsZXM
+curl "$API_BASE_URL/coverart/song/WWVsbG93IFN1Ym1hcmluZQ/VGhlIEJlYXRsZXM"
 ```
 
 **Get cover art for "Hey Jude" by "The Beatles":**
 ```bash
-curl http://<device-ip>:1080/api/coverart/song/SGV5IEp1ZGU/VGhlIEJlYXRsZXM
+curl "$API_BASE_URL/coverart/song/SGV5IEp1ZGU/VGhlIEJlYXRsZXM"
 ```
 
 ### Get Cover Art for Album
@@ -2726,7 +2773,7 @@ Retrieves cover art URLs for a specific album from all registered providers.
 #### Example
 ```bash
 # Get cover art for "Abbey Road" by "The Beatles"
-curl http://<device-ip>:1080/api/coverart/album/QWJiZXkgUm9hZA/VGhlIEJlYXRsZXM
+curl "$API_BASE_URL/coverart/album/QWJiZXkgUm9hZA/VGhlIEJlYXRsZXM"
 ```
 
 ### Get Cover Art for Album with Year
@@ -2780,7 +2827,7 @@ Retrieves cover art URLs for a specific album with release year from all registe
 #### Example
 ```bash
 # Get cover art for "Abbey Road" by "The Beatles" from 1969
-curl http://<device-ip>:1080/api/coverart/album/QWJiZXkgUm9hZA/VGhlIEJlYXRsZXM/1969
+curl "$API_BASE_URL/coverart/album/QWJiZXkgUm9hZA/VGhlIEJlYXRsZXM/1969"
 ```
 
 ### Get Cover Art from URL
@@ -2839,7 +2886,7 @@ Retrieves cover art URLs from a specific source URL from all registered provider
 #### Example
 ```bash
 # Get cover art from a specific URL
-curl http://<device-ip>:1080/api/coverart/url/aHR0cHM6Ly9leGFtcGxlLmNvbS9hcnRpc3QvaW1hZ2U
+curl "$API_BASE_URL/coverart/url/aHR0cHM6Ly9leGFtcGxlLmNvbS9hcnRpc3QvaW1hZ2U"
 ```
 
 ### List Cover Art Methods and Providers
@@ -2915,7 +2962,7 @@ Retrieves information about available cover art methods and the providers that s
 #### Example
 ```bash
 # List all cover art methods and their providers
-curl http://<device-ip>:1080/api/coverart/methods
+curl "$API_BASE_URL/coverart/methods"
 ```
 
 ### Update Artist Image
@@ -2960,7 +3007,7 @@ Updates the custom image URL for a specific artist. The custom image will take p
 ```bash
 # Set a custom image for an artist
 # First, encode the artist name: "The Beatles" -> "VGhlIEJlYXRsZXM"
-curl -X POST http://<device-ip>:1080/api/coverart/artist/VGhlIEJlYXRsZXM/update \
+curl -X POST "$API_BASE_URL/coverart/artist/VGhlIEJlYXRsZXM/update" \
   -H "Content-Type: application/json" \
   -d '{"url": "https://example.com/custom-beatles-image.jpg"}'
 
@@ -2971,12 +3018,12 @@ curl -X POST http://<device-ip>:1080/api/coverart/artist/VGhlIEJlYXRsZXM/update 
 # }
 
 # Clear a custom image (set empty URL)
-curl -X POST http://<device-ip>:1080/api/coverart/artist/VGhlIEJlYXRsZXM/update \
+curl -X POST "$API_BASE_URL/coverart/artist/VGhlIEJlYXRsZXM/update" \
   -H "Content-Type: application/json" \
   -d '{"url": ""}'
 
 # Invalid artist name encoding
-curl -X POST http://<device-ip>:1080/api/coverart/artist/invalid_encoding!/update \
+curl -X POST "$API_BASE_URL/coverart/artist/invalid_encoding!/update" \
   -H "Content-Type: application/json" \
   -d '{"url": "https://example.com/image.jpg"}'
 
@@ -3122,17 +3169,17 @@ Retrieves the value of a specific setting from the settings database.
 #### Examples
 ```bash
 # Get a simple setting
-curl -X POST http://<device-ip>:1080/api/settings/get \
+curl -X POST "$API_BASE_URL/settings/get" \
   -H "Content-Type: application/json" \
   -d '{"key": "audio.volume.default"}'
 
 # Get a setting with non-ASCII characters
-curl -X POST http://<device-ip>:1080/api/settings/get \
+curl -X POST "$API_BASE_URL/settings/get" \
   -H "Content-Type: application/json" \
   -d '{"key": "user.display_name.默认用户"}'
 
 # Get a setting that doesn't exist
-curl -X POST http://<device-ip>:1080/api/settings/get \
+curl -X POST "$API_BASE_URL/settings/get" \
   -H "Content-Type: application/json" \
   -d '{"key": "nonexistent.setting"}'
 ```
@@ -3171,32 +3218,32 @@ Sets the value of a specific setting in the settings database.
 #### Examples
 ```bash
 # Set a string value
-curl -X POST http://<device-ip>:1080/api/settings/set \
+curl -X POST "$API_BASE_URL/settings/set" \
   -H "Content-Type: application/json" \
   -d '{"key": "audio.output.device", "value": "hw:0,0"}'
 
 # Set a numeric value
-curl -X POST http://<device-ip>:1080/api/settings/set \
+curl -X POST "$API_BASE_URL/settings/set" \
   -H "Content-Type: application/json" \
   -d '{"key": "audio.volume.default", "value": 75}'
 
 # Set a boolean value
-curl -X POST http://<device-ip>:1080/api/settings/set \
+curl -X POST "$API_BASE_URL/settings/set" \
   -H "Content-Type: application/json" \
   -d '{"key": "player.autostart", "value": true}'
 
 # Set an object value
-curl -X POST http://<device-ip>:1080/api/settings/set \
+curl -X POST "$API_BASE_URL/settings/set" \
   -H "Content-Type: application/json" \
   -d '{"key": "ui.theme", "value": {"background": "#000000", "foreground": "#ffffff"}}'
 
 # Set a setting with non-ASCII characters
-curl -X POST http://<device-ip>:1080/api/settings/set \
+curl -X POST "$API_BASE_URL/settings/set" \
   -H "Content-Type: application/json" \
   -d '{"key": "user.preferences.语言", "value": "中文"}'
 
 # Update an existing setting
-curl -X POST http://<device-ip>:1080/api/settings/set \
+curl -X POST "$API_BASE_URL/settings/set" \
   -H "Content-Type: application/json" \
   -d '{"key": "audio.volume.default", "value": 85}'
 ```

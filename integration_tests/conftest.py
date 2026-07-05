@@ -91,9 +91,18 @@ class AudioControlTestServer:
             config = json.load(f)
         
         # Update configuration for this test instance
-        
+        services = config.setdefault("services", {})
+
+        # Normalize legacy key: services.settingsdb -> services.settings_db
+        if "settings_db" not in services and "settingsdb" in services:
+            services["settings_db"] = services.pop("settingsdb")
+
+        # Ensure settings_db exists and points to an isolated per-test database file
+        settings_db_cfg = services.setdefault("settings_db", {})
+        settings_db_cfg["path"] = str(cache_dir / "settings.db")
+
         # Update port
-        config["services"]["webserver"]["port"] = self.port
+        services["webserver"]["port"] = self.port
         
         # Update pipe paths for different players based on OS
         for player_config in config["players"]:
@@ -116,15 +125,15 @@ class AudioControlTestServer:
                 )
         
         # Update cache paths
-        if "datastore" in config["services"]:
-            if "attribute_cache" in config["services"]["datastore"]:
-                config["services"]["datastore"]["attribute_cache"]["dbfile"] = str(attributes_cache_dir / "cache_attributes.db")
-            if "image_cache_path" in config["services"]["datastore"]:
-                config["services"]["datastore"]["image_cache_path"] = str(images_cache_dir.absolute())
-        elif "cache" in config["services"]:
+        if "datastore" in services:
+            if "attribute_cache" in services["datastore"]:
+                services["datastore"]["attribute_cache"]["dbfile"] = str(attributes_cache_dir / "cache_attributes.db")
+            if "image_cache_path" in services["datastore"]:
+                services["datastore"]["image_cache_path"] = str(images_cache_dir.absolute())
+        elif "cache" in services:
             # Fallback for older config structure
-            config["services"]["cache"]["attribute_cache_path"] = str(attributes_cache_dir.absolute())
-            config["services"]["cache"]["image_cache_path"] = str(images_cache_dir.absolute())
+            services["cache"]["attribute_cache_path"] = str(attributes_cache_dir.absolute())
+            services["cache"]["image_cache_path"] = str(images_cache_dir.absolute())
         
         # Create config file
         self.config_path = TMP_DIR / f"test_config_{self.port}.json"
