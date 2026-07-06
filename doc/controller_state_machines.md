@@ -26,12 +26,13 @@ stateDiagram-v2
 
     state MainLoop {
         [*] --> ActiveSelection
-        ActiveSelection --> ActiveSelection: Playing event from ActiveMonitor
-        ActiveSelection --> ActiveSelection: ignore switch during 500ms debounce
-        ActiveSelection --> ActiveSelection: set active controller
-        ActiveSelection --> ActiveSelection: emit ActivePlayerChanged
+        ActiveSelection --> ActiveSelection: StateChanged(Playing) event from player
+        ActiveSelection --> ActiveSelection: ignore active switch during 500ms debounce
+        ActiveSelection --> ActiveSelection: set active controller and emit ActivePlayerChanged
+        ActiveSelection --> ActiveSelection: enforce single playback pause or stop other playing players
         ActiveSelection --> ActiveSelection: route command to active player
-        ActiveSelection --> ActiveSelection: pause all or stop all across players
+        ActiveSelection --> ActiveSelection: zero players playing is allowed
+        ActiveSelection --> ActiveSelection: API pause-all or stop-all targets all players
     }
 ```
 
@@ -40,14 +41,16 @@ stateDiagram-v2
 - All configured players are started. There is one active selector (`active_index`) in `AudioController`.
 - Commands routed through `AudioController` (`send_command`) target only the current active player.
 - Active player selection is updated by `ActiveMonitor` when a player emits `StateChanged(Playing)`, with a 500ms debounce to reduce flapping.
+- On `StateChanged(Playing)`, `ActiveMonitor` also enforces single-playback by pausing (or stopping if pause is unavailable) other players that are currently `Playing`.
 - A successful active switch publishes `ActivePlayerChanged` on the global event bus.
 - API endpoints `pause-all`/`stop-all` intentionally target all players (with optional exclusion).
 
 ### Exclusivity vs collisions
 
 - Active selection is exclusive: only one `active_index` exists at a time.
-- Playback is not exclusive: multiple players can be in `Playing` simultaneously.
-- Collision behavior: if multiple players emit `Playing` close together inside the debounce window, later events are ignored; outside the window, event order still decides which one ends up active.
+- Playback is enforced to be single-source: at most one player should remain in `Playing` after `StateChanged(Playing)` handling completes.
+- Allowed idle behavior remains unchanged: zero players in `Playing` is valid.
+- Collision behavior: if multiple players emit `Playing` close together, active selection still follows debounce/event ordering, and non-source players are paused/stopped where capability support allows.
 
 ## Backend-Specific Player State Machine (MPD, Bluetooth, Shairport, Librespot)
 
@@ -218,5 +221,5 @@ stateDiagram-v2
 
 ## Practical conclusion
 
-- The system has one active player pointer, not one active playback source.
-- Therefore, collisions are possible in practice: simultaneous playback can occur, while active control focus remains singular and now has anti-flap protection through switch debounce.
+- The system has one active player pointer and now actively enforces one playback source.
+- Temporary overlap can still occur during backend event races, but `ActiveMonitor` converges to at most one `Playing` player by pausing/stopping others as events are processed.
