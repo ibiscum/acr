@@ -37,7 +37,7 @@ impl ActiveMonitor {
             switch_debounce: Duration::from_millis(500),
         }
     }
-    
+
     /// Try to find a player controller by name and ID and make it active
     fn set_active_player(&self, player_name: &str, player_id: &str) {
         if let Some(controller) = self.base.get_controller() {
@@ -159,16 +159,16 @@ impl ActiveMonitor {
             warn!("ActiveMonitor: No valid AudioController reference available");
         }
     }
-    
+
     /// Handle events coming from the event bus
     fn handle_event_bus_events(&self, event: PlayerEvent) {
         trace!("Received event from event bus");
-        
+
         // We only care about state changed events
         if let PlayerEvent::StateChanged { source, state } = event {
             // If a player state changes to Playing, make it the active player
             if state == PlaybackState::Playing {
-                debug!("ActiveMonitor: Detected player {}:{} state changed to Playing", 
+                debug!("ActiveMonitor: Detected player {}:{} state changed to Playing",
                        source.player_name(), source.player_id());
                 self.set_active_player(source.player_name(), source.player_id());
                 self.enforce_single_playback(source.player_name(), source.player_id());
@@ -194,7 +194,7 @@ impl Plugin for ActiveMonitor {
         log::info!("ActiveMonitor shutting down");
         self.base.shutdown()
     }
-    
+
     fn as_any(&self) -> &dyn Any {
         self
     }
@@ -203,7 +203,7 @@ impl Plugin for ActiveMonitor {
 impl ActionPlugin for ActiveMonitor {
     fn initialize(&mut self, controller: Weak<AudioController>) {
         self.base.set_controller(controller);
-        
+
         // Subscribe to event bus in the initialize method
         log::debug!("ActiveMonitor initializing and subscribing to event bus");
         let self_clone = self.clone();
@@ -211,7 +211,7 @@ impl ActionPlugin for ActiveMonitor {
             self_clone.handle_event(event);
         });
     }
-    
+
     fn handle_event(&self, event: PlayerEvent) {
         // Handle events using the existing method
         self.handle_event_bus_events(event);
@@ -222,14 +222,14 @@ impl ActionPlugin for ActiveMonitor {
 impl Clone for ActiveMonitor {
     fn clone(&self) -> Self {
         let mut new_base = BaseActionPlugin::new(self.base.name());
-        
+
         // Get the controller reference from the original object
         if let Some(controller) = self.base.get_controller() {
             // The controller is already an Arc, we need to downgrade it to a Weak
             let controller_weak = Arc::downgrade(&controller);
             new_base.set_controller(controller_weak);
         }
-        
+
         Self {
             base: new_base,
             last_switch_at: Arc::clone(&self.last_switch_at),
