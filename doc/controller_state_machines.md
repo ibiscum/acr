@@ -27,7 +27,6 @@ stateDiagram-v2
     state MainLoop {
         [*] --> ActiveSelection
         ActiveSelection --> ActiveSelection: StateChanged(Playing) event from player
-        ActiveSelection --> ActiveSelection: ignore active switch during 500ms debounce
         ActiveSelection --> ActiveSelection: set active controller and emit ActivePlayerChanged
         ActiveSelection --> ActiveSelection: enforce single playback pause or stop other playing players
         ActiveSelection --> ActiveSelection: route command to active player
@@ -40,7 +39,7 @@ stateDiagram-v2
 
 - All configured players are started. There is one active selector (`active_index`) in `AudioController`.
 - Commands routed through `AudioController` (`send_command`) target only the current active player.
-- Active player selection is updated by `ActiveMonitor` when a player emits `StateChanged(Playing)`, with a 500ms debounce to reduce flapping.
+- Active player selection is updated by `ActiveMonitor` when a player emits `StateChanged(Playing)`.
 - On `StateChanged(Playing)`, `ActiveMonitor` also enforces single-playback by pausing (or stopping if pause is unavailable) other players that are currently `Playing`.
 - A successful active switch publishes `ActivePlayerChanged` on the global event bus.
 - API endpoints `pause-all`/`stop-all` intentionally target all players (with optional exclusion).
@@ -50,7 +49,7 @@ stateDiagram-v2
 - Active selection is exclusive: only one `active_index` exists at a time.
 - Playback is enforced to be single-source: at most one player should remain in `Playing` after `StateChanged(Playing)` handling completes.
 - Allowed idle behavior remains unchanged: zero players in `Playing` is valid.
-- Collision behavior: if multiple players emit `Playing` close together, active selection still follows debounce/event ordering, and non-source players are paused/stopped where capability support allows.
+- Collision behavior: if multiple players emit `Playing` close together, last processed event decides active focus, and non-source players are paused/stopped where capability support allows.
 
 ## Backend-Specific Player State Machine (MPD, Bluetooth, Shairport, Librespot)
 

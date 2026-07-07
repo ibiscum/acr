@@ -34,7 +34,8 @@ impl Serialize for Album {
         S: Serializer,
     {
         use serde::ser::SerializeStruct;
-        let mut state = serializer.serialize_struct("Album", 8)?;
+        // Always reserve room for all serialized fields.
+        let mut state = serializer.serialize_struct("Album", 9)?;
         
         // Serialize id using Identifier's serialization
         state.serialize_field("id", &self.id)?;
@@ -43,6 +44,7 @@ impl Serialize for Album {
         // Get lock on artists and serialize directly as Vec<String>
         let artists = self.artists.lock();
         state.serialize_field("artists", &*artists)?;
+        state.serialize_field("artists_flat", &self.artists_flat)?;
         
         // Serialize release_date field
         state.serialize_field("release_date", &self.release_date)?;
@@ -73,15 +75,14 @@ impl<'de> Deserialize<'de> for Album {
             name: String,
             #[serde(default)]
             artists: Vec<String>,
+            #[serde(default)]
+            artists_flat: Option<String>,
             // For backward compatibility, also accept the old 'artist' field
             #[serde(default)]
             artist: Option<String>,
-            #[serde(skip_serializing_if = "Option::is_none")]
             release_date: Option<chrono::NaiveDate>,
             tracks: Vec<Track>,
-            #[serde(skip_serializing_if = "Option::is_none")]
             cover_art: Option<String>,
-            #[serde(skip_serializing_if = "Option::is_none")]
             uri: Option<String>,
             #[serde(default)]
             genres: Vec<String>,
@@ -108,7 +109,7 @@ impl<'de> Deserialize<'de> for Album {
             id: helper.id,
             name: helper.name,
             artists: Arc::new(Mutex::new(artists)),
-            artists_flat: None, // Initialize artists_flat as None
+            artists_flat: helper.artists_flat,
             release_date: helper.release_date,
             tracks: Arc::new(Mutex::new(helper.tracks)),
             cover_art: helper.cover_art,
