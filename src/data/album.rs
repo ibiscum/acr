@@ -36,23 +36,23 @@ impl Serialize for Album {
         use serde::ser::SerializeStruct;
         // Always reserve room for all serialized fields.
         let mut state = serializer.serialize_struct("Album", 9)?;
-        
+
         // Serialize id using Identifier's serialization
         state.serialize_field("id", &self.id)?;
         state.serialize_field("name", &self.name)?;
-        
+
         // Get lock on artists and serialize directly as Vec<String>
         let artists = self.artists.lock();
         state.serialize_field("artists", &*artists)?;
         state.serialize_field("artists_flat", &self.artists_flat)?;
-        
+
         // Serialize release_date field
         state.serialize_field("release_date", &self.release_date)?;
-        
+
         // Get lock on tracks and serialize directly as Vec<Track>
         let tracks = self.tracks.lock();
         state.serialize_field("tracks", &*tracks)?;
-        
+
         state.serialize_field("cover_art", &self.cover_art)?;
         state.serialize_field("uri", &self.uri)?;
         if !self.genres.is_empty() {
@@ -87,10 +87,10 @@ impl<'de> Deserialize<'de> for Album {
             #[serde(default)]
             genres: Vec<String>,
         }
-        
+
         // Deserialize to the helper struct first
         let helper = AlbumHelper::deserialize(deserializer)?;
-        
+
         // Convert old artist field to artists if needed
         let mut artists = helper.artists;
         if artists.is_empty() {
@@ -103,7 +103,7 @@ impl<'de> Deserialize<'de> for Album {
                 }
             }
         }
-        
+
         // Convert helper to actual Album
         Ok(Album {
             id: helper.id,
@@ -121,7 +121,7 @@ impl<'de> Deserialize<'de> for Album {
 
 impl Album {
     /// Sort tracks by disc number and track number
-    /// 
+    ///
     /// This method sorts the album's track list first by disc number (if available)
     /// and then by track number within each disc. This ensures tracks are in the
     /// correct playing order.
