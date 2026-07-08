@@ -27,7 +27,7 @@ enum Commands {
         /// Filter entries by prefix (e.g., "artist::", "theaudiodb::")
         #[arg(short, long)]
         prefix: Option<String>,
-        
+
         /// Show detailed information including size and timestamps
         #[arg(short, long)]
         detailed: bool,
@@ -57,7 +57,7 @@ enum Commands {
         /// Remove entries matching this prefix
         #[arg(short, long)]
         prefix: Option<String>,
-        
+
         /// Remove all entries (use with caution!)
         #[arg(long)]
         all: bool,
@@ -96,15 +96,15 @@ enum Commands {
 
 fn determine_prefix(prefix: Option<&str>, artistmbid: bool, imagemeta: bool, artistsplit: bool, artistnotfound: bool) -> Result<Option<String>, Box<dyn std::error::Error>> {
     let shortcut_count = [artistmbid, imagemeta, artistsplit, artistnotfound].iter().filter(|&&x| x).count();
-    
+
     if shortcut_count > 1 {
         return Err("Cannot specify multiple shortcut options (--artistmbid, --imagemeta, --artistsplit, --artistnotfound) at once".into());
     }
-    
+
     if prefix.is_some() && shortcut_count > 0 {
         return Err("Cannot specify both --prefix and shortcut options (--artistmbid, --imagemeta, --artistsplit, --artistnotfound)".into());
     }
-    
+
     if artistmbid {
         Ok(Some(ARTIST_MBID_CACHE_PREFIX.trim_end_matches("::").to_string()))
     } else if imagemeta {
@@ -158,17 +158,17 @@ fn list_cache_entries(prefix: Option<&str>, detailed: bool, limit: Option<usize>
         };
 
         if entries_to_show.is_empty() {
-            info!("No cache entries found{}", 
+            info!("No cache entries found{}",
                   prefix.map(|p| format!(" with prefix '{}'", p)).unwrap_or_default());
             return Ok(());
         }
 
-        println!("Cache Entries ({}{})", 
+        println!("Cache Entries ({}{})",
                  entries_to_show.len(),
-                 if entries.len() > entries_to_show.len() { 
-                     format!(" of {} total", entries.len()) 
-                 } else { 
-                     String::new() 
+                 if entries.len() > entries_to_show.len() {
+                     format!(" of {} total", entries.len())
+                 } else {
+                     String::new()
                  });
         println!("{:-<120}", "");
         println!("{:<60} {:>10} {:>20} {:>20}", "Key", "Size", "Created", "Updated");
@@ -178,17 +178,17 @@ fn list_cache_entries(prefix: Option<&str>, detailed: bool, limit: Option<usize>
             let created = DateTime::from_timestamp(entry.created_at, 0)
                 .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
                 .unwrap_or_else(|| "Unknown".to_string());
-            
+
             let updated = DateTime::from_timestamp(entry.updated_at, 0)
                 .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
                 .unwrap_or_else(|| "Unknown".to_string());
 
             let size_str = format_size(entry.size_bytes);
-            
-            println!("{:<60} {:>10} {:>20} {:>20}", 
-                     truncate_key(&entry.key, 60), 
-                     size_str, 
-                     created, 
+
+            println!("{:<60} {:>10} {:>20} {:>20}",
+                     truncate_key(&entry.key, 60),
+                     size_str,
+                     created,
                      updated);
         }
     } else {
@@ -200,17 +200,17 @@ fn list_cache_entries(prefix: Option<&str>, detailed: bool, limit: Option<usize>
         };
 
         if keys_to_show.is_empty() {
-            info!("No cache entries found{}", 
+            info!("No cache entries found{}",
                   prefix.map(|p| format!(" with prefix '{}'", p)).unwrap_or_default());
             return Ok(());
         }
 
-        println!("Cache Keys ({}{})", 
+        println!("Cache Keys ({}{})",
                  keys_to_show.len(),
-                 if keys.len() > keys_to_show.len() { 
-                     format!(" of {} total", keys.len()) 
-                 } else { 
-                     String::new() 
+                 if keys.len() > keys_to_show.len() {
+                     format!(" of {} total", keys.len())
+                 } else {
+                     String::new()
                  });
         println!("{:-<80}", "");
 
@@ -263,10 +263,36 @@ fn clean_cache_entries(prefix: Option<&str>, all: bool, older_than_days: Option<
     }
 
     if let Some(days) = older_than_days {
-        // For now, we'll use the cleanup function which removes entries older than the configured max age
-        // In the future, we could add a custom cleanup function that takes days as parameter
-        warn!("Cleaning entries older than {} days using cache cleanup function", days);
-        let deleted = attribute_cache::cleanup()?;
+        if dry_run {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_secs() as i64;
+            let age_seconds = days.saturating_mul(24 * 60 * 60);
+            let age_seconds_i64 = i64::try_from(age_seconds).unwrap_or(i64::MAX);
+            let cutoff_timestamp = now.saturating_sub(age_seconds_i64);
+
+            let entries = attribute_cache::list_entries(None)?;
+            let matching_entries: Vec<_> = entries
+                .iter()
+                .filter(|entry| entry.created_at < cutoff_timestamp)
+                .collect();
+
+            println!(
+                "Would delete {} cache entries older than {} days (dry run)",
+                matching_entries.len(),
+                days
+            );
+            for entry in matching_entries.iter().take(10) {
+                println!("  - {}", entry.key);
+            }
+            if matching_entries.len() > 10 {
+                println!("  ... and {} more", matching_entries.len() - 10);
+            }
+            return Ok(());
+        }
+
+        warn!("Cleaning entries older than {} days", days);
+        let deleted = attribute_cache::cleanup_older_than_days(days)?;
         info!("Deleted {} old cache entries", deleted);
         return Ok(());
     }
@@ -276,7 +302,7 @@ fn clean_cache_entries(prefix: Option<&str>, all: bool, older_than_days: Option<
 
 fn show_cache_stats(by_prefix: bool) -> Result<(), Box<dyn std::error::Error>> {
     let entries = attribute_cache::list_entries(None)?;
-    
+
     if entries.is_empty() {
         info!("Cache is empty");
         return Ok(());
@@ -289,7 +315,7 @@ fn show_cache_stats(by_prefix: bool) -> Result<(), Box<dyn std::error::Error>> {
     println!("{:-<50}", "");
     println!("Total entries: {}", total_count);
     println!("Total size: {}", format_size(total_size));
-    
+
     if let (Some(oldest), Some(newest)) = (
         entries.iter().min_by_key(|e| e.created_at),
         entries.iter().max_by_key(|e| e.created_at)
@@ -300,14 +326,14 @@ fn show_cache_stats(by_prefix: bool) -> Result<(), Box<dyn std::error::Error>> {
         let newest_date = DateTime::from_timestamp(newest.created_at, 0)
             .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
             .unwrap_or_else(|| "Unknown".to_string());
-        
+
         println!("Oldest entry: {}", oldest_date);
         println!("Newest entry: {}", newest_date);
     }
 
     if by_prefix {
         let mut prefix_stats = std::collections::HashMap::new();
-        
+
         for entry in &entries {
             let prefix = extract_prefix(&entry.key);
             let stats = prefix_stats.entry(prefix).or_insert((0, 0));
@@ -366,18 +392,21 @@ fn truncate_key(key: &str, max_len: usize) -> String {
         return String::new();
     }
 
-    if key.len() <= max_len {
+    if key.chars().count() <= max_len {
         key.to_string()
     } else if max_len <= 3 {
         ".".repeat(max_len)
     } else {
-        format!("{}...", &key[..max_len - 3])
+        let visible: String = key.chars().take(max_len - 3).collect();
+        format!("{}...", visible)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rusqlite::params;
+    use tempfile::TempDir;
 
     #[test]
     fn regression_determine_prefix_rejects_conflicting_shortcuts() {
@@ -406,6 +435,18 @@ mod tests {
             image_meta,
             Some(IMAGE_META_CACHE_PREFIX.trim_end_matches("::").to_string())
         );
+
+        let artist_split = determine_prefix(None, false, false, true, false).unwrap();
+        assert_eq!(
+            artist_split,
+            Some(ARTIST_SPLIT_CACHE_PREFIX.trim_end_matches("::").to_string())
+        );
+
+        let artist_not_found = determine_prefix(None, false, false, false, true).unwrap();
+        assert_eq!(
+            artist_not_found,
+            Some(ARTIST_NOT_FOUND_CACHE_PREFIX.trim_end_matches("::").to_string())
+        );
     }
 
     #[test]
@@ -425,11 +466,65 @@ mod tests {
     }
 
     #[test]
+    fn regression_truncate_key_handles_unicode_without_panic() {
+        assert_eq!(truncate_key("Größe", 5), "Größe");
+        assert_eq!(truncate_key("ÄÖÜß", 4), "ÄÖÜß");
+        assert_eq!(truncate_key("ÄÖÜß", 3), "...");
+        assert_eq!(truncate_key("ÄÖÜß123", 4), "Ä...");
+    }
+
+    #[test]
     fn integration_format_size_boundaries_are_human_readable() {
         assert_eq!(format_size(0), "0 B");
         assert_eq!(format_size(1023), "1023 B");
         assert_eq!(format_size(1024), "1.0 KB");
         assert_eq!(format_size(1024 * 1024), "1.0 MB");
+    }
+
+    #[test]
+    fn integration_clean_cache_entries_older_than_days_respects_threshold_and_dry_run() {
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+        AttributeCache::initialize_global(temp_dir.path())
+            .expect("Failed to initialize global cache in temp directory");
+
+        attribute_cache::set("test::old", &"old_value").expect("Failed to set old test key");
+        attribute_cache::set("test::new", &"new_value").expect("Failed to set new test key");
+
+        let db_path = temp_dir.path().join("attributes.db");
+        let conn = rusqlite::Connection::open(&db_path).expect("Failed to open cache database");
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("Failed to get current time")
+            .as_secs() as i64;
+
+        conn.execute(
+            "UPDATE cache SET created_at = ?1 WHERE key = ?2",
+            params![now - (10 * 24 * 60 * 60), "test::old"],
+        )
+        .expect("Failed to backdate old key");
+        conn.execute(
+            "UPDATE cache SET created_at = ?1 WHERE key = ?2",
+            params![now - (2 * 24 * 60 * 60), "test::new"],
+        )
+        .expect("Failed to set recent timestamp for new key");
+
+        clean_cache_entries(None, false, Some(7), true).expect("Dry-run cleanup should succeed");
+        assert!(attribute_cache::get::<String>("test::old")
+            .expect("Get old key after dry-run should succeed")
+            .is_some());
+        assert!(attribute_cache::get::<String>("test::new")
+            .expect("Get new key after dry-run should succeed")
+            .is_some());
+
+        clean_cache_entries(None, false, Some(7), false).expect("Actual cleanup should succeed");
+        assert!(attribute_cache::get::<String>("test::old")
+            .expect("Get old key after cleanup should succeed")
+            .is_none());
+        assert_eq!(
+            attribute_cache::get::<String>("test::new")
+                .expect("Get new key after cleanup should succeed"),
+            Some("new_value".to_string())
+        );
     }
 }
 

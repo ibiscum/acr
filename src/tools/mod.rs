@@ -1,6 +1,11 @@
 pub mod acr_dump_cache;
 pub mod acr_dump_store;
+pub mod acr_favourites;
+pub mod acr_get_mpris_state;
+pub mod acr_list_mpris_players;
+pub mod acr_listen_shairportsync;
 pub mod acr_lms_client;
+pub mod acr_monitor_mpris_state;
 pub mod acr_musicbrainz_client;
 pub mod acr_notify_librespot;
 pub mod acr_player_event_client;

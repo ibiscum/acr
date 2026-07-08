@@ -639,17 +639,25 @@ impl AttributeCache {
 
     /// Clean up old entries that exceed the maximum age
     pub fn cleanup(&mut self) -> Result<usize, String> {
+        self.cleanup_older_than_days(self.max_age_days)
+    }
+
+    /// Clean up entries older than the provided number of days
+    pub fn cleanup_older_than_days(&mut self, days: u64) -> Result<usize, String> {
         if !self.is_enabled() {
             return Err("Cache is disabled".to_string());
         }
 
         match &mut self.db {
             Some(db) => {
-                // Calculate the cutoff timestamp (current time - max_age_days)
-                let cutoff_timestamp = std::time::SystemTime::now()
+                let now = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .map_err(|e| format!("Failed to get current time: {}", e))?
-                    .as_secs() as i64 - (self.max_age_days as i64 * 24 * 60 * 60);
+                    .as_secs() as i64;
+
+                let age_seconds = days.saturating_mul(24 * 60 * 60);
+                let age_seconds_i64 = i64::try_from(age_seconds).unwrap_or(i64::MAX);
+                let cutoff_timestamp = now.saturating_sub(age_seconds_i64);
 
                 match db.execute(
                     "DELETE FROM cache WHERE created_at < ?1",
@@ -657,7 +665,11 @@ impl AttributeCache {
                 ) {
                     Ok(affected_rows) => {
                         if affected_rows > 0 {
-                            info!("Cleaned up {} old entries from attribute cache", affected_rows);
+                            info!(
+                                "Cleaned up {} old entries from attribute cache (older than {} days)",
+                                affected_rows,
+                                days
+                            );
                             // Clear memory cache as some entries might have been removed
                             self.memory_cache.clear();
                             self.current_memory_bytes = 0;
@@ -1007,6 +1019,11 @@ pub fn cleanup() -> Result<usize, String> {
     get_attribute_cache().cleanup()
 }
 
+/// Clean up old entries from the attribute cache older than the provided number of days
+pub fn cleanup_older_than_days(days: u64) -> Result<usize, String> {
+    get_attribute_cache().cleanup_older_than_days(days)
+}
+
 /// List all cache keys, optionally filtered by prefix
 pub fn list_keys(prefix_filter: Option<&str>) -> Result<Vec<String>, String> {
     get_attribute_cache().list_keys(prefix_filter)
@@ -1152,6 +1169,45 @@ mod tests {
         let cache_file = temp_dir.path().join("test_cache.db");
         let cache = AttributeCache::with_database_file(&cache_file);
         (cache, temp_dir)
+    }
+
+    #[test]
+    fn test_cleanup_older_than_days_uses_provided_threshold() {
+        let (mut cache, _temp_dir) = create_test_cache();
+
+        cache.set("old", &"old_value").expect("Failed to set old entry");
+        cache.set("new", &"new_value").expect("Failed to set new entry");
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("Failed to get current time")
+            .as_secs() as i64;
+
+        if let Some(db) = cache.db.as_ref() {
+            db.execute(
+                "UPDATE cache SET created_at = ?1 WHERE key = ?2",
+                params![now - (10 * 24 * 60 * 60), "old"],
+            )
+            .expect("Failed to update old entry timestamp");
+            db.execute(
+                "UPDATE cache SET created_at = ?1 WHERE key = ?2",
+                params![now - (2 * 24 * 60 * 60), "new"],
+            )
+            .expect("Failed to update new entry timestamp");
+        } else {
+            panic!("Database should be available in test cache");
+        }
+
+        let deleted = cache
+            .cleanup_older_than_days(7)
+            .expect("cleanup_older_than_days should succeed");
+        assert_eq!(deleted, 1);
+
+        assert!(cache.get::<String>("old").expect("Get old should succeed").is_none());
+        assert_eq!(
+            cache.get::<String>("new").expect("Get new should succeed"),
+            Some("new_value".to_string())
+        );
     }
 
     #[test]

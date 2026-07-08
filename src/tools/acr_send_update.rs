@@ -260,8 +260,8 @@ fn parse_bool_like_arg(value: &str) -> Result<bool, Box<dyn Error>> {
 }
 
 fn ensure_non_negative(field_name: &str, value: f64) -> Result<(), Box<dyn Error>> {
-    if value.is_sign_negative() {
-        return Err(format!("{} must be >= 0", field_name).into());
+    if !value.is_finite() || value.is_sign_negative() {
+        return Err(format!("{} must be a finite number >= 0", field_name).into());
     }
     Ok(())
 }
@@ -343,5 +343,7 @@ mod tests {
         assert!(ensure_non_negative("position", 0.0).is_ok());
         assert!(ensure_non_negative("length", 42.5).is_ok());
         assert!(ensure_non_negative("position", -0.1).is_err());
+        assert!(ensure_non_negative("position", f64::NAN).is_err());
+        assert!(ensure_non_negative("length", f64::INFINITY).is_err());
     }
 }

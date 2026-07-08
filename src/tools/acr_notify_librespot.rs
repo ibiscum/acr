@@ -30,12 +30,13 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Get the player event type from environment
     let player_event = env::var("PLAYER_EVENT").unwrap_or_else(|_| "unknown".to_string());
+    let normalized_event = normalize_player_event(&player_event);
 
     if !args.quiet {
         println!("Received event: {}", player_event);
     }
 
-    match player_event.as_str() {
+    match normalized_event.as_str() {
         "track_changed" => {
             handle_track_changed(&client, &args)?;
         }
@@ -90,7 +91,7 @@ fn handle_track_changed(client: &ureq::Agent, args: &Args) -> Result<(), Box<dyn
         if let Some(duration_seconds) = parse_millis_to_seconds(&duration_ms) {
             // Convert to seconds and ensure it's set
             song["duration"] = json!(duration_seconds);
-            
+
             // Log duration for debugging
             if !args.quiet {
                 println!("Setting song duration: {} ms -> {} seconds", duration_ms, duration_seconds);
@@ -100,7 +101,7 @@ fn handle_track_changed(client: &ureq::Agent, args: &Args) -> Result<(), Box<dyn
 
     if let Ok(uri) = env::var("URI") {
         song["uri"] = json!(uri);
-        
+
         // Also set stream_url for compatibility
         song["stream_url"] = json!(uri);
     }
@@ -120,7 +121,7 @@ fn handle_track_changed(client: &ureq::Agent, args: &Args) -> Result<(), Box<dyn
             // Set both field names to ensure compatibility
             song["cover_url"] = json!(cover_url);
             song["cover_art_url"] = json!(cover_url);
-            
+
             // Log cover URL for debugging
             if !args.quiet {
                 println!("Setting cover URL: {}", cover_url);
@@ -286,6 +287,10 @@ fn parse_millis_to_seconds(value: &str) -> Option<f64> {
     Some(millis as f64 / 1000.0)
 }
 
+fn normalize_player_event(value: &str) -> String {
+    value.trim().to_ascii_lowercase()
+}
+
 fn parse_bool_like(value: &str) -> Option<bool> {
     match value.trim().to_ascii_lowercase().as_str() {
         "true" | "1" | "yes" | "on" => Some(true),
@@ -319,6 +324,13 @@ mod tests {
         assert_eq!(parse_bool_like("off"), Some(false));
         assert_eq!(parse_bool_like("0"), Some(false));
         assert_eq!(parse_bool_like("maybe"), None);
+    }
+
+    #[test]
+    fn regression_normalize_player_event_trims_and_lowercases() {
+        assert_eq!(normalize_player_event(" playing "), "playing");
+        assert_eq!(normalize_player_event("TRACK_CHANGED"), "track_changed");
+        assert_eq!(normalize_player_event("\tSeeked\n"), "seeked");
     }
 
     #[test]

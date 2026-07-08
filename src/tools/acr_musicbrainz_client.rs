@@ -70,7 +70,7 @@ fn main() {
     // Load configuration
     let config_path = matches.get_one::<String>("config").unwrap();
     println!("Loading configuration from: {}", config_path);
-    
+
     let config = match load_config_file(config_path) {
         Ok(config) => {
             println!("Configuration loaded successfully");
@@ -81,10 +81,10 @@ fn main() {
             std::process::exit(1);
         }
     };
-    
+
     // Initialize MusicBrainz module
     musicbrainz::initialize_from_config(&config);
-    
+
     // Check if MusicBrainz is enabled
     if !musicbrainz::is_enabled() {
         warn!("MusicBrainz lookups are disabled in configuration");
@@ -95,37 +95,37 @@ fn main() {
         info!("MusicBrainz lookups are enabled");
         println!("MusicBrainz lookups are enabled");
     }
-    
+
     // Check which operation to perform
     let verbose = matches.get_flag("verbose");
     if verbose {
         println!("Verbose mode enabled");
     }
-    
+
     // Handle artist name lookup
     if let Some(artist_name) = matches.get_one::<String>("artist-name") {
         lookup_artist_by_name(artist_name, verbose);
         return;
     }
-    
-    // Handle artist MBID lookup  
+
+    // Handle artist MBID lookup
     if let Some(artist_mbid) = matches.get_one::<String>("artist-mbid") {
         lookup_artist_by_mbid(artist_mbid, verbose);
         return;
     }
-    
+
     // Handle album MBID lookup
     if let Some(album_mbid) = matches.get_one::<String>("album-mbid") {
         lookup_album_by_mbid(album_mbid, verbose);
         return;
     }
-    
+
     // Handle artist name splitting
     if let Some(split_name) = matches.get_one::<String>("split") {
         split_artist_name(split_name, verbose);
         return;
     }
-    
+
     // If no specific operation was requested, show help
     println!("No operation specified. Use --help for available options.");
     show_examples();
@@ -134,7 +134,7 @@ fn main() {
 fn load_config_file(config_path: &str) -> Result<serde_json::Value, String> {
     let config_content = fs::read_to_string(config_path)
         .map_err(|e| format!("Failed to read config file '{}': {}", config_path, e))?;
-    
+
     serde_json::from_str(&config_content)
         .map_err(|e| format!("Failed to parse config file '{}': {}", config_path, e))
 }
@@ -143,22 +143,22 @@ fn lookup_artist_by_name(artist_name: &str, verbose: bool) {
     println!("\n=== Artist Name Lookup ===");
     println!("Artist: {}", artist_name);
     println!("Making direct API call to MusicBrainz...");
-    
+
     if verbose {
         println!("Artist separators checked: {:?}", DEFAULT_ARTIST_SEPARATORS);
     }
-    
+
     // Check if the artist name contains separators
     let contains_separators = DEFAULT_ARTIST_SEPARATORS.iter().any(|sep| artist_name.contains(sep));
     if contains_separators {
-        println!("Note: Artist name contains potential separators: {}", 
+        println!("Note: Artist name contains potential separators: {}",
                  DEFAULT_ARTIST_SEPARATORS.iter()
                      .filter(|sep| artist_name.contains(*sep))
                      .map(|s| format!("'{}'", s))
                      .collect::<Vec<_>>()
                      .join(", "));
     }
-    
+
     // Make direct API call using ureq
     match make_artist_search_api_call(artist_name, verbose) {
         Ok(response) => {
@@ -177,21 +177,21 @@ fn lookup_artist_by_name(artist_name: &str, verbose: bool) {
 fn lookup_artist_by_mbid(mbid: &str, verbose: bool) {
     println!("\n=== Artist MBID Lookup ===");
     println!("MBID: {}", mbid);
-    
+
     // Validate MBID format
     if !is_mbid(mbid) {
         println!("✗ Invalid MBID format. MusicBrainz IDs should be in UUID format:");
         println!("  Example: 5b11f4ce-a62d-471e-81fc-a69a8278c7da");
         return;
     }
-    
+
     println!("✓ MBID format is valid");
     println!("Making direct API call to MusicBrainz...");
-    
+
     if verbose {
         println!("MusicBrainz URL: https://musicbrainz.org/artist/{}", mbid);
     }
-    
+
     // Make direct API call
     match make_artist_lookup_api_call(mbid, verbose) {
         Ok(response) => {
@@ -210,21 +210,21 @@ fn lookup_artist_by_mbid(mbid: &str, verbose: bool) {
 fn lookup_album_by_mbid(mbid: &str, verbose: bool) {
     println!("\n=== Album MBID Lookup ===");
     println!("MBID: {}", mbid);
-    
+
     // Validate MBID format
     if !is_mbid(mbid) {
         println!("✗ Invalid MBID format. MusicBrainz IDs should be in UUID format:");
         println!("  Example: 5b11f4ce-a62d-471e-81fc-a69a8278c7da");
         return;
     }
-    
+
     println!("✓ MBID format is valid");
     println!("Making direct API call to MusicBrainz...");
-    
+
     if verbose {
         println!("MusicBrainz URL: https://musicbrainz.org/release/{}", mbid);
     }
-    
+
     // Make direct API call
     match make_album_lookup_api_call(mbid, verbose) {
         Ok(response) => {
@@ -243,30 +243,28 @@ fn lookup_album_by_mbid(mbid: &str, verbose: bool) {
 fn split_artist_name(artist_name: &str, verbose: bool) {
     println!("\n=== Artist Name Splitting ===");
     println!("Artist: {}", artist_name);
-    
+
     // Check for separators
-    let found_separators: Vec<&str> = DEFAULT_ARTIST_SEPARATORS.iter()
-        .filter(|sep| artist_name.contains(*sep))
-        .cloned()
-        .collect();
-    
+    let found_separators = find_present_separators(artist_name, DEFAULT_ARTIST_SEPARATORS);
+
     if found_separators.is_empty() {
         println!("✓ No separators found in artist name");
         println!("  Separators checked: {:?}", DEFAULT_ARTIST_SEPARATORS);
         return;
     }
-    
+
     println!("ℹ Found separators: {:?}", found_separators);
-    
+
     // Split the artist name using the found separators
-    let split_artists = split_artist_with_separators(artist_name, &found_separators);
-    
+    let found_separator_refs: Vec<&str> = found_separators.iter().map(String::as_str).collect();
+    let split_artists = split_artist_with_separators(artist_name, &found_separator_refs);
+
     if split_artists.len() > 1 {
         println!("✓ Artist name appears to contain multiple artists:");
         for (i, artist) in split_artists.iter().enumerate() {
             println!("  {}: {}", i + 1, artist.trim());
         }
-        
+
         if verbose {
             println!("\nTesting individual artists with direct API calls:");
             for artist in &split_artists {
@@ -298,7 +296,7 @@ fn make_artist_search_api_call(artist_name: &str, verbose: bool) -> Result<Strin
         "https://musicbrainz.org/ws/2/artist?query=artist:{}&fmt=json&limit=3",
         encoded_name
     );
-    
+
     if verbose {
         println!("API URL: {}", url);
     }
@@ -308,21 +306,21 @@ fn make_artist_search_api_call(artist_name: &str, verbose: bool) -> Result<Strin
 
 fn make_artist_lookup_api_call(mbid: &str, verbose: bool) -> Result<String, String> {
     let url = format!("https://musicbrainz.org/ws/2/artist/{}?fmt=json", mbid);
-    
+
     if verbose {
         println!("API URL: {}", url);
     }
-    
+
     perform_get_request(&url)
 }
 
 fn make_album_lookup_api_call(mbid: &str, verbose: bool) -> Result<String, String> {
     let url = format!("https://musicbrainz.org/ws/2/release/{}?fmt=json", mbid);
-    
+
     if verbose {
         println!("API URL: {}", url);
     }
-    
+
     perform_get_request(&url)
 }
 
@@ -350,9 +348,9 @@ fn parse_and_display_artist_search_response(response: &str, artist_name: &str, v
                         let name = artist.get("name").and_then(|n| n.as_str()).unwrap_or("Unknown");
                         let id = artist.get("id").and_then(|i| i.as_str()).unwrap_or("Unknown");
                         let score = artist.get("score").and_then(|s| s.as_i64()).unwrap_or(0);
-                        
+
                         println!("  {}: {} (MBID: {}, Score: {})", i + 1, name, id, score);
-                        
+
                         if verbose {
                             if let Some(disambiguation) = artist.get("disambiguation").and_then(|d| d.as_str()) {
                                 if !disambiguation.is_empty() {
@@ -384,7 +382,7 @@ fn parse_and_display_artist_lookup_response(response: &str, mbid: &str, verbose:
         Ok(json) => {
             let name = json.get("name").and_then(|n| n.as_str()).unwrap_or("Unknown");
             println!("✓ Artist found: {}", name);
-            
+
             if verbose {
                 if let Some(disambiguation) = json.get("disambiguation").and_then(|d| d.as_str()) {
                     if !disambiguation.is_empty() {
@@ -417,7 +415,7 @@ fn parse_and_display_album_lookup_response(response: &str, mbid: &str, verbose: 
         Ok(json) => {
             let title = json.get("title").and_then(|t| t.as_str()).unwrap_or("Unknown");
             println!("✓ Album found: {}", title);
-            
+
             if verbose {
                 if let Some(date) = json.get("date").and_then(|d| d.as_str()) {
                     println!("  Date: {}", date);
@@ -445,7 +443,7 @@ fn parse_and_display_album_lookup_response(response: &str, mbid: &str, verbose: 
 
 fn split_artist_with_separators(artist_name: &str, separators: &[&str]) -> Vec<String> {
     let mut parts = vec![artist_name.to_string()];
-    
+
     for separator in separators {
         let mut new_parts = Vec::new();
         for part in parts {
@@ -457,12 +455,21 @@ fn split_artist_with_separators(artist_name: &str, separators: &[&str]) -> Vec<S
         }
         parts = new_parts;
     }
-    
+
     parts.into_iter()
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .collect()
 }
+
+    fn find_present_separators(artist_name: &str, separators: &[&str]) -> Vec<String> {
+        let artist_name_lower = artist_name.to_lowercase();
+        separators
+        .iter()
+        .filter(|sep| artist_name_lower.contains(&sep.to_lowercase()))
+        .map(|sep| (*sep).to_string())
+        .collect()
+    }
 
 fn show_examples() {
     println!("\n=== Usage Examples ===");
@@ -504,6 +511,20 @@ mod tests {
         let separators = [" feat. ", " & "];
         let split = split_artist_with_separators("A feat. B & C", &separators);
         assert_eq!(split, vec!["A", "B", "C"]);
+    }
+
+    #[test]
+    fn regression_find_present_separators_is_case_insensitive() {
+        let separators = [" feat. ", " & ", ", "];
+        let found = find_present_separators("A FEAT. B & C", &separators);
+        assert_eq!(found, vec![" feat. ", " & "]);
+    }
+
+    #[test]
+    fn regression_find_present_separators_empty_when_none_present() {
+        let separators = [" feat. ", " & ", ", "];
+        let found = find_present_separators("Solo Artist", &separators);
+        assert!(found.is_empty());
     }
 
     #[test]

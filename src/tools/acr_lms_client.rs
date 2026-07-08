@@ -193,11 +193,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     };
 
     // Check if this command requires a player ID
-    let requires_player = !matches!(cli.command,
-        Commands::ListPlayers
-        | Commands::ListArtists
-        | Commands::ListAlbums { .. }
-        | Commands::ListTracks { .. });
+    let requires_player = command_requires_player(&cli.command);
 
     // Get the first connected player if player_id is not specified and command requires a player
     let player_id = if !requires_player {
@@ -680,6 +676,17 @@ fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+fn command_requires_player(command: &Commands) -> bool {
+    !matches!(
+        command,
+        Commands::ListPlayers
+            | Commands::ListArtists
+            | Commands::ListAlbums { .. }
+            | Commands::ListTracks { .. }
+            | Commands::IsConnected { .. }
+    )
+}
+
 /// Check if this client is connected to an LMS server
 fn check_if_connected(
     client: &mut LmsRpcClient,
@@ -732,4 +739,41 @@ fn check_if_connected(
 
     // No matching player found
     Ok(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn regression_command_requires_player_server_level_commands() {
+        assert!(!command_requires_player(&Commands::ListPlayers));
+        assert!(!command_requires_player(&Commands::ListArtists));
+        assert!(!command_requires_player(&Commands::ListAlbums {
+            artist: "123".to_string()
+        }));
+        assert!(!command_requires_player(&Commands::ListTracks {
+            album: "456".to_string()
+        }));
+        assert!(!command_requires_player(&Commands::IsConnected { mac: None }));
+    }
+
+    #[test]
+    fn regression_command_requires_player_player_level_commands() {
+        assert!(command_requires_player(&Commands::Status));
+        assert!(command_requires_player(&Commands::Play));
+        assert!(command_requires_player(&Commands::Pause));
+        assert!(command_requires_player(&Commands::Resume));
+        assert!(command_requires_player(&Commands::Stop));
+        assert!(command_requires_player(&Commands::Next));
+        assert!(command_requires_player(&Commands::Previous));
+        assert!(command_requires_player(&Commands::Volume { level: 50 }));
+        assert!(command_requires_player(&Commands::Mute));
+        assert!(command_requires_player(&Commands::Unmute));
+        assert!(command_requires_player(&Commands::Search {
+            query: "test".to_string()
+        }));
+        assert!(command_requires_player(&Commands::Repeat { mode: 1 }));
+        assert!(command_requires_player(&Commands::Shuffle { mode: 2 }));
+    }
 }

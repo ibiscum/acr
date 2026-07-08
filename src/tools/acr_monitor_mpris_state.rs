@@ -10,22 +10,22 @@ use audiocontrol::helpers::mpris::{find_mpris_players, BusType, get_dbus_propert
 
 fn main() {
     env_logger::init();
-    
+
     let args: Vec<String> = env::args().collect();
-    
+
     if args.len() < 2 || args[1] == "--help" || args[1] == "-h" {
         print_help();
         return;
     }
-    
+
     let player_identifier = &args[1];
-    
+
     println!("AudioControl MPRIS State Monitor");
     println!("================================");
     println!("Player: {}", player_identifier);
     println!("Press Ctrl+C to stop monitoring...");
     println!();
-    
+
     // Find the specified player
     let player = match find_player(player_identifier) {
         Some(p) => p,
@@ -37,15 +37,15 @@ fn main() {
             return;
         }
     };
-    
+
     println!("Found player: {} ({})", player.bus_name, player.bus_type);
     println!("Monitoring state changes by polling...");
     println!();
-    
+
     // Set up signal handler for Ctrl+C
     let running = Arc::new(AtomicBool::new(true));
     let r = running.clone();
-    
+
     if let Err(e) = ctrlc::set_handler(move || {
         println!("\nReceived Ctrl+C, shutting down...");
         r.store(false, Ordering::SeqCst);
@@ -53,7 +53,7 @@ fn main() {
         eprintln!("Error: Failed to set Ctrl+C handler: {}", e);
         std::process::exit(1);
     }
-    
+
     // Connect to the appropriate bus
     let conn = match player.bus_type {
         BusType::Session => match Connection::new_session() {
@@ -71,20 +71,20 @@ fn main() {
             }
         },
     };
-    
+
     // Create proxy for getting current state
     let proxy = Proxy::new(&player.bus_name, "/org/mpris/MediaPlayer2", Duration::from_millis(5000), &conn);
-    
+
     // Print initial state and store it for comparison
     let mut last_state = get_current_state(&proxy);
     print_current_state(&last_state);
-    
+
     // Start monitoring loop
     while running.load(Ordering::SeqCst) {
         std::thread::sleep(Duration::from_millis(500)); // Poll every 500ms
-        
+
         let current_state = get_current_state(&proxy);
-        
+
         // Compare with last state and print changes
         let changes = detect_changes(&last_state, &current_state);
         if !changes.is_empty() {
@@ -96,10 +96,10 @@ fn main() {
             print_current_state(&current_state);
             println!();
         }
-        
+
         last_state = current_state;
     }
-    
+
     println!("Monitoring stopped.");
 }
 
@@ -166,7 +166,7 @@ fn get_current_state(proxy: &Proxy<'_, &Connection>) -> PlayerState {
     let playback_status = get_dbus_property(proxy, "org.mpris.MediaPlayer2.Player", "PlaybackStatus")
         .and_then(|v| v.as_str().map(|s| s.to_string()))
         .unwrap_or_else(|| "Unknown".to_string());
-    
+
     let (title, artist, album) = if let Some(metadata_variant) = retrieve_mpris_metadata(proxy) {
         if let Some(song) = extract_song_from_mpris_metadata(&metadata_variant) {
             (
@@ -180,31 +180,31 @@ fn get_current_state(proxy: &Proxy<'_, &Connection>) -> PlayerState {
     } else {
         ("Unknown Title".to_string(), "Unknown Artist".to_string(), "".to_string())
     };
-    
+
     let position = get_dbus_property(proxy, "org.mpris.MediaPlayer2.Player", "Position")
         .and_then(|v| v.as_i64());
-    
+
     let volume = get_dbus_property(proxy, "org.mpris.MediaPlayer2.Player", "Volume")
         .and_then(|v| v.as_f64());
-    
+
     let shuffle = get_dbus_property(proxy, "org.mpris.MediaPlayer2.Player", "Shuffle")
         .and_then(|v| v.as_u64().map(|u| u != 0).or_else(|| v.as_i64().map(|i| i != 0)));
-    
+
     let loop_status = get_dbus_property(proxy, "org.mpris.MediaPlayer2.Player", "LoopStatus")
         .and_then(|v| v.as_str().map(|s| s.to_string()));
-        
+
     let can_play = get_dbus_property(proxy, "org.mpris.MediaPlayer2.Player", "CanPlay")
         .and_then(|v| v.as_u64().map(|u| u != 0).or_else(|| v.as_i64().map(|i| i != 0)));
-        
+
     let can_pause = get_dbus_property(proxy, "org.mpris.MediaPlayer2.Player", "CanPause")
         .and_then(|v| v.as_u64().map(|u| u != 0).or_else(|| v.as_i64().map(|i| i != 0)));
-        
+
     let can_go_next = get_dbus_property(proxy, "org.mpris.MediaPlayer2.Player", "CanGoNext")
         .and_then(|v| v.as_u64().map(|u| u != 0).or_else(|| v.as_i64().map(|i| i != 0)));
-        
+
     let can_go_previous = get_dbus_property(proxy, "org.mpris.MediaPlayer2.Player", "CanGoPrevious")
         .and_then(|v| v.as_u64().map(|u| u != 0).or_else(|| v.as_i64().map(|i| i != 0)));
-    
+
     PlayerState {
         playback_status,
         title,
@@ -223,23 +223,25 @@ fn get_current_state(proxy: &Proxy<'_, &Connection>) -> PlayerState {
 
 fn detect_changes(old_state: &PlayerState, new_state: &PlayerState) -> Vec<String> {
     let mut changes = Vec::new();
-    
+
     if old_state.playback_status != new_state.playback_status {
         changes.push(format!("PlaybackStatus: {} → {}", old_state.playback_status, new_state.playback_status));
     }
-    
+
     if old_state.title != new_state.title {
         changes.push(format!("Title: {} → {}", old_state.title, new_state.title));
     }
-    
+
     if old_state.artist != new_state.artist {
         changes.push(format!("Artist: {} → {}", old_state.artist, new_state.artist));
     }
-    
-    if old_state.album != new_state.album && !new_state.album.is_empty() {
-        changes.push(format!("Album: {} → {}", old_state.album, new_state.album));
+
+    if old_state.album != new_state.album {
+        let old_album = if old_state.album.is_empty() { "<none>" } else { &old_state.album };
+        let new_album = if new_state.album.is_empty() { "<none>" } else { &new_state.album };
+        changes.push(format!("Album: {} → {}", old_album, new_album));
     }
-    
+
     if old_state.position != new_state.position {
         if let (Some(old_pos), Some(new_pos)) = (old_state.position, new_state.position) {
             // Only report position changes if they're significant (more than 2 seconds)
@@ -247,53 +249,53 @@ fn detect_changes(old_state: &PlayerState, new_state: &PlayerState) -> Vec<Strin
             if diff > 2_000_000 { // 2 seconds in microseconds
                 let old_seconds = old_pos / 1_000_000;
                 let new_seconds = new_pos / 1_000_000;
-                changes.push(format!("Position: {}:{:02} → {}:{:02}", 
+                changes.push(format!("Position: {}:{:02} → {}:{:02}",
                     old_seconds / 60, old_seconds % 60,
                     new_seconds / 60, new_seconds % 60));
             }
         }
     }
-    
+
     if old_state.volume != new_state.volume {
         if let (Some(old_vol), Some(new_vol)) = (old_state.volume, new_state.volume) {
             changes.push(format!("Volume: {:.1}% → {:.1}%", old_vol * 100.0, new_vol * 100.0));
         }
     }
-    
+
     if old_state.shuffle != new_state.shuffle {
         if let (Some(old_shuffle), Some(new_shuffle)) = (old_state.shuffle, new_state.shuffle) {
             changes.push(format!("Shuffle: {} → {}", old_shuffle, new_shuffle));
         }
     }
-    
+
     if old_state.loop_status != new_state.loop_status {
         if let (Some(old_loop), Some(new_loop)) = (&old_state.loop_status, &new_state.loop_status) {
             changes.push(format!("LoopStatus: {} → {}", old_loop, new_loop));
         }
     }
-    
+
     changes
 }
 
 fn print_current_state(state: &PlayerState) {
     println!("=== Current State ===");
     println!("Status: {} | Title: {} | Artist: {}", state.playback_status, state.title, state.artist);
-    
+
     if !state.album.is_empty() {
         println!("Album: {}", state.album);
     }
-    
+
     if let Some(pos) = state.position {
         let seconds = pos / 1_000_000;
         let minutes = seconds / 60;
         let secs = seconds % 60;
         println!("Position: {}:{:02}", minutes, secs);
     }
-    
+
     if let Some(vol) = state.volume {
         println!("Volume: {:.1}%", vol * 100.0);
     }
-    
+
     let mut capabilities = Vec::new();
     if let Some(true) = state.can_play { capabilities.push("Play"); }
     if let Some(true) = state.can_pause { capabilities.push("Pause"); }
@@ -302,11 +304,11 @@ fn print_current_state(state: &PlayerState) {
     if !capabilities.is_empty() {
         println!("Capabilities: {}", capabilities.join(", "));
     }
-    
+
     if let Some(shuffle) = state.shuffle {
         println!("Shuffle: {}", shuffle);
     }
-    
+
     if let Some(ref loop_status) = state.loop_status {
         println!("Loop: {}", loop_status);
     }
@@ -317,36 +319,38 @@ fn find_player(identifier: &str) -> Option<PlayerInfo> {
     for bus_type in [BusType::Session, BusType::System] {
         if let Ok(players) = find_mpris_players(bus_type.clone()) {
             for player in players {
-                // Match by full bus name
-                if player.bus_name == identifier {
+                if player_matches_identifier(identifier, &player.bus_name, player.identity.as_deref()) {
                     return Some(PlayerInfo {
                         bus_name: player.bus_name,
                         bus_type: player.bus_type,
                     });
-                }
-                
-                // Match by partial bus name
-                if player.bus_name.contains(identifier) {
-                    return Some(PlayerInfo {
-                        bus_name: player.bus_name,
-                        bus_type: player.bus_type,
-                    });
-                }
-                
-                // Match by identity
-                if let Some(identity) = &player.identity {
-                    if identity.to_lowercase().contains(&identifier.to_lowercase()) {
-                        return Some(PlayerInfo {
-                            bus_name: player.bus_name,
-                            bus_type: player.bus_type,
-                        });
-                    }
                 }
             }
         }
     }
-    
+
     None
+}
+
+fn player_matches_identifier(identifier: &str, bus_name: &str, identity: Option<&str>) -> bool {
+    if identifier.is_empty() {
+        return false;
+    }
+
+    if bus_name == identifier {
+        return true;
+    }
+
+    let identifier_lower = identifier.to_lowercase();
+    if bus_name.to_lowercase().contains(&identifier_lower) {
+        return true;
+    }
+
+    if let Some(identity) = identity {
+        return identity.to_lowercase().contains(&identifier_lower);
+    }
+
+    false
 }
 
 fn list_available_players() {
@@ -369,4 +373,74 @@ fn list_available_players() {
 struct PlayerInfo {
     bus_name: String,
     bus_type: BusType,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_state() -> PlayerState {
+        PlayerState {
+            playback_status: "Playing".to_string(),
+            title: "Song".to_string(),
+            artist: "Artist".to_string(),
+            album: "Album".to_string(),
+            position: Some(10_000_000),
+            volume: Some(0.5),
+            shuffle: Some(false),
+            loop_status: Some("None".to_string()),
+            can_play: Some(true),
+            can_pause: Some(true),
+            can_go_next: Some(true),
+            can_go_previous: Some(true),
+        }
+    }
+
+    #[test]
+    fn regression_player_matches_identifier_case_insensitive_partial_bus_name() {
+        assert!(player_matches_identifier(
+            "SPOTIFY",
+            "org.mpris.MediaPlayer2.spotify",
+            None
+        ));
+    }
+
+    #[test]
+    fn regression_player_matches_identifier_case_insensitive_identity() {
+        assert!(player_matches_identifier(
+            "vlc media player",
+            "org.mpris.MediaPlayer2.vlc",
+            Some("VLC Media Player")
+        ));
+    }
+
+    #[test]
+    fn regression_detect_changes_reports_album_cleared() {
+        let old_state = sample_state();
+        let mut new_state = sample_state();
+        new_state.album = String::new();
+
+        let changes = detect_changes(&old_state, &new_state);
+        assert!(changes.iter().any(|c| c.contains("Album: Album → <none>")));
+    }
+
+    #[test]
+    fn regression_detect_changes_ignores_small_position_shift() {
+        let old_state = sample_state();
+        let mut new_state = sample_state();
+        new_state.position = Some(11_500_000); // 1.5 seconds
+
+        let changes = detect_changes(&old_state, &new_state);
+        assert!(!changes.iter().any(|c| c.starts_with("Position:")));
+    }
+
+    #[test]
+    fn regression_detect_changes_reports_large_position_shift() {
+        let old_state = sample_state();
+        let mut new_state = sample_state();
+        new_state.position = Some(13_500_000); // 3.5 seconds
+
+        let changes = detect_changes(&old_state, &new_state);
+        assert!(changes.iter().any(|c| c.starts_with("Position:")));
+    }
 }

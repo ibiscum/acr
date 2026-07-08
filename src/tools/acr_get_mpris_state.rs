@@ -8,21 +8,21 @@ use audiocontrol::helpers::mpris::{find_mpris_players, BusType, get_dbus_propert
 
 fn main() {
     env_logger::init();
-    
+
     let args: Vec<String> = env::args().collect();
-    
+
     if args.len() < 2 || args[1] == "--help" || args[1] == "-h" {
         print_help();
         return;
     }
-    
+
     let player_identifier = &args[1];
-    
+
     println!("AudioControl MPRIS State Inspector");
     println!("==================================");
     println!("Player: {}", player_identifier);
     println!();
-    
+
     // Find the specified player
     let player = match find_player(player_identifier) {
         Some(p) => p,
@@ -34,10 +34,10 @@ fn main() {
             return;
         }
     };
-    
+
     println!("Found player: {} ({})", player.bus_name, player.bus_type);
     println!();
-    
+
     // Connect to the appropriate bus
     let conn = match player.bus_type {
         BusType::Session => match Connection::new_session() {
@@ -55,13 +55,13 @@ fn main() {
             }
         },
     };
-    
+
     // Create proxy for the player
     let proxy = Proxy::new(&player.bus_name, "/org/mpris/MediaPlayer2", Duration::from_millis(5000), &conn);
-    
+
     // Display current song info first
     print_current_song(&proxy);
-    
+
     // Get and display all MPRIS properties
     print_mpris_state(&proxy);
 }
@@ -95,36 +95,39 @@ fn find_player(identifier: &str) -> Option<PlayerInfo> {
     for bus_type in [BusType::Session, BusType::System] {
         if let Ok(players) = find_mpris_players(bus_type.clone()) {
             for player in players {
-                // Match by full bus name
-                if player.bus_name == identifier {
+                if player_matches_identifier(identifier, &player.bus_name, player.identity.as_deref()) {
                     return Some(PlayerInfo {
                         bus_name: player.bus_name,
                         bus_type: player.bus_type,
                     });
-                }
-                
-                // Match by partial bus name
-                if player.bus_name.contains(identifier) {
-                    return Some(PlayerInfo {
-                        bus_name: player.bus_name,
-                        bus_type: player.bus_type,
-                    });
-                }
-                
-                // Match by identity
-                if let Some(identity) = &player.identity {
-                    if identity.to_lowercase().contains(&identifier.to_lowercase()) {
-                        return Some(PlayerInfo {
-                            bus_name: player.bus_name,
-                            bus_type: player.bus_type,
-                        });
-                    }
                 }
             }
         }
     }
-    
+
     None
+}
+
+fn player_matches_identifier(identifier: &str, bus_name: &str, identity: Option<&str>) -> bool {
+    if identifier.is_empty() {
+        return false;
+    }
+
+    // Keep exact bus name matching behavior first.
+    if bus_name == identifier {
+        return true;
+    }
+
+    let identifier_lower = identifier.to_lowercase();
+    if bus_name.to_lowercase().contains(&identifier_lower) {
+        return true;
+    }
+
+    if let Some(identity) = identity {
+        return identity.to_lowercase().contains(&identifier_lower);
+    }
+
+    false
 }
 
 fn list_available_players() {
@@ -146,37 +149,37 @@ fn list_available_players() {
 fn print_current_song(proxy: &Proxy<'_, &Connection>) {
     println!("Current Song:");
     println!("=============");
-    
+
     // Get playback status first
     let status = if let Some(status_variant) = get_dbus_property(proxy, "org.mpris.MediaPlayer2.Player", "PlaybackStatus") {
         status_variant.as_str().unwrap_or("Unknown").to_string()
     } else {
         "Unknown".to_string()
     };
-    
+
     // Get metadata
     if let Some(metadata_variant) = retrieve_mpris_metadata(proxy) {
         if let Some(song) = extract_song_from_mpris_metadata(&metadata_variant) {
             let title = song.title.as_deref().unwrap_or("Unknown Title");
             let artist = song.artist.as_deref().unwrap_or("Unknown Artist");
-            
+
             println!("  Status: {}", status);
             println!("  Title:  {}", title);
             println!("  Artist: {}", artist);
-            
+
             if let Some(album) = &song.album {
                 if !album.is_empty() {
                     println!("  Album:  {}", album);
                 }
             }
-            
+
             // Show track number if available
             if let Some(track_number) = song.track_number {
                 if track_number > 0 {
                     println!("  Track:  #{}", track_number);
                 }
             }
-            
+
             // Show duration if available
             if let Some(duration) = song.duration {
                 let total_seconds = duration as i64;
@@ -184,7 +187,7 @@ fn print_current_song(proxy: &Proxy<'_, &Connection>) {
                 let seconds = total_seconds % 60;
                 println!("  Length: {}:{:02}", minutes, seconds);
             }
-            
+
             // Show genres if available
             if !song.genres.is_empty() {
                 if song.genres.len() == 1 {
@@ -199,7 +202,7 @@ fn print_current_song(proxy: &Proxy<'_, &Connection>) {
     } else {
         println!("  Status: {} - No metadata available", status);
     }
-    
+
     println!();
 }
 
@@ -207,22 +210,22 @@ fn print_mpris_state(proxy: &Proxy<'_, &Connection>) {
     println!("MPRIS MediaPlayer2 Interface:");
     println!("============================");
     print_mediaplayer2_properties(proxy);
-    
+
     println!();
     println!("MPRIS MediaPlayer2.Player Interface:");
     println!("===================================");
     print_player_properties(proxy);
-    
+
     println!();
     println!("Current Track Metadata:");
     println!("======================");
     print_metadata(proxy);
-    
+
     println!();
     println!("Track List Interface (if supported):");
     println!("===================================");
     print_tracklist_properties(proxy);
-    
+
     println!();
     println!("Playlists Interface (if supported):");
     println!("==================================");
@@ -241,7 +244,7 @@ fn print_mediaplayer2_properties(proxy: &Proxy<'_, &Connection>) {
         "SupportedUriSchemes",
         "SupportedMimeTypes",
     ];
-    
+
     for prop in properties {
         if let Some(value) = get_dbus_property(proxy, "org.mpris.MediaPlayer2", prop) {
             print!("  {}: ", prop);
@@ -254,7 +257,7 @@ fn print_mediaplayer2_properties(proxy: &Proxy<'_, &Connection>) {
 fn print_player_properties(proxy: &Proxy<'_, &Connection>) {
     let properties = [
         "PlaybackStatus",
-        "LoopStatus", 
+        "LoopStatus",
         "Rate",
         "Shuffle",
         "Volume",
@@ -268,7 +271,7 @@ fn print_player_properties(proxy: &Proxy<'_, &Connection>) {
         "CanSeek",
         "CanControl",
     ];
-    
+
     for prop in properties {
         if let Some(value) = get_dbus_property(proxy, "org.mpris.MediaPlayer2.Player", prop) {
             print!("  {}: ", prop);
@@ -309,13 +312,13 @@ fn print_metadata(proxy: &Proxy<'_, &Connection>) {
             if let Some(cover_art_url) = &song.cover_art_url {
                 println!("  Cover Art: {}", cover_art_url);
             }
-            
+
             // Show raw metadata if there are additional fields
             if !song.metadata.is_empty() {
                 println!("  == Raw MPRIS Metadata ==");
                 let mut sorted_keys: Vec<_> = song.metadata.keys().collect();
                 sorted_keys.sort();
-                
+
                 for key in sorted_keys {
                     if let Some(value) = song.metadata.get(key) {
                         println!("  {}: {}", key, value);
@@ -335,7 +338,7 @@ fn print_tracklist_properties(proxy: &Proxy<'_, &Connection>) {
         "Tracks",
         "CanEditTracks",
     ];
-    
+
     let mut found_any = false;
     for prop in properties {
         if let Some(value) = get_dbus_property(proxy, "org.mpris.MediaPlayer2.TrackList", prop) {
@@ -347,7 +350,7 @@ fn print_tracklist_properties(proxy: &Proxy<'_, &Connection>) {
             println!();
         }
     }
-    
+
     if !found_any {
         println!("  TrackList interface not supported or no properties available");
     }
@@ -359,7 +362,7 @@ fn print_playlists_properties(proxy: &Proxy<'_, &Connection>) {
         "Orderings",
         "ActivePlaylist",
     ];
-    
+
     let mut found_any = false;
     for prop in properties {
         if let Some(value) = get_dbus_property(proxy, "org.mpris.MediaPlayer2.Playlists", prop) {
@@ -371,7 +374,7 @@ fn print_playlists_properties(proxy: &Proxy<'_, &Connection>) {
             println!();
         }
     }
-    
+
     if !found_any {
         println!("  Playlists interface not supported or no properties available");
     }
@@ -397,7 +400,7 @@ fn print_property_value(value: &dbus::arg::Variant<Box<dyn RefArg>>) {
                 print!(", ");
             }
             first = false;
-            
+
             if let Some(s) = item.as_str() {
                 print!("\"{}\"", s);
             } else {
@@ -414,4 +417,50 @@ fn print_property_value(value: &dbus::arg::Variant<Box<dyn RefArg>>) {
 struct PlayerInfo {
     bus_name: String,
     bus_type: BusType,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn regression_player_matches_identifier_exact_bus_name() {
+        assert!(player_matches_identifier(
+            "org.mpris.MediaPlayer2.vlc",
+            "org.mpris.MediaPlayer2.vlc",
+            None
+        ));
+    }
+
+    #[test]
+    fn regression_player_matches_identifier_partial_bus_name_case_insensitive() {
+        assert!(player_matches_identifier(
+            "SPOTIFY",
+            "org.mpris.MediaPlayer2.spotify",
+            None
+        ));
+    }
+
+    #[test]
+    fn regression_player_matches_identifier_identity_case_insensitive() {
+        assert!(player_matches_identifier(
+            "vlc media player",
+            "org.mpris.MediaPlayer2.vlc",
+            Some("VLC Media Player")
+        ));
+    }
+
+    #[test]
+    fn regression_player_matches_identifier_rejects_invalid_identifier() {
+        assert!(!player_matches_identifier(
+            "",
+            "org.mpris.MediaPlayer2.vlc",
+            Some("VLC")
+        ));
+        assert!(!player_matches_identifier(
+            "foobar",
+            "org.mpris.MediaPlayer2.vlc",
+            Some("VLC")
+        ));
+    }
 }
