@@ -45,21 +45,21 @@ enum Commands {
         #[clap(long, help = "Stream URI or track identifier")]
         uri: Option<String>, // Stream URI
 
-        /// Playback state to set with the song (default: Playing)
+        /// Playback state to set with the song (default: playing)
         #[clap(
             long,
-            default_value = "Playing",
-            help = "Playback state (Playing, Paused, Stopped, etc.)"
+            default_value = "playing",
+            help = "Playback state (playing, paused, stopped, etc.)"
         )]
         state: PlaybackState,
     },
 
     /// Update playback state
     ///
-    /// Example: audiocontrol_send_update player1 state Playing
+    /// Example: audiocontrol_send_update player1 state playing
     State {
-        /// Playback state (Playing, Paused, Stopped, etc.)
-        #[clap(help = "Playback state (Playing, Paused, Stopped, Killed, Disconnected, Unknown)")]
+        /// Playback state (playing, paused, stopped, etc.)
+        #[clap(help = "Playback state (playing, paused, stopped, killed, disconnected, unknown)")]
         state: PlaybackState,
     },
 
@@ -74,11 +74,11 @@ enum Commands {
 
     /// Update loop mode
     ///
-    /// Example: audiocontrol_send_update player1 loop Playlist
+    /// Example: audiocontrol_send_update player1 loop playlist
     Loop {
-        /// Loop mode (None, Track, Playlist)
+        /// Loop mode (no, song, playlist)
         #[clap(
-            help = "Loop mode: None (no looping), Track (repeat current track), Playlist (repeat playlist)"
+            help = "Loop mode: no (no looping), song (repeat current track), playlist (repeat playlist)"
         )]
         mode: LoopMode,
     },

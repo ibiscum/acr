@@ -584,9 +584,7 @@ class AudioControlTestServer:
         event_type = event_data.get("type", "unknown")
 
         if event_type == "state_changed":
-            state = event_data.get("state", "Stopped")
-            # Convert lowercase to PascalCase for enum
-            state = state.capitalize()
+            state = event_data.get("state", "stopped")
             cmd.extend(["state", state])
 
         elif event_type == "metadata_changed" or event_type == "song_changed":
@@ -602,9 +600,9 @@ class AudioControlTestServer:
                 cmd.extend(["--length", str(metadata["duration"])])
             if metadata.get("uri"):
                 cmd.extend(["--uri", metadata["uri"]])
-            # Add state if specified, otherwise defaults to Playing
+            # Add state if specified, otherwise defaults to playing
             if "state" in event_data:
-                state = event_data["state"].capitalize()
+                state = event_data["state"].lower()
                 cmd.extend(["--state", state])
 
         elif event_type == "position_changed":
@@ -616,19 +614,19 @@ class AudioControlTestServer:
             cmd.extend(["shuffle", str(shuffle).lower()])
 
         elif event_type == "loop_mode_changed":
-            mode = event_data.get("mode", "None")
-            # Convert mode names to match Rust enum
-            if mode == "all" or mode == "playlist":
-                mode = "Playlist"
-            elif mode == "one" or mode == "track" or mode == "song":
-                mode = "Track"
+            mode = event_data.get("mode", "none")
+            # Convert mode names to match Rust strum serialization (no/song/playlist)
+            if mode in ("all", "playlist"):
+                mode = "playlist"
+            elif mode in ("one", "track", "song"):
+                mode = "song"
             else:
-                mode = "None"
+                mode = "no"
             cmd.extend(["loop", mode])
         else:
             # For unknown event types, default to state change
             print(f"Unknown event type '{event_type}', defaulting to state change")
-            state = event_data.get("state", "Stopped").capitalize()
+            state = event_data.get("state", "stopped").lower()
             cmd.extend(["state", state])
 
         # Debug output

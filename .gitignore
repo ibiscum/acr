@@ -58,10 +58,9 @@ __pycache__/
 integration_tests/.tmp/
 .venv/
 
-test_cache_1080/*
-test_librespot_event_1080/
-test_cache_1080/
-test_librespot_event_1080/
+test_cache_*/
+test_librespot_event_*/
+test_cache_18080/
 debian/hifiberry-audiocontrol/*
 debian/rustup_home/*
 debian/cargo_home/*

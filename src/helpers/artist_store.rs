@@ -36,22 +36,22 @@ impl Default for ArtistStoreConfig {
     fn default() -> Self {
         // Read configuration from settings database with fallback defaults
         let cache_dir = crate::helpers::settings_db::get_string_with_default(
-            "datastore.artist_store.cache_dir", 
+            "datastore.artist_store.cache_dir",
             "/var/lib/audiocontrol/cache/artists"
         ).unwrap_or_else(|_| "/var/lib/audiocontrol/cache/artists".to_string());
-        
+
         let user_dir = crate::helpers::settings_db::get_string_with_default(
-            "datastore.user_image_path", 
+            "datastore.user_image_path",
             "/var/lib/audiocontrol/user/images"
         ).unwrap_or_else(|_| "/var/lib/audiocontrol/user/images".to_string());
-        
+
         let enable_custom_images = crate::helpers::settings_db::get_bool_with_default(
-            "datastore.artist_store.enable_custom_images", 
+            "datastore.artist_store.enable_custom_images",
             true
         ).unwrap_or(true);
-        
+
         let auto_download = crate::helpers::settings_db::get_bool_with_default(
-            "datastore.artist_store.auto_download", 
+            "datastore.artist_store.auto_download",
             true
         ).unwrap_or(true);
 
@@ -96,11 +96,11 @@ impl ArtistStore {
     }
 
     /// Get the local cache path for an artist's cover art
-    /// 
+    ///
     /// # Arguments
     /// * `artist_name` - The name of the artist
     /// * `image_type` - Type of image ("custom", "cover", etc.)
-    /// 
+    ///
     /// # Returns
     /// The local cache path for the artist's image
     pub fn get_artist_image_path(&self, artist_name: &str, image_type: &str) -> String {
@@ -109,11 +109,11 @@ impl ArtistStore {
     }
 
     /// Get the user directory path for an artist's custom cover art
-    /// 
+    ///
     /// # Arguments
     /// * `artist_name` - The name of the artist
     /// * `image_type` - Type of image ("custom", "cover", etc.)
-    /// 
+    ///
     /// # Returns
     /// The user directory path for the artist's image
     pub fn get_artist_user_image_path(&self, artist_name: &str, image_type: &str) -> String {
@@ -122,11 +122,11 @@ impl ArtistStore {
     }
 
     /// Check if an artist image exists in cache
-    /// 
+    ///
     /// # Arguments
     /// * `artist_name` - The name of the artist
     /// * `image_type` - Type of image ("custom", "cover", etc.)
-    /// 
+    ///
     /// # Returns
     /// True if the image exists in cache
     pub fn has_cached_image(&self, artist_name: &str, image_type: &str) -> bool {
@@ -135,10 +135,10 @@ impl ArtistStore {
     }
 
     /// Get the cached image path for an artist if it exists
-    /// 
+    ///
     /// # Arguments
     /// * `artist_name` - The name of the artist
-    /// 
+    ///
     /// # Returns
     /// ArtistImageResult with the cache path if found
     pub fn get_cached_image(&mut self, artist_name: &str) -> ArtistImageResult {
@@ -193,12 +193,12 @@ impl ArtistStore {
     }
 
     /// Download and cache an artist image from a URL
-    /// 
+    ///
     /// # Arguments
     /// * `artist_name` - The name of the artist
     /// * `url` - The URL to download the image from
     /// * `image_type` - Type of image ("custom", "cover", etc.)
-    /// 
+    ///
     /// # Returns
     /// ArtistImageResult with the cache path if successful
     pub fn download_and_cache_image(&mut self, artist_name: &str, url: &str, image_type: &str) -> ArtistImageResult {
@@ -219,7 +219,7 @@ impl ArtistStore {
         let result = match self.download_image(url) {
             Ok(image_data) => {
                 let cache_path = self.get_artist_image_path(artist_name, image_type);
-                
+
                 match self.store_image(&cache_path, &image_data) {
                     Ok(_) => {
                         info!("Downloaded and cached {} image for artist {}", image_type, artist_name);
@@ -246,12 +246,12 @@ impl ArtistStore {
     }
 
     /// Download and store image directly to the user directory
-    /// 
+    ///
     /// # Arguments
     /// * `artist_name` - The name of the artist
     /// * `url` - URL of the image to download
     /// * `image_type` - Type of image ("custom", "cover", etc.)
-    /// 
+    ///
     /// # Returns
     /// ArtistImageResult with the user path if successfully downloaded and stored
     pub fn download_and_store_user_image(&mut self, artist_name: &str, url: &str, image_type: &str) -> ArtistImageResult {
@@ -272,7 +272,7 @@ impl ArtistStore {
         let result = match self.download_image(url) {
             Ok(image_data) => {
                 let user_path = self.get_artist_user_image_path(artist_name, image_type);
-                
+
                 match self.store_image(&user_path, &image_data) {
                     Ok(_) => {
                         info!("Downloaded and stored {} image for artist {} in user directory", image_type, artist_name);
@@ -300,10 +300,10 @@ impl ArtistStore {
     }
 
     /// Get or download artist cover art
-    /// 
+    ///
     /// # Arguments
     /// * `artist_name` - The name of the artist
-    /// 
+    ///
     /// # Returns
     /// ArtistImageResult with the cache path if found or downloaded
     pub fn get_or_download_artist_image(&mut self, artist_name: &str) -> ArtistImageResult {
@@ -365,10 +365,10 @@ impl ArtistStore {
     }
 
     /// Update an artist with cover art information
-    /// 
+    ///
     /// # Arguments
     /// * `artist` - The artist to update
-    /// 
+    ///
     /// # Returns
     /// The updated artist with image URLs in metadata
     pub fn update_artist_with_coverart(&mut self, mut artist: Artist) -> Artist {
@@ -402,31 +402,31 @@ impl ArtistStore {
     }
 
     /// Looks up MusicBrainz IDs for an artist and returns them if found
-    /// 
+    ///
     /// This function searches for MusicBrainz IDs associated with the given artist name.
-    /// 
+    ///
     /// # Arguments
     /// * `artist_name` - The name of the artist to look up
-    /// 
+    ///
     /// # Returns
     /// A tuple containing:
     /// * `Vec<String>` - Vector of MusicBrainz IDs if found, empty vector otherwise
     /// * `bool` - true if this is a partial match (only some artists in a multi-artist name found)
     pub fn lookup_artist_mbids(&self, artist_name: &str) -> (Vec<String>, bool) {
         debug!("Looking up MusicBrainz IDs for artist: {}", artist_name);
-        
+
         // Try to retrieve MusicBrainz ID using search_mbids_for_artist function
         // This is now a fully synchronous call since we replaced musicbrainz_rs with direct HTTP
         let search_result = search_mbids_for_artist(artist_name, true, false, true);
-        
+
         match search_result {
             MusicBrainzSearchResult::Found(mbids, _) => {
-                debug!("Found {} MusicBrainz ID(s) for artist {}: {:?}", 
+                debug!("Found {} MusicBrainz ID(s) for artist {}: {:?}",
                       mbids.len(), artist_name, mbids);
                 (mbids, false) // Complete match
             },
             MusicBrainzSearchResult::FoundPartial(mbids, _) => {
-                info!("Found {} partial MusicBrainz ID(s) for multi-artist {}: {:?}", 
+                info!("Found {} partial MusicBrainz ID(s) for multi-artist {}: {:?}",
                       mbids.len(), artist_name, mbids);
                 (mbids, true) // Partial match
             },
@@ -442,31 +442,31 @@ impl ArtistStore {
     }
 
     /// Updates artist data by fetching additional information like MusicBrainz IDs
-    /// 
+    ///
     /// This function takes an artist and attempts to retrieve and set any missing data
     /// such as MusicBrainz IDs.
-    /// 
+    ///
     /// # Arguments
     /// * `artist` - The artist to update
-    /// 
+    ///
     /// # Returns
     /// The updated artist
     pub fn update_data_for_artist(&mut self, mut artist: Artist) -> Artist {
         debug!("Updating data for artist: {}", artist.name);
-        
+
         // Check if the artist already has MusicBrainz IDs set
         let has_mbid = match &artist.metadata {
             Some(meta) => !meta.mbid.is_empty(),
             None => false,
         };
-        
+
         if !has_mbid {
             debug!("No MusicBrainz ID set for artist {}, attempting to retrieve it", artist.name);
-            
+
             // Use the synchronous function to look up MusicBrainz IDs directly
             let (mbids, partial_match) = self.lookup_artist_mbids(&artist.name);
             let mbid_count = mbids.len();
-            
+
             // Add each MusicBrainz ID to the artist if any were found
             for mbid in mbids {
                 artist.add_mbid(mbid);
@@ -481,7 +481,7 @@ impl ArtistStore {
                 info!("Updated artist '{}' with MusicBrainz data: {} ID(s)", artist.name, mbid_count);
                 debug!("Added MusicBrainz ID(s) to artist {}", artist.name);
             }
-            
+
             // Record if this is a partial match in the artist metadata
             if partial_match {
                 debug!("Partial match found for multi-artist name: {}", artist.name);
@@ -492,7 +492,7 @@ impl ArtistStore {
         } else {
             debug!("Artist {} already has MusicBrainz ID(s)", artist.name);
         }
-        
+
         // If the artist has MusicBrainz IDs, update from the coverart system
         if artist.metadata.as_ref().is_some_and(|meta| !meta.mbid.is_empty()) {
             debug!("Artist {} has MusicBrainz ID(s), updating with cover art system", artist.name);
@@ -502,10 +502,10 @@ impl ArtistStore {
             debug!("Artist {} has no MusicBrainz ID, trying cover art by name only", artist.name);
             artist = self.update_artist_with_coverart(artist);
         }
-        
+
         // Note: LastFM metadata is now handled by the unified coverart system
         // No need for separate LastFM calls as the coverart system includes LastFM provider
-        
+
         // Handle artists without MusicBrainz IDs but with existing thumbnails
         if artist.metadata.as_ref().is_some_and(|meta| meta.mbid.is_empty()) {
             // Check if the artist has thumbnail images
@@ -513,7 +513,7 @@ impl ArtistStore {
                 Some(meta) => !meta.thumb_url.is_empty(),
                 None => false,
             };
-            
+
             if has_thumbnails {
                 debug!("Artist {} has thumbnail image(s) but no MusicBrainz ID, skipping updates", artist.name);
             }
@@ -523,13 +523,13 @@ impl ArtistStore {
         if let Some(metadata) = &artist.metadata {
             // Create a cache key using the artist's name
             let cache_key = format!("artist::metadata::{}", artist.name);
-            
+
             // Store the metadata in the attribute cache
             match crate::helpers::attribute_cache::set(&cache_key, metadata) {
                 Ok(_) => debug!("Stored metadata for artist {} in attribute cache", artist.name),
                 Err(e) => warn!("Failed to store metadata for artist {} in attribute cache: {}", artist.name, e),
             }
-            
+
             // If the artist has MusicBrainz IDs, store them separately for faster lookup
             if !metadata.mbid.is_empty() {
                 let mbid_key = format!("artist::mbid::{}", artist.name);
@@ -538,45 +538,45 @@ impl ArtistStore {
                 }
             }
         }
-        
+
         // Return the potentially updated artist
         artist
     }
 
     /// Clear cached image for an artist
-    /// 
+    ///
     /// # Arguments
     /// * `artist_name` - The name of the artist
     pub fn clear_cached_image(&mut self, artist_name: &str) {
         self.image_cache.remove(artist_name);
-        
+
         // Remove user directory images
         let user_custom_path = self.get_artist_user_image_path(artist_name, "custom");
         let _ = std::fs::remove_file(&user_custom_path);
-        
+
         let user_cover_path = self.get_artist_user_image_path(artist_name, "cover");
         let _ = std::fs::remove_file(&user_cover_path);
-        
+
         // Remove cache directory images
         let custom_path = self.get_artist_image_path(artist_name, "custom");
         let _ = std::fs::remove_file(&custom_path);
-        
+
         let cover_path = self.get_artist_image_path(artist_name, "cover");
         let _ = std::fs::remove_file(&cover_path);
-        
+
         debug!("Cleared cached images for artist: {}", artist_name);
     }
 
     /// Download an image from a URL
-    /// 
+    ///
     /// # Arguments
     /// * `url` - The URL to download the image from
-    /// 
+    ///
     /// # Returns
     /// Result with the image data or an error message
     fn download_image(&self, url: &str) -> Result<Vec<u8>, String> {
         debug!("Downloading image from URL: {}", url);
-        
+
         // Use ureq to download the image
         match ureq::get(url).call() {
             Ok(response) => {
@@ -584,11 +584,11 @@ impl ArtistStore {
                 if let Err(e) = response.into_reader().read_to_end(&mut bytes) {
                     return Err(format!("Failed to read image data: {}", e));
                 }
-                
+
                 if bytes.is_empty() {
                     return Err("Downloaded image is empty".to_string());
                 }
-                
+
                 debug!("Successfully downloaded image: {} bytes", bytes.len());
                 Ok(bytes)
             },
@@ -599,11 +599,11 @@ impl ArtistStore {
     }
 
     /// Store image data to a file
-    /// 
+    ///
     /// # Arguments
     /// * `cache_path` - The path to store the image
     /// * `image_data` - The image data to store
-    /// 
+    ///
     /// # Returns
     /// Result indicating success or failure
     fn store_image(&self, cache_path: &str, image_data: &[u8]) -> Result<(), String> {
@@ -624,10 +624,10 @@ pub fn get_artist_store() -> Arc<Mutex<ArtistStore>> {
 }
 
 /// Convenience function to get cached image for an artist
-/// 
+///
 /// # Arguments
 /// * `artist_name` - The name of the artist
-/// 
+///
 /// # Returns
 /// Option with the cache path if found
 pub fn get_artist_cached_image(artist_name: &str) -> Option<String> {
@@ -640,10 +640,10 @@ pub fn get_artist_cached_image(artist_name: &str) -> Option<String> {
 }
 
 /// Convenience function to get or download artist image
-/// 
+///
 /// # Arguments
 /// * `artist_name` - The name of the artist
-/// 
+///
 /// # Returns
 /// Option with the cache path if found or downloaded
 pub fn get_or_download_artist_image(artist_name: &str) -> Option<String> {
@@ -656,10 +656,10 @@ pub fn get_or_download_artist_image(artist_name: &str) -> Option<String> {
 }
 
 /// Convenience function to update an artist with cover art
-/// 
+///
 /// # Arguments
 /// * `artist` - The artist to update
-/// 
+///
 /// # Returns
 /// The updated artist with cover art information
 pub fn update_artist_with_coverart(artist: Artist) -> Artist {
@@ -669,10 +669,10 @@ pub fn update_artist_with_coverart(artist: Artist) -> Artist {
 }
 
 /// Convenience function to lookup MusicBrainz IDs for an artist
-/// 
+///
 /// # Arguments
 /// * `artist_name` - The name of the artist
-/// 
+///
 /// # Returns
 /// A tuple containing:
 /// * `Vec<String>` - Vector of MusicBrainz IDs if found, empty vector otherwise
@@ -684,10 +684,10 @@ pub fn lookup_artist_mbids(artist_name: &str) -> (Vec<String>, bool) {
 }
 
 /// Convenience function to update artist data including metadata and cover art
-/// 
+///
 /// # Arguments
 /// * `artist` - The artist to update
-/// 
+///
 /// # Returns
 /// The updated artist with metadata and cover art information
 pub fn update_data_for_artist(artist: Artist) -> Artist {
@@ -707,7 +707,7 @@ pub fn update_library_artists_metadata_in_background(
     artists_collection: Arc<RwLock<HashMap<String, Artist>>>
 ) {
     debug!("Starting background thread to update artist metadata");
-    
+
     // Spawn a new thread to handle the metadata updates
     use std::thread;
     thread::spawn(move || {
@@ -769,7 +769,7 @@ pub fn update_library_artists_metadata_in_background(
             if count % 10 == 0 || count == total {
                 info!("Processed {}/{} artists for metadata", count, total);
             }
-            
+
             // Sleep between updates to avoid overwhelming external services
             std::thread::sleep(std::time::Duration::from_millis(100));
         }
@@ -781,7 +781,7 @@ pub fn update_library_artists_metadata_in_background(
 }
 
 /// Convenience function to clear cached image for an artist
-/// 
+///
 /// # Arguments
 /// * `artist_name` - The name of the artist
 pub fn clear_artist_cached_image(artist_name: &str) {
@@ -801,14 +801,14 @@ mod tests {
     fn create_test_store() -> (ArtistStore, TempDir, TempDir) {
         let cache_temp_dir = TempDir::new().expect("Failed to create temp cache dir");
         let user_temp_dir = TempDir::new().expect("Failed to create temp user dir");
-        
+
         let config = ArtistStoreConfig {
             cache_dir: cache_temp_dir.path().to_string_lossy().to_string(),
             user_dir: user_temp_dir.path().to_string_lossy().to_string(),
             enable_custom_images: true,
             auto_download: true,
         };
-        
+
         let store = ArtistStore::with_config(config);
         (store, cache_temp_dir, user_temp_dir)
     }
@@ -817,32 +817,32 @@ mod tests {
     fn test_user_directory_precedence() {
         let (mut store, _cache_temp, _user_temp) = create_test_store();
         let artist_name = "Test Artist";
-        
+
         // Use the sanitized name format
         let sanitized_name = crate::helpers::sanitize::filename_from_string(artist_name);
-        
+
         // Create user directory structure
         let user_artist_dir = Path::new(&store.config.user_dir).join("artists").join(&sanitized_name);
         fs::create_dir_all(&user_artist_dir).expect("Failed to create user artist dir");
-        
+
         // Create cache directory structure (cache_dir already includes 'artists')
         let cache_artist_dir = Path::new(&store.config.cache_dir).join(&sanitized_name);
         fs::create_dir_all(&cache_artist_dir).expect("Failed to create cache artist dir");
-        
+
         // Create a dummy image in cache
         let cache_image_path = cache_artist_dir.join("cover.jpg");
         fs::write(&cache_image_path, b"cache image data").expect("Failed to write cache image");
-        
+
         // Create a dummy image in user directory
         let user_image_path = user_artist_dir.join("cover.jpg");
         fs::write(&user_image_path, b"user image data").expect("Failed to write user image");
-        
+
         // Test that user directory takes precedence
         match store.get_cached_image(artist_name) {
             ArtistImageResult::Found { cache_path } => {
-                assert!(cache_path.contains(&store.config.user_dir), 
+                assert!(cache_path.contains(&store.config.user_dir),
                     "User directory should take precedence over cache directory. Got: {}", cache_path);
-                
+
                 // Verify the content is from user directory
                 let content = fs::read(&cache_path).expect("Failed to read image");
                 assert_eq!(content, b"user image data");
@@ -851,50 +851,36 @@ mod tests {
         }
     }
 
-    #[test] 
+    #[test]
     fn test_get_artist_image_paths() {
         let (store, _cache_temp, _user_temp) = create_test_store();
-        
+
         let cache_path = store.get_artist_image_path("Metallica", "cover");
         // Use the sanitized filename format (filename_from_string converts to lowercase)
         assert!(cache_path.contains("/metallica/cover.jpg"));
         assert!(cache_path.starts_with(&store.config.cache_dir));
-        
+
         let user_path = store.get_artist_user_image_path("Metallica", "custom");
         assert!(user_path.contains("/artists/metallica/custom.jpg"));
         assert!(user_path.starts_with(&store.config.user_dir));
     }
 
-    #[tokio::test]
-    async fn test_metallica_cover_download() {
+    /// Real network download — skipped in normal CI; run with `cargo test -- --ignored`
+    #[test]
+    #[ignore]
+    fn test_metallica_cover_download() {
         let (mut store, _cache_temp, _user_temp) = create_test_store();
         let artist_name = "Metallica";
-        
-        // This test will attempt to download a real Metallica cover
-        // Note: This requires internet connectivity and working cover art providers
+
         match store.get_or_download_artist_image(artist_name) {
             ArtistImageResult::Found { cache_path } => {
-                // Verify the file exists
                 assert!(Path::new(&cache_path).exists(), "Downloaded image file should exist");
-                
-                // Verify the file is not empty
                 let metadata = fs::metadata(&cache_path).expect("Failed to get file metadata");
-                assert!(metadata.len() > 0, "Downloaded image should not be empty");
-                
-                // Verify it's a reasonable image size (at least 1KB, less than 10MB)
                 assert!(metadata.len() > 1024, "Image should be larger than 1KB");
                 assert!(metadata.len() < 10_000_000, "Image should be smaller than 10MB");
-                
-                println!("Successfully downloaded Metallica cover: {} bytes", metadata.len());
             },
-            ArtistImageResult::NotFound => {
-                // This might happen if cover art providers are not available
-                println!("Warning: No cover art found for Metallica (this may be expected in test environment)");
-            },
-            ArtistImageResult::Error(e) => {
-                // This might happen if there's no internet connectivity
-                println!("Warning: Error downloading Metallica cover: {} (this may be expected in test environment)", e);
-            }
+            // NotFound or Error are acceptable in environments without providers/connectivity
+            _ => {}
         }
     }
 
@@ -902,18 +888,18 @@ mod tests {
     fn test_cache_invalidation() {
         let (mut store, _cache_temp, _user_temp) = create_test_store();
         let artist_name = "Cache Test Artist";
-        
+
         // Use the sanitized name format
         let sanitized_name = crate::helpers::sanitize::filename_from_string(artist_name);
-        
+
         // Create cache directory structure (cache_dir already includes 'artists')
         let cache_artist_dir = Path::new(&store.config.cache_dir).join(&sanitized_name);
         fs::create_dir_all(&cache_artist_dir).expect("Failed to create cache artist dir");
-        
+
         // Create a dummy image
         let image_path = cache_artist_dir.join("cover.jpg");
         fs::write(&image_path, b"test image data").expect("Failed to write test image");
-        
+
         // First call should find the image and cache the path
         match store.get_cached_image(artist_name) {
             ArtistImageResult::Found { cache_path } => {
@@ -922,10 +908,10 @@ mod tests {
             },
             _ => panic!("Should have found the test image"),
         }
-        
+
         // Remove the file
         fs::remove_file(&image_path).expect("Failed to remove test image");
-        
+
         // Second call should detect the missing file and remove from cache
         match store.get_cached_image(artist_name) {
             ArtistImageResult::NotFound => {
@@ -938,16 +924,96 @@ mod tests {
     #[test]
     fn test_download_prevention() {
         let (mut store, _cache_temp, _user_temp) = create_test_store();
-        
-        // Disable auto-download
         store.config.auto_download = false;
-        
-        let result = store.get_or_download_artist_image("NonExistent Artist");
-        match result {
-            ArtistImageResult::NotFound => {
-                // This is expected when auto-download is disabled
-            },
-            _ => panic!("Should return NotFound when auto-download is disabled"),
+
+        match store.get_or_download_artist_image("NonExistent Artist") {
+            ArtistImageResult::NotFound => {}
+            other => panic!("Expected NotFound when auto-download is disabled, got {:?}", other),
         }
+    }
+
+    // --- path construction ---
+
+    #[test]
+    fn image_path_embeds_sanitized_name_and_type() {
+        let (store, _c, _u) = create_test_store();
+        let path = store.get_artist_image_path("AC/DC", "cover");
+        assert!(path.ends_with("/cover.jpg"), "{}", path);
+        assert!(path.starts_with(&store.config.cache_dir), "{}", path);
+        // Sanitizer should have replaced the slash in "AC/DC" — the literal string must not appear
+        assert!(!path.contains("AC/DC"), "raw artist name slash should have been sanitized: {}", path);
+    }
+
+    #[test]
+    fn user_image_path_has_artists_subdirectory() {
+        let (store, _c, _u) = create_test_store();
+        let path = store.get_artist_user_image_path("Test Artist", "custom");
+        assert!(path.contains("/artists/"), "{}", path);
+        assert!(path.ends_with("/custom.jpg"), "{}", path);
+        assert!(path.starts_with(&store.config.user_dir), "{}", path);
+    }
+
+    // --- has_cached_image ---
+
+    #[test]
+    fn has_cached_image_false_when_file_absent() {
+        let (store, _c, _u) = create_test_store();
+        assert!(!store.has_cached_image("Nobody", "cover"));
+    }
+
+    #[test]
+    fn has_cached_image_true_when_file_present() {
+        let (store, _c, _u) = create_test_store();
+        let artist = "Has Cover";
+        let sanitized = crate::helpers::sanitize::filename_from_string(artist);
+        let dir = Path::new(&store.config.cache_dir).join(&sanitized);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("cover.jpg"), b"data").unwrap();
+        assert!(store.has_cached_image(artist, "cover"));
+    }
+
+    // --- custom image priority over cover ---
+
+    #[test]
+    fn custom_image_takes_priority_over_cover_in_cache_dir() {
+        let (mut store, _c, _u) = create_test_store();
+        let artist = "Priority Test";
+        let sanitized = crate::helpers::sanitize::filename_from_string(artist);
+        let dir = Path::new(&store.config.cache_dir).join(&sanitized);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("cover.jpg"), b"cover").unwrap();
+        fs::write(dir.join("custom.jpg"), b"custom").unwrap();
+
+        match store.get_cached_image(artist) {
+            ArtistImageResult::Found { cache_path } => {
+                assert!(cache_path.ends_with("custom.jpg"), "custom should beat cover, got {}", cache_path);
+            }
+            other => panic!("Expected Found, got {:?}", other),
+        }
+    }
+
+    // --- stale in-memory cache eviction ---
+
+    #[test]
+    fn stale_in_memory_entry_is_evicted_when_file_deleted() {
+        let (mut store, _c, _u) = create_test_store();
+        let artist = "Stale Cache";
+        let sanitized = crate::helpers::sanitize::filename_from_string(artist);
+        let dir = Path::new(&store.config.cache_dir).join(&sanitized);
+        fs::create_dir_all(&dir).unwrap();
+        let img = dir.join("cover.jpg");
+        fs::write(&img, b"img").unwrap();
+
+        // Populate in-memory cache
+        store.get_cached_image(artist);
+        assert!(store.image_cache.contains_key(artist));
+
+        // Delete the file and call again
+        fs::remove_file(&img).unwrap();
+        match store.get_cached_image(artist) {
+            ArtistImageResult::NotFound => {}
+            other => panic!("Expected NotFound after file deletion, got {:?}", other),
+        }
+        assert!(!store.image_cache.contains_key(artist), "stale entry should have been evicted");
     }
 }

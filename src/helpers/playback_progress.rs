@@ -47,7 +47,7 @@ impl PlayerProgress {
     /// If playing, this will return an updated position based on elapsed time
     pub fn get_position(&self) -> f64 {
         let mut inner = self.inner.lock();
-        
+
         if inner.is_playing {
             // Update position based on elapsed time
             let now = Instant::now();
@@ -55,7 +55,7 @@ impl PlayerProgress {
             inner.position += elapsed.as_secs_f64();
             inner.last_update = now;
         }
-        
+
         inner.position
     }
 
@@ -64,7 +64,7 @@ impl PlayerProgress {
     /// When set to false, position will remain static
     pub fn set_playing(&self, playing: bool) {
         let mut inner = self.inner.lock();
-        
+
         if inner.is_playing != playing {
             // Update position to current time before changing state
             if inner.is_playing {
@@ -72,7 +72,7 @@ impl PlayerProgress {
                 let elapsed = now.duration_since(inner.last_update);
                 inner.position += elapsed.as_secs_f64();
             }
-            
+
             inner.is_playing = playing;
             inner.last_update = Instant::now();
         }
@@ -115,15 +115,15 @@ mod tests {
     #[test]
     fn test_set_get_position() {
         let progress = PlayerProgress::new();
-        
+
         // Set position to 10.5 seconds
         progress.set_position(10.5);
         assert_eq!(progress.get_position(), 10.5);
-        
+
         // Set position to 0
         progress.set_position(0.0);
         assert_eq!(progress.get_position(), 0.0);
-        
+
         // Set position to another value
         progress.set_position(123.45);
         assert_eq!(progress.get_position(), 123.45);
@@ -132,11 +132,11 @@ mod tests {
     #[test]
     fn test_negative_position_ignored() {
         let progress = PlayerProgress::new();
-        
+
         // Set initial position
         progress.set_position(10.0);
         assert_eq!(progress.get_position(), 10.0);
-        
+
         // Try to set negative position - should be ignored
         progress.set_position(-5.0);
         assert_eq!(progress.get_position(), 10.0);
@@ -145,14 +145,14 @@ mod tests {
     #[test]
     fn test_playing_state() {
         let progress = PlayerProgress::new();
-        
+
         // Initially not playing
         assert!(!progress.is_playing());
-        
+
         // Set playing to true
         progress.set_playing(true);
         assert!(progress.is_playing());
-        
+
         // Set playing to false
         progress.set_playing(false);
         assert!(!progress.is_playing());
@@ -161,20 +161,20 @@ mod tests {
     #[test]
     fn test_position_increments_when_playing() {
         let progress = PlayerProgress::new();
-        
+
         // Set initial position
         progress.set_position(0.0);
         assert_eq!(progress.get_position(), 0.0);
-        
+
         // Start playing
         progress.set_playing(true);
-        
+
         // Wait a bit and check position has increased
         thread::sleep(Duration::from_millis(100));
         let position1 = progress.get_position();
         assert!(position1 > 0.0);
         assert!(position1 < 1.0); // Should be less than 1 second
-        
+
         // Wait a bit more and check position increased further
         thread::sleep(Duration::from_millis(100));
         let position2 = progress.get_position();
@@ -185,23 +185,23 @@ mod tests {
     #[test]
     fn test_position_stops_incrementing_when_not_playing() {
         let progress = PlayerProgress::new();
-        
+
         // Set initial position and start playing
         progress.set_position(0.0);
         progress.set_playing(true);
-        
+
         // Wait a bit
         thread::sleep(Duration::from_millis(100));
         let position1 = progress.get_position();
         assert!(position1 > 0.0);
-        
+
         // Stop playing
         progress.set_playing(false);
-        
+
         // Wait a bit more
         thread::sleep(Duration::from_millis(100));
         let position2 = progress.get_position();
-        
+
         // Position should be approximately the same (within a small tolerance)
         assert!((position2 - position1).abs() < 0.01);
     }
@@ -209,14 +209,14 @@ mod tests {
     #[test]
     fn test_position_updates_correctly_over_time() {
         let progress = PlayerProgress::new();
-        
+
         // Set initial position and start playing
         progress.set_position(5.0);
         progress.set_playing(true);
-        
+
         // Wait approximately 1 second
         thread::sleep(Duration::from_millis(1000));
-        
+
         let position = progress.get_position();
         // Position should be approximately 6.0 (5.0 + 1.0 second)
         // Allow some tolerance for timing variations
@@ -227,18 +227,18 @@ mod tests {
     #[test]
     fn test_multiple_get_position_calls_when_playing() {
         let progress = PlayerProgress::new();
-        
+
         // Set initial position and start playing
         progress.set_position(0.0);
         progress.set_playing(true);
-        
+
         // Get position multiple times with small delays
         let pos1 = progress.get_position();
         thread::sleep(Duration::from_millis(100));
         let pos2 = progress.get_position();
         thread::sleep(Duration::from_millis(100));
         let pos3 = progress.get_position();
-        
+
         // Each position should be greater than the previous
         assert!(pos2 > pos1);
         assert!(pos3 > pos2);
@@ -247,17 +247,17 @@ mod tests {
     #[test]
     fn test_reset() {
         let progress = PlayerProgress::new();
-        
+
         // Set some position and start playing
         progress.set_position(42.0);
         progress.set_playing(true);
-        
+
         // Wait a bit
         thread::sleep(Duration::from_millis(100));
-        
+
         // Reset
         progress.reset();
-        
+
         // Should be back to initial state
         assert_eq!(progress.get_position(), 0.0);
         assert!(!progress.is_playing());
@@ -266,12 +266,12 @@ mod tests {
     #[test]
     fn test_set_playing_multiple_times() {
         let progress = PlayerProgress::new();
-        
+
         // Set playing to true multiple times
         progress.set_playing(true);
         progress.set_playing(true);
         assert!(progress.is_playing());
-        
+
         // Set playing to false multiple times
         progress.set_playing(false);
         progress.set_playing(false);
@@ -283,10 +283,10 @@ mod tests {
         let progress = PlayerProgress::new();
         progress.set_position(0.0);
         progress.set_playing(true);
-        
+
         // Clone progress for use in thread
         let progress_clone = progress.clone();
-        
+
         // Start a thread that continuously updates position
         let handle = thread::spawn(move || {
             for i in 0..10 {
@@ -294,15 +294,15 @@ mod tests {
                 thread::sleep(Duration::from_millis(10));
             }
         });
-        
+
         // Main thread continuously reads position
         for _ in 0..10 {
             let _pos = progress.get_position();
             thread::sleep(Duration::from_millis(10));
         }
-        
+
         handle.join().unwrap();
-        
+
         // Should not panic or cause data races
         assert!(progress.get_position() >= 0.0);
     }
@@ -372,5 +372,130 @@ mod tests {
         thread::sleep(Duration::from_millis(80));
         let second_run = progress.get_position();
         assert!(second_run > paused);
+    }
+
+    #[test]
+    fn test_large_position_values() {
+        let progress = PlayerProgress::new();
+        let large_value = 1_000_000_000.0; // 1 billion seconds
+
+        progress.set_position(large_value);
+        assert_eq!(progress.get_position(), large_value);
+
+        progress.set_playing(true);
+        thread::sleep(Duration::from_millis(50));
+        let after_play = progress.get_position();
+        assert!(after_play > large_value);
+    }
+
+    #[test]
+    fn test_position_zero_while_playing() {
+        let progress = PlayerProgress::new();
+        progress.set_position(50.0);
+        progress.set_playing(true);
+
+        // Set position back to zero while playing
+        progress.set_position(0.0);
+        let immediate = progress.get_position();
+        assert!(immediate >= 0.0);
+        assert!(immediate < 0.1); // Should be very close to zero
+
+        // Wait and verify it increments from zero
+        thread::sleep(Duration::from_millis(100));
+        let after_wait = progress.get_position();
+        assert!(after_wait > 0.0 && after_wait < 1.0);
+    }
+
+    #[test]
+    fn test_rapid_position_updates() {
+        let progress = PlayerProgress::new();
+
+        for i in 0..10 {
+            progress.set_position(i as f64);
+            let pos = progress.get_position();
+            assert_eq!(pos, i as f64);
+        }
+    }
+
+    #[test]
+    fn test_clone_shares_state() {
+        let progress1 = PlayerProgress::new();
+        progress1.set_position(5.0);
+
+        let progress2 = progress1.clone();
+
+        // Both should have same position
+        assert_eq!(progress1.get_position(), progress2.get_position());
+
+        // Update via clone
+        progress2.set_position(10.0);
+
+        // Both should reflect the change
+        assert_eq!(progress1.get_position(), 10.0);
+        assert_eq!(progress2.get_position(), 10.0);
+    }
+
+    #[test]
+    fn test_clone_shares_playing_state() {
+        let progress1 = PlayerProgress::new();
+        progress1.set_playing(true);
+
+        let progress2 = progress1.clone();
+
+        // Both should have same playing state
+        assert!(progress1.is_playing());
+        assert!(progress2.is_playing());
+
+        // Stop via clone
+        progress2.set_playing(false);
+
+        // Both should reflect the change
+        assert!(!progress1.is_playing());
+        assert!(!progress2.is_playing());
+    }
+
+    #[test]
+    fn test_consecutive_set_position_calls() {
+        let progress = PlayerProgress::new();
+
+        progress.set_position(1.0);
+        progress.set_position(2.0);
+        progress.set_position(3.0);
+
+        assert_eq!(progress.get_position(), 3.0);
+    }
+
+    #[test]
+    fn test_get_position_immediately_after_set_position() {
+        let progress = PlayerProgress::new();
+        progress.set_position(42.5);
+
+        // Immediately get position without delay
+        let pos = progress.get_position();
+        assert_eq!(pos, 42.5);
+    }
+
+    #[test]
+    fn test_position_not_negative_after_operations() {
+        let progress = PlayerProgress::new();
+
+        progress.set_position(0.0);
+        progress.set_playing(true);
+        thread::sleep(Duration::from_millis(50));
+
+        let pos = progress.get_position();
+        assert!(pos >= 0.0);
+    }
+
+    #[test]
+    fn test_zero_position_remains_zero_when_not_playing() {
+        let progress = PlayerProgress::new();
+        progress.set_position(0.0);
+
+        // Don't set playing
+        for _ in 0..5 {
+            thread::sleep(Duration::from_millis(20));
+            assert_eq!(progress.get_position(), 0.0);
+        }
     }
 }

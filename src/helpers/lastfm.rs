@@ -273,23 +273,23 @@ impl LastfmClient {
 
         info!("Last.fm client initialized");
         Ok(())
-    }    
-    
+    }
+
     /// Initialize the Last.fm client with default API credentials from secrets.txt
-    /// 
+    ///
     /// This will use the credentials compiled in from the secrets.txt file at build time.
     /// If no secrets.txt file was available, placeholder values will be used.
-    /// 
+    ///
     /// # Returns
-    /// Result indicating success or failure    
+    /// Result indicating success or failure
     pub fn initialize_with_defaults() -> Result<(), LastfmError> {
         let api_key = default_lastfm_api_key();
         let api_secret = default_lastfm_api_secret();
-        
+
         if api_key != "YOUR_API_KEY_HERE" && api_secret != "YOUR_API_SECRET_HERE" {
             info!("Using default secrets for Last.fm");
         }
-        
+
         Self::initialize(
             api_key.to_string(),
             api_secret.to_string()
@@ -309,26 +309,26 @@ impl LastfmClient {
     pub fn get_auth_url(&mut self) -> Result<(String, String), LastfmError> { // Ensure return type is (String, String)
         // Get an auth token first
         let token = self.get_auth_token()?; // Removed .await
-        
+
         let auth_url = format!(
-            "{}?api_key={}&token={}", 
-            LASTFM_AUTH_URL, 
+            "{}?api_key={}&token={}",
+            LASTFM_AUTH_URL,
             self.credentials.api_key,
             &token // token is already a String here
         );
-        
+
         Ok((auth_url, token)) // Return the auth_url and the token itself
-    }    
-    
+    }
+
     pub fn disconnect(&mut self) -> Result<(), String> {
         debug!("Disconnecting Last.fm client: clearing session key and username from memory and secure store.");
-        
+
         // Clear in-memory credentials
         self.credentials.session_key = None;
         self.credentials.username = None;
         self.credentials.auth_token = None;
         self.credentials.token_created = None;
-        
+
         // Remove credentials from secure store
         if let Err(e) = SecurityStore::remove(LASTFM_SESSION_KEY_STORE) {
             debug!("Error removing Last.fm session key from security store: {}", e);
@@ -336,14 +336,14 @@ impl LastfmClient {
         } else {
             debug!("Successfully removed Last.fm session key from security store");
         }
-        
+
         if let Err(e) = SecurityStore::remove(LASTFM_USERNAME_STORE) {
             debug!("Error removing Last.fm username from security store: {}", e);
             // Continue with disconnect even if removal fails
         } else {
             debug!("Successfully removed Last.fm username from security store");
         }
-        
+
         debug!("Last.fm credentials cleared from memory and secure store.");
         Ok(())
     }
@@ -373,10 +373,10 @@ impl LastfmClient {
 
         debug!("(get_auth_token) Requesting new Last.fm auth token");
         let response_body = self.make_api_request(params.iter().copied(), false)?;
-        
+
         let token_response: TokenResponse = serde_json::from_str(&response_body)
             .map_err(|e| LastfmError::ParsingError(format!("Failed to parse token response: {}, body: {}", e, response_body)))?;
-        
+
         // Store the newly fetched token
         debug!("(get_auth_token) Received new token: {}. Storing it.", token_response.token);
         self.credentials.auth_token = Some(token_response.token.clone());
@@ -386,11 +386,11 @@ impl LastfmClient {
                 .unwrap()
                 .as_secs(),
         );
-        
+
         debug!("(get_auth_token) Stored new auth token: {:?}, created: {:?}", self.credentials.auth_token, self.credentials.token_created);
         Ok(token_response.token)
-    }    
-    
+    }
+
     /// Get a session key after user has authorized the application
     pub fn get_session(&mut self) -> Result<(String, String), LastfmError> {
         debug!("(get_session) Attempting to get session. Current auth_token: {:?}", self.credentials.auth_token);
@@ -426,7 +426,7 @@ impl LastfmClient {
         debug!("Attempting to get Last.fm session with token: {}", token);
         // Pass the array directly, or a slice of it.
         let response_body = self.make_api_request(params.iter().copied(), true)?;
-        
+
         // make_api_request now directly returns ApiError if Last.fm sends one.
         // If we reach here, it means Last.fm didn't return a JSON error object at the top level.
         // We can attempt to parse SessionResponse.
@@ -436,22 +436,22 @@ impl LastfmClient {
                 error!("Failed to parse session response: {}, body: {}", e, response_body);
                 LastfmError::ParsingError(format!("Failed to parse session response: {}", e))
             })?;
-        
+
         // Store the session
         self.credentials.session_key = Some(session_response.session.key.clone());
         self.credentials.username = Some(session_response.session.name.clone());
-        
+
         // Clear the auth_token as it has been successfully used
         self.credentials.auth_token = None;
         self.credentials.token_created = None;
-        
+
         // Store the session in security store
         self.store_credentials_to_store();
 
         info!("Successfully authenticated with Last.fm as user: {}", session_response.session.name);
         Ok((session_response.session.key, session_response.session.name))
     }
-    
+
     /// Set authentication token for Last.fm
     /// Used in the auth callback to set the token received from Last.fm
     pub fn set_auth_token(&mut self, token: String) -> Result<(), LastfmError> {
@@ -460,11 +460,11 @@ impl LastfmClient {
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap()
             .as_secs();
-            
+
         self.credentials.auth_token = Some(token.clone()); // Clone token for logging too
         self.credentials.token_created = Some(now);
-        
-        debug!("(set_auth_token) Successfully set Last.fm auth token to: {}, created: {}. Current state: {:?}", 
+
+        debug!("(set_auth_token) Successfully set Last.fm auth token to: {}, created: {}. Current state: {:?}",
                token, now, self.credentials.auth_token);
         Ok(())
     }
@@ -481,8 +481,8 @@ impl LastfmClient {
 
     /// Make an API request to Last.fm
     fn make_api_request<'a>(
-        &self, 
-        params: impl IntoIterator<Item = (&'a str, &'a str)> + Clone, 
+        &self,
+        params: impl IntoIterator<Item = (&'a str, &'a str)> + Clone,
         sign: bool
     ) -> Result<String, LastfmError> {
         let mut param_map: HashMap<String, String> = params
@@ -514,7 +514,7 @@ impl LastfmClient {
             let digest = md5::compute(sig_string.as_bytes());
             param_map.insert("api_sig".to_string(), format!("{:x}", digest));
         }
-        
+
         let method_for_log = param_map.get("method").cloned().unwrap_or_else(|| "unknown_method".to_string());
         // Log params, excluding api_secret if it were ever in param_map (it's not, but good practice)
         let log_params: HashMap<String, String> = param_map.iter()
@@ -525,7 +525,7 @@ impl LastfmClient {
 
 
         let request_url = LASTFM_API_ROOT;
-        
+
         // Use POST for all requests, Last.fm API generally accepts this
         let request = self.client.post(request_url);
         let form_params: Vec<(&str, &str)> = param_map.iter().map(|(k,v)| (k.as_str(), v.as_str())).collect();
@@ -536,7 +536,7 @@ impl LastfmClient {
             Ok(res) => {
                 let _status = res.status(); // Mark as unused if not needed
                 let body = res.into_string().map_err(|e| LastfmError::NetworkError(format!("Failed to read response body: {}", e)))?;
-                
+
                 // Log raw body for debugging if necessary, be careful with sensitive data in production logs
                 // debug!("Last.fm API response: status={}, body={}", status, body);
 
@@ -577,7 +577,7 @@ impl LastfmClient {
                 debug!("Stored Last.fm session key in security store");
             }
         }
-        
+
         if let Some(username) = &self.credentials.username {
             if let Err(e) = SecurityStore::set(LASTFM_USERNAME_STORE, username) {
                 log::warn!("Failed to store Last.fm username: {}", e);
@@ -608,7 +608,7 @@ impl LastfmClient {
                 }
             }
         }
-        
+
         // Try to get username from security store
         match SecurityStore::get(LASTFM_USERNAME_STORE) {
             Ok(username) => {
@@ -674,7 +674,7 @@ impl LastfmClient {
             error!("Session key not found for authenticated user while calling get_track_info.");
             LastfmError::AuthError("Session key not found despite being authenticated.".to_string())
         })?;
-        
+
         // username is not strictly needed if sk is provided, Last.fm infers user from sk.
         // let username = self.credentials.username.as_ref().ok_or_else(|| {
         //     error!("Username not found for authenticated user while calling get_track_info.");
@@ -691,7 +691,7 @@ impl LastfmClient {
             ("autocorrect", "1"),       // Enable autocorrection
             // api_key is added by make_api_request
         ];
-        
+
         // If username is available and you want to explicitly pass it (though sk should be enough)
         // if let Some(uname) = self.credentials.username.as_ref() {
         //    params.push(("username", uname.as_str()));
@@ -716,7 +716,7 @@ impl LastfmClient {
     }
 
     /// Get artist information from Last.fm
-    /// 
+    ///
     /// # Arguments
     /// * `artist` - The artist name.
     ///
@@ -751,7 +751,7 @@ impl LastfmClient {
     }
 
     /// Submit a track scrobble to Last.fm
-    /// 
+    ///
     /// # Arguments
     /// * `artist` - The track artist name
     /// * `track` - The track title
@@ -760,7 +760,7 @@ impl LastfmClient {
     /// * `timestamp` - Unix timestamp when the track was started playing
     /// * `track_number` - Optional track number
     /// * `duration` - Optional track duration in seconds
-    /// 
+    ///
     /// # Returns
     /// Result indicating success or failure
     pub fn scrobble(
@@ -784,7 +784,7 @@ impl LastfmClient {
         let api_key = self.credentials.api_key.clone();
         let session_key = self.credentials.session_key.as_ref().unwrap().clone();
         let timestamp_str = timestamp.to_string();
-        
+
         // Optional parameters
         let track_num_str = track_number.map(|n| n.to_string());
         let duration_str = duration.map(|d| d.to_string());
@@ -802,19 +802,19 @@ impl LastfmClient {
         if let Some(album_name) = album {
             param_vec.push(("album", album_name.to_string()));
         }
-        
+
         if let Some(album_artist_name) = album_artist {
             param_vec.push(("albumArtist", album_artist_name.to_string()));
         }
-        
+
         if let Some(track_num) = track_num_str {
             param_vec.push(("trackNumber", track_num));
         }
-        
+
         if let Some(dur) = duration_str {
             param_vec.push(("duration", dur));
         }
-        
+
         // Create a temporary vector of string references for the API call
         let params: Vec<(&str, &str)> = param_vec.iter()
             .map(|(k, v)| (*k, v.as_str()))
@@ -822,14 +822,14 @@ impl LastfmClient {
 
         // This request needs to be signed
         let _response = self.make_api_request(params, true)?;
-        
+
         // Check for error in the response (handled by make_api_request)
         debug!("Scrobble successful for track: {} - {}", artist, track);
         Ok(())
     }
 
     /// Update "now playing" status on Last.fm
-    /// 
+    ///
     /// # Arguments
     /// * `artist` - The track artist name
     /// * `track` - The track title
@@ -837,7 +837,7 @@ impl LastfmClient {
     /// * `album_artist` - Optional album artist (if different from track artist)
     /// * `track_number` - Optional track number
     /// * `duration` - Optional track duration in seconds
-    /// 
+    ///
     /// # Returns
     /// Result indicating success or failure
     pub fn update_now_playing(
@@ -859,7 +859,7 @@ impl LastfmClient {
         // Convert all parameters to owned strings
         let api_key = self.credentials.api_key.clone();
         let session_key = self.credentials.session_key.as_ref().unwrap().clone();
-        
+
         // Optional parameters
         let track_num_str = track_number.map(|n| n.to_string());
         let duration_str = duration.map(|d| d.to_string());
@@ -876,19 +876,19 @@ impl LastfmClient {
         if let Some(album_name) = album {
             param_vec.push(("album", album_name.to_string()));
         }
-        
+
         if let Some(album_artist_name) = album_artist {
             param_vec.push(("albumArtist", album_artist_name.to_string()));
         }
-        
+
         if let Some(track_num) = track_num_str {
             param_vec.push(("trackNumber", track_num));
         }
-        
+
         if let Some(dur) = duration_str {
             param_vec.push(("duration", dur));
         }
-        
+
         // Create a temporary vector of string references for the API call
         let params: Vec<(&str, &str)> = param_vec.iter()
             .map(|(k, v)| (*k, v.as_str()))
@@ -896,7 +896,7 @@ impl LastfmClient {
 
         // This request needs to be signed
         let _response = self.make_api_request(params, true)?;
-        
+
         // Check for error in the response (handled by make_api_request)
         debug!("Now playing updated for track: {} - {}", artist, track);
         Ok(())
@@ -922,7 +922,7 @@ impl LastfmClient {
 
         // This request needs to be signed
         let _response = self.make_api_request(params, true)?;
-        
+
         debug!("Track loved: {} - {}", artist, track);
         Ok(())
     }
@@ -947,7 +947,7 @@ impl LastfmClient {
 
         // This request needs to be signed
         let _response = self.make_api_request(params, true)?;
-        
+
         debug!("Track unloved: {} - {}", artist, track);
         Ok(())
     }
@@ -1001,7 +1001,7 @@ pub struct LovedTrack {
 }
 
 /// Last.fm Artist Updater
-/// 
+///
 /// Implements the ArtistUpdater trait to fetch artist information from Last.fm
 pub struct LastfmUpdater;
 
@@ -1017,20 +1017,73 @@ impl LastfmUpdater {
     }
 }
 
+/// Apply Last.fm artist data to an artist, merging biographical, tag, and MBID information
+///
+/// This pure function applies Last.fm enrichment data to an artist's metadata without
+/// requiring network access. It handles metadata initialization and safe merging of:
+/// - Biography (with cleanup of Last.fm promotional content)
+/// - Tags/genres
+/// - MusicBrainz IDs
+///
+/// # Arguments
+/// * `mut artist` - The artist to update
+/// * `artist_info` - The Last.fm artist information to apply
+///
+/// # Returns
+/// The artist with Last.fm data merged into metadata
+pub fn apply_lastfm_data_to_artist(
+    mut artist: crate::data::artist::Artist,
+    artist_info: LastfmArtistDetails,
+) -> crate::data::artist::Artist {
+    // Ensure we have metadata
+    if artist.metadata.is_none() {
+        artist.metadata = Some(crate::data::metadata::ArtistMeta::new());
+    }
+
+    if let Some(meta) = &mut artist.metadata {
+        // Add biography from Last.fm (use content, which is the full version)
+        if let Some(bio) = &artist_info.bio {
+            if !bio.content.is_empty() {
+                let cleaned_biography = cleanup_biography(&bio.content);
+                meta.biography = Some(cleaned_biography);
+                meta.biography_source = Some("LastFM".to_string());
+            }
+        }
+
+        // Add tags/genres from Last.fm
+        if let Some(tags) = &artist_info.tags {
+            if !tags.tags.is_empty() {
+                for tag in &tags.tags {
+                    meta.add_genre(tag.name.clone());
+                }
+            }
+        }
+
+        // Add MusicBrainz ID if available and not already present
+        if let Some(mbid) = &artist_info.mbid {
+            if !mbid.is_empty() && !meta.mbid.contains(mbid) {
+                meta.add_mbid(mbid.clone());
+            }
+        }
+    }
+
+    artist
+}
+
 impl crate::helpers::ArtistUpdater for LastfmUpdater {
     /// Updates artist information using Last.fm service
-    /// 
+    ///
     /// This function fetches artist bio, tags, and images from Last.fm and adds them to the artist metadata.
     /// Note: Last.fm doesn't require a MusicBrainz ID and works with just the artist name.
-    /// 
+    ///
     /// # Arguments
     /// * `artist` - The artist to update
-    /// 
+    ///
     /// # Returns
     /// The updated artist with Last.fm data
     fn update_artist(&self, mut artist: crate::data::artist::Artist) -> crate::data::artist::Artist {
         debug!("Updating artist {} with Last.fm data", artist.name);
-        
+
         // Get the Last.fm client instance
         let lastfm_client = {
             let guard = LASTFM_CLIENT.lock();
@@ -1042,68 +1095,25 @@ impl crate::helpers::ArtistUpdater for LastfmUpdater {
                 }
             }
         };
-        
+
         // Get artist info from Last.fm
         match lastfm_client.get_artist_info(&artist.name) {
             Ok(artist_info) => {
                 debug!("Successfully retrieved Last.fm data for artist {}", artist.name);
-                
-                let mut updated_data = Vec::new();
-                
-                // Ensure we have metadata
-                if artist.metadata.is_none() {
-                    artist.metadata = Some(crate::data::metadata::ArtistMeta::new());
-                }
-                
-                if let Some(meta) = &mut artist.metadata {
-                    // Add biography from Last.fm (use content, which is the full version)
-                    if let Some(bio) = &artist_info.bio {
-                        if !bio.content.is_empty() {
-                            let cleaned_biography = cleanup_biography(&bio.content);
-                            meta.biography = Some(cleaned_biography);
-                            meta.biography_source = Some("LastFM".to_string());
-                            updated_data.push("biography".to_string());
-                            debug!("Added Last.fm biography for artist {}", artist.name);
-                        }
-                    }
-                    
-                    // Add tags/genres from Last.fm
-                    if let Some(tags) = &artist_info.tags {
-                        if !tags.tags.is_empty() {
-                            for tag in &tags.tags {
-                                meta.add_genre(tag.name.clone());
-                            }
-                            updated_data.push(format!("{} tags", tags.tags.len()));
-                            debug!("Added {} Last.fm tags for artist {}", tags.tags.len(), artist.name);
-                        }
-                    }
-                    
-                    // Add MusicBrainz ID if available and not already present
-                    if let Some(mbid) = &artist_info.mbid {
-                        if !mbid.is_empty() && !meta.mbid.contains(mbid) {
-                            meta.add_mbid(mbid.clone());
-                            updated_data.push("MusicBrainz ID".to_string());
-                            debug!("Added Last.fm MusicBrainz ID for artist {}: {}", artist.name, mbid);
-                        }
-                    }
-                }
-                
-                // Log successful update with summary of what was added
-                if !updated_data.is_empty() {
-                    info!("Updated artist '{}' with Last.fm data: {}", artist.name, updated_data.join(", "));
-                }
+                artist = apply_lastfm_data_to_artist(artist, artist_info);
+                info!("Updated artist '{}' with Last.fm data", artist.name);
             }
             Err(e) => {
                 debug!("Failed to get Last.fm data for artist {}: {}", artist.name, e);
             }
         }
-        
+
         artist
     }
 }
 
 /// Clean up Last.fm biography text by removing HTML links and unwanted text
-/// 
+///
 /// This function removes Last.fm specific content like:
 /// - "<a href="https://www.last.fm/music/Artist">Read more on Last.fm</a>"
 /// - Other similar Last.fm promotional text
@@ -1113,31 +1123,31 @@ pub fn cleanup_biography(biography: &str) -> String {
         Regex::new(r#"<a\s+href="https://www\.last\.fm/music/[^"]*">Read more on Last\.fm</a>"#)
             .expect("Failed to compile Last.fm link regex")
     });
-    
+
     // Remove Last.fm links
     let cleaned = LASTFM_LINK_REGEX.replace_all(biography, "");
-    
+
     // Clean up any trailing whitespace and periods that may be left over
     let cleaned = cleaned.trim_end();
-    
+
     // Remove trailing period if it was immediately before the removed link
     let cleaned = if biography.contains(r#". <a href="https://www.last.fm/music/"#) && cleaned.ends_with('.') {
         cleaned.trim_end_matches('.')
     } else {
         cleaned
     };
-    
+
     cleaned.to_string()
 }
 
 
 
 /// Love a track on Last.fm
-/// 
+///
 /// # Arguments
 /// * `artist` - The artist name
 /// * `track` - The track name
-/// 
+///
 /// # Returns
 /// Result indicating success or failure
 pub fn love_track(artist: &str, track: &str) -> Result<(), LastfmError> {
@@ -1146,11 +1156,11 @@ pub fn love_track(artist: &str, track: &str) -> Result<(), LastfmError> {
 }
 
 /// Unlove a track on Last.fm
-/// 
+///
 /// # Arguments
 /// * `artist` - The artist name
 /// * `track` - The track name
-/// 
+///
 /// # Returns
 /// Result indicating success or failure
 pub fn unlove_track(artist: &str, track: &str) -> Result<(), LastfmError> {
@@ -1159,11 +1169,11 @@ pub fn unlove_track(artist: &str, track: &str) -> Result<(), LastfmError> {
 }
 
 /// Check if a track is loved on Last.fm
-/// 
+///
 /// # Arguments
 /// * `artist` - The artist name
 /// * `track` - The track name
-/// 
+///
 /// # Returns
 /// Result containing true if loved, false if not
 pub fn is_track_loved(artist: &str, track: &str) -> Result<bool, LastfmError> {
@@ -1268,7 +1278,9 @@ impl crate::helpers::favourites::FavouriteProvider for LastfmFavouriteProvider {
 
 #[cfg(test)]
 mod tests {
-    use super::cleanup_biography;
+    use super::{cleanup_biography, apply_lastfm_data_to_artist, LastfmArtistDetails, LastfmTopTags, LastfmTag, LastfmWiki};
+    use crate::data::artist::Artist;
+    use crate::data::metadata::ArtistMeta;
 
     #[test]
     fn test_cleanup_biography_removes_lastfm_links() {
@@ -1301,7 +1313,7 @@ mod tests {
         }
     }
 
-    #[test] 
+    #[test]
     fn test_cleanup_biography_handles_empty_string() {
         let result = cleanup_biography("");
         assert_eq!(result, "");
@@ -1312,5 +1324,299 @@ mod tests {
         let input = r#"<a href="https://www.last.fm/music/TestArtist">Read more on Last.fm</a>"#;
         let result = cleanup_biography(input);
         assert_eq!(result, "");
+    }
+
+    #[test]
+    fn test_cleanup_biography_multiple_links() {
+        let input = r#"Part one text. <a href="https://www.last.fm/music/Artist1">Read more on Last.fm</a> Middle text. <a href="https://www.last.fm/music/Artist2">Read more on Last.fm</a> End text."#;
+        let result = cleanup_biography(input);
+        // Trailing period is removed when ". <a" pattern exists and result ends with period
+        assert_eq!(result, "Part one text.  Middle text.  End text");
+    }
+
+    #[test]
+    fn test_cleanup_biography_preserves_other_html() {
+        let input = r#"Biography with <b>bold</b> text. <a href="https://www.last.fm/music/Artist">Read more on Last.fm</a>"#;
+        let result = cleanup_biography(input);
+        // Trailing period is removed when ". <a" pattern exists
+        assert_eq!(result, r#"Biography with <b>bold</b> text"#);
+    }
+
+    #[test]
+    fn test_cleanup_biography_handles_unicode() {
+        let input = r#"Björk is an Icelandic artist. <a href="https://www.last.fm/music/Björk">Read more on Last.fm</a>"#;
+        let result = cleanup_biography(input);
+        // Trailing period is removed when ". <a" pattern exists
+        assert_eq!(result, "Björk is an Icelandic artist");
+    }
+
+    #[test]
+    fn test_cleanup_biography_link_with_url_encoding() {
+        let input = r#"Test artist. <a href="https://www.last.fm/music/Test%20Artist">Read more on Last.fm</a>"#;
+        let result = cleanup_biography(input);
+        // Trailing period is removed when ". <a" pattern exists
+        assert_eq!(result, "Test artist");
+    }
+
+    #[test]
+    fn test_apply_lastfm_data_creates_metadata_if_none() {
+        let artist = Artist {
+            id: crate::data::Identifier::String("test-id".to_string()),
+            name: "TestArtist".to_string(),
+            is_multi: false,
+            metadata: None,
+        };
+
+        let artist_info = LastfmArtistDetails {
+            name: "TestArtist".to_string(),
+            mbid: None,
+            url: "http://test".to_string(),
+            image: vec![],
+            streamable: "1".to_string(),
+            stats: None,
+            similar: None,
+            tags: None,
+            bio: None,
+        };
+
+        let result = apply_lastfm_data_to_artist(artist, artist_info);
+        assert!(result.metadata.is_some());
+    }
+
+    #[test]
+    fn test_apply_lastfm_data_adds_biography_and_source() {
+        let artist = Artist {
+            id: crate::data::Identifier::String("test-id".to_string()),
+            name: "TestArtist".to_string(),
+            is_multi: false,
+            metadata: Some(ArtistMeta::new()),
+        };
+
+        let artist_info = LastfmArtistDetails {
+            name: "TestArtist".to_string(),
+            mbid: None,
+            url: "http://test".to_string(),
+            image: vec![],
+            streamable: "1".to_string(),
+            stats: None,
+            similar: None,
+            tags: None,
+            bio: Some(LastfmWiki {
+                published: "2020-01-01".to_string(),
+                summary: "Short bio.".to_string(),
+                content: r#"This is a test artist. <a href="https://www.last.fm/music/Test">Read more on Last.fm</a>"#.to_string(),
+            }),
+        };
+
+        let result = apply_lastfm_data_to_artist(artist, artist_info);
+        assert!(result.metadata.is_some());
+        let meta = result.metadata.unwrap();
+        // Period is removed because content has ". <a" pattern before the link
+        assert_eq!(meta.biography, Some("This is a test artist".to_string()));
+        assert_eq!(meta.biography_source, Some("LastFM".to_string()));
+    }
+
+    #[test]
+    fn test_apply_lastfm_data_skips_empty_biography() {
+        let artist = Artist {
+            id: crate::data::Identifier::String("test-id".to_string()),
+            name: "TestArtist".to_string(),
+            is_multi: false,
+            metadata: Some(ArtistMeta::new()),
+        };
+
+        let artist_info = LastfmArtistDetails {
+            name: "TestArtist".to_string(),
+            mbid: None,
+            url: "http://test".to_string(),
+            image: vec![],
+            streamable: "1".to_string(),
+            stats: None,
+            similar: None,
+            tags: None,
+            bio: Some(LastfmWiki {
+                published: "2020-01-01".to_string(),
+                summary: "Short bio.".to_string(),
+                content: "".to_string(),
+            }),
+        };
+
+        let result = apply_lastfm_data_to_artist(artist, artist_info);
+        let meta = result.metadata.unwrap();
+        assert_eq!(meta.biography, None);
+    }
+
+    #[test]
+    fn test_apply_lastfm_data_adds_genres_from_tags() {
+        let artist = Artist {
+            id: crate::data::Identifier::String("test-id".to_string()),
+            name: "TestArtist".to_string(),
+            is_multi: false,
+            metadata: Some(ArtistMeta::new()),
+        };
+
+        let artist_info = LastfmArtistDetails {
+            name: "TestArtist".to_string(),
+            mbid: None,
+            url: "http://test".to_string(),
+            image: vec![],
+            streamable: "1".to_string(),
+            stats: None,
+            similar: None,
+            tags: Some(LastfmTopTags {
+                tags: vec![
+                    LastfmTag { name: "rock".to_string(), url: "http://test1".to_string() },
+                    LastfmTag { name: "metal".to_string(), url: "http://test2".to_string() },
+                ],
+            }),
+            bio: None,
+        };
+
+        let result = apply_lastfm_data_to_artist(artist, artist_info);
+        let meta = result.metadata.unwrap();
+        assert!(meta.genres.contains(&"rock".to_string()));
+        assert!(meta.genres.contains(&"metal".to_string()));
+    }
+
+    #[test]
+    fn test_apply_lastfm_data_skips_empty_tags() {
+        let artist = Artist {
+            id: crate::data::Identifier::String("test-id".to_string()),
+            name: "TestArtist".to_string(),
+            is_multi: false,
+            metadata: Some(ArtistMeta::new()),
+        };
+
+        let artist_info = LastfmArtistDetails {
+            name: "TestArtist".to_string(),
+            mbid: None,
+            url: "http://test".to_string(),
+            image: vec![],
+            streamable: "1".to_string(),
+            stats: None,
+            similar: None,
+            tags: Some(LastfmTopTags { tags: vec![] }),
+            bio: None,
+        };
+
+        let result = apply_lastfm_data_to_artist(artist, artist_info);
+        let meta = result.metadata.unwrap();
+        assert!(meta.genres.is_empty());
+    }
+
+    #[test]
+    fn test_apply_lastfm_data_adds_mbid_if_new() {
+        let artist = Artist {
+            id: crate::data::Identifier::String("test-id".to_string()),
+            name: "TestArtist".to_string(),
+            is_multi: false,
+            metadata: Some(ArtistMeta::new()),
+        };
+
+        let artist_info = LastfmArtistDetails {
+            name: "TestArtist".to_string(),
+            mbid: Some("12345-new-mbid".to_string()),
+            url: "http://test".to_string(),
+            image: vec![],
+            streamable: "1".to_string(),
+            stats: None,
+            similar: None,
+            tags: None,
+            bio: None,
+        };
+
+        let result = apply_lastfm_data_to_artist(artist, artist_info);
+        let meta = result.metadata.unwrap();
+        assert!(meta.mbid.contains(&"12345-new-mbid".to_string()));
+    }
+
+    #[test]
+    fn test_apply_lastfm_data_skips_duplicate_mbid() {
+        let mut artist = Artist {
+            id: crate::data::Identifier::String("test-id".to_string()),
+            name: "TestArtist".to_string(),
+            is_multi: false,
+            metadata: Some(ArtistMeta::new()),
+        };
+        artist.metadata.as_mut().unwrap().add_mbid("12345-existing".to_string());
+
+        let artist_info = LastfmArtistDetails {
+            name: "TestArtist".to_string(),
+            mbid: Some("12345-existing".to_string()),
+            url: "http://test".to_string(),
+            image: vec![],
+            streamable: "1".to_string(),
+            stats: None,
+            similar: None,
+            tags: None,
+            bio: None,
+        };
+
+        let result = apply_lastfm_data_to_artist(artist, artist_info);
+        let meta = result.metadata.unwrap();
+        let count = meta.mbid.iter().filter(|m| m == &&"12345-existing".to_string()).count();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_apply_lastfm_data_skips_empty_mbid() {
+        let artist = Artist {
+            id: crate::data::Identifier::String("test-id".to_string()),
+            name: "TestArtist".to_string(),
+            is_multi: false,
+            metadata: Some(ArtistMeta::new()),
+        };
+
+        let artist_info = LastfmArtistDetails {
+            name: "TestArtist".to_string(),
+            mbid: Some("".to_string()),
+            url: "http://test".to_string(),
+            image: vec![],
+            streamable: "1".to_string(),
+            stats: None,
+            similar: None,
+            tags: None,
+            bio: None,
+        };
+
+        let result = apply_lastfm_data_to_artist(artist, artist_info);
+        let meta = result.metadata.unwrap();
+        assert!(meta.mbid.is_empty());
+    }
+
+    #[test]
+    fn test_apply_lastfm_data_with_all_fields() {
+        let artist = Artist {
+            id: crate::data::Identifier::String("test-id".to_string()),
+            name: "TestArtist".to_string(),
+            is_multi: false,
+            metadata: Some(ArtistMeta::new()),
+        };
+
+        let artist_info = LastfmArtistDetails {
+            name: "TestArtist".to_string(),
+            mbid: Some("test-mbid".to_string()),
+            url: "http://test".to_string(),
+            image: vec![],
+            streamable: "1".to_string(),
+            stats: None,
+            similar: None,
+            tags: Some(LastfmTopTags {
+                tags: vec![LastfmTag { name: "pop".to_string(), url: "http://test".to_string() }],
+            }),
+            bio: Some(LastfmWiki {
+                published: "2020-01-01".to_string(),
+                summary: "Short bio.".to_string(),
+                content: r#"Full biography. <a href="https://www.last.fm/music/Test">Read more on Last.fm</a>"#.to_string(),
+            }),
+        };
+
+        let result = apply_lastfm_data_to_artist(artist, artist_info);
+        let meta = result.metadata.unwrap();
+        // Period is removed because content has ". <a" pattern before the link
+        assert_eq!(meta.biography, Some("Full biography".to_string()));
+        assert_eq!(meta.biography_source, Some("LastFM".to_string()));
+        assert!(meta.genres.contains(&"pop".to_string()));
+        assert!(meta.mbid.contains(&"test-mbid".to_string()));
     }
 }
