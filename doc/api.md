@@ -1498,11 +1498,7 @@ the backend system (e.g., MPD server) to look for new files on disk.
 
 #### Example
 ```bash
-<<<<<<< HEAD
-curl "$API_BASE_URL/library/mpd/update"
-=======
 curl -X POST http://<device-ip>:1080/api/library/mpd/update
->>>>>>> origin/main
 ```
 
 ### Get Library Metadata
@@ -1570,8 +1566,6 @@ Retrieves an image (such as album art) from a player's library.
 #### Example
 ```bash
 curl "$API_BASE_URL/library/mpd/image/album:12345" --output cover.jpg
-<<<<<<< HEAD
-=======
 ```
 
 ### Browse Genres

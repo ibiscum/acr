@@ -705,13 +705,8 @@ impl BluetoothPlayerController {
             return;
         }
 
-<<<<<<< HEAD
-        // Don't start if we already have a device
-        if self.device_address.read().is_some() {
-=======
         // Don't start if we already have an active player path.
         if !should_scan_for_player_path(self.player_path.read().is_some()) {
->>>>>>> origin/main
             return;
         }
         
@@ -723,10 +718,7 @@ impl BluetoothPlayerController {
         
         let handle = thread::spawn(move || {
             info!("Starting Bluetooth device scanning thread");
-<<<<<<< HEAD
-=======
             let mut scan_interval_secs = BLUETOOTH_SCAN_INTERVAL_STEP_SECS;
->>>>>>> origin/main
 
             if !Self::ensure_shared_dbus_connection(&connection) {
                 debug!("Bluetooth scanning thread exiting due to missing D-Bus connection");
@@ -1153,13 +1145,8 @@ impl PlayerController for BluetoothPlayerController {
             warn!("MediaPlayer1 interface not found for device: {:?}", addr);
             // Don't return false here as the device might connect later
 
-<<<<<<< HEAD
-            // If we are in auto-discover mode, keep scanning for a device.
-            if self.device_address.read().is_none() {
-=======
             // In auto-discover mode, keep scanning whenever no player path is available.
             if should_start_scanning_in_start(self.auto_discover_mode, self.player_path.read().is_some()) {
->>>>>>> origin/main
                 self.start_scanning_thread();
             }
         }

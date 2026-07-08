@@ -14,10 +14,7 @@ hifiberry-audiocontrol (0.7.14) stable; urgency=medium
     tarball generation.
   * Tool naming: normalize src/tools source filenames to acr_* while keeping
     installed CLI binaries on audiocontrol_* names.
-<<<<<<< HEAD
-=======
   * Documentation: clarify Librespot player controller implementation notes.
->>>>>>> origin/main
   * Shairport: add regression/integration-style unit tests for invalid config
     parameters, edge-case file handling, start/stop lifecycle behavior, and
     player-factory wiring.
@@ -36,8 +33,6 @@ hifiberry-audiocontrol (0.7.14) stable; urgency=medium
   * Bluetooth tests: add regression/integration-style coverage for
     auto-discover id, empty/invalid device_address parameters, unsupported
     commands, and idempotent stop behavior.
-<<<<<<< HEAD
-=======
   * MPD: keep BasePlayerController source id in sync when set_connection updates
     host/port, ensuring consistent event source metadata after runtime
     connection changes.
@@ -66,7 +61,6 @@ hifiberry-audiocontrol (0.7.14) stable; urgency=medium
     resolution, scan-start decision logic, and scan interval backoff behavior.
   * Docs: update Bluetooth controller state-machine notes/diagram to reflect
     stale-path clearing, consistent duration units, and scan backoff behavior.
->>>>>>> origin/main
 
  -- ibiscum <ibiscum@magenta.de>  Sat, 04 Jul 2026 02:30:00 +0000
 

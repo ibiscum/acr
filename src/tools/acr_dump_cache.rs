@@ -1,19 +1,11 @@
-<<<<<<< HEAD
-=======
 use audiocontrol::helpers::artist_splitter::ARTIST_SPLIT_CACHE_PREFIX;
 use audiocontrol::helpers::attribute_cache::{self, AttributeCache};
 use audiocontrol::helpers::image_meta::IMAGE_META_CACHE_PREFIX;
 use audiocontrol::helpers::musicbrainz::{ARTIST_MBID_CACHE_PREFIX, ARTIST_NOT_FOUND_CACHE_PREFIX};
 use chrono::DateTime;
->>>>>>> origin/main
 use clap::{Parser, Subcommand};
 use log::{info, warn};
-use audiocontrol::helpers::attribute_cache::{self, AttributeCache};
-use audiocontrol::helpers::artist_splitter::ARTIST_SPLIT_CACHE_PREFIX;
-use audiocontrol::helpers::musicbrainz::{ARTIST_MBID_CACHE_PREFIX, ARTIST_NOT_FOUND_CACHE_PREFIX};
-use audiocontrol::helpers::image_meta::IMAGE_META_CACHE_PREFIX;
 use std::path::PathBuf;
-use chrono::DateTime;
 
 #[derive(Parser)]
 #[command(name = "audiocontrol_dump_cache")]
@@ -255,15 +247,11 @@ fn clean_cache_entries(prefix: Option<&str>, all: bool, older_than_days: Option<
     if let Some(prefix) = prefix {
         if dry_run {
             let entries = attribute_cache::list_entries(Some(prefix))?;
-<<<<<<< HEAD
-            println!("Would delete {} cache entries with prefix '{}' (dry run)", entries.len(), prefix);
-=======
             println!(
                 "Would delete {} cache entries with prefix '{}' (dry run)",
                 entries.len(),
                 prefix
             );
->>>>>>> origin/main
             for entry in &entries[..entries.len().min(10)] {
                 println!("  - {}", entry.key);
             }
@@ -281,14 +269,10 @@ fn clean_cache_entries(prefix: Option<&str>, all: bool, older_than_days: Option<
     if let Some(days) = older_than_days {
         // For now, we'll use the cleanup function which removes entries older than the configured max age
         // In the future, we could add a custom cleanup function that takes days as parameter
-<<<<<<< HEAD
-        warn!("Cleaning entries older than {} days using cache cleanup function", days);
-=======
         warn!(
             "Cleaning entries older than {} days using cache cleanup function",
             days
         );
->>>>>>> origin/main
         let deleted = attribute_cache::cleanup()?;
         info!("Deleted {} old cache entries", deleted);
         return Ok(());
@@ -299,11 +283,7 @@ fn clean_cache_entries(prefix: Option<&str>, all: bool, older_than_days: Option<
 
 fn show_cache_stats(by_prefix: bool) -> Result<(), Box<dyn std::error::Error>> {
     let entries = attribute_cache::list_entries(None)?;
-<<<<<<< HEAD
-    
-=======
 
->>>>>>> origin/main
     if entries.is_empty() {
         info!("Cache is empty");
         return Ok(());
@@ -459,7 +439,3 @@ mod tests {
         assert_eq!(format_size(1024 * 1024), "1.0 MB");
     }
 }
-<<<<<<< HEAD
-
-=======
->>>>>>> origin/main
