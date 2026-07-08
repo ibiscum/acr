@@ -1661,7 +1661,6 @@ curl http://<device-ip>:1080/api/library/mpd/artists/by-genre/Rock
 
 # Get Classical artists from LMS library
 curl http://<device-ip>:1080/api/library/lms/artists/by-genre/Classical
->>>>>>> origin/main
 ```
 
 ## External Services API
