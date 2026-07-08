@@ -242,7 +242,6 @@ pub fn update_artist_image(artist_b64: String, request: Json<UpdateImageRequest>
     // Store the custom URL in settings database
     let settings_key = format!("artist.image.{}", artist_name);
     debug!("Storing custom image URL in settings: key={}, url={}", settings_key, request.url);
-
     match settings_db::set_string(&settings_key, &request.url) {
         Ok(_) => {
             info!("Successfully stored custom image URL for artist '{}': {}", artist_name, request.url);

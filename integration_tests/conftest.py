@@ -107,7 +107,6 @@ class AudioControlTestServer:
 
         # Update port
         services["webserver"]["port"] = self.port
-
         # Update pipe paths for different players based on OS
         for player_config in config["players"]:
             # Update librespot pipe
@@ -146,7 +145,6 @@ class AudioControlTestServer:
             # Fallback for older config structure
             services["cache"]["attribute_cache_path"] = str(attributes_cache_dir.absolute())
             services["cache"]["image_cache_path"] = str(images_cache_dir.absolute())
-
         # Create config file
         self.config_path = TMP_DIR / f"test_config_{self.port}.json"
         with open(self.config_path, 'w') as f:

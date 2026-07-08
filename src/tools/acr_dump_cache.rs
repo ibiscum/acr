@@ -276,7 +276,6 @@ fn clean_cache_entries(prefix: Option<&str>, all: bool, older_than_days: Option<
 
 fn show_cache_stats(by_prefix: bool) -> Result<(), Box<dyn std::error::Error>> {
     let entries = attribute_cache::list_entries(None)?;
-    
     if entries.is_empty() {
         info!("Cache is empty");
         return Ok(());
@@ -432,4 +431,3 @@ mod tests {
         assert_eq!(format_size(1024 * 1024), "1.0 MB");
     }
 }
-

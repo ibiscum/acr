@@ -27,7 +27,6 @@ def coverart_server():
     def create_custom_config():
         """Create config with cover art providers enabled"""
         import tempfile
-
         # Create cache directories
         cache_dir = Path(f"test_cache_{server.port}")
         cache_dir.mkdir(exist_ok=True)
@@ -113,7 +112,6 @@ def coverart_server():
 
         # Store this so LastFM-specific tests can skip with a clear reason.
         server.lastfm_enabled_for_test = has_real_lastfm_credentials
-
         # Enable MusicBrainz (required for FanArt.tv)
         if "musicbrainz" not in config["services"]:
             config["services"]["musicbrainz"] = {
