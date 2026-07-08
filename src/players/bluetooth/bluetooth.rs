@@ -13,6 +13,41 @@ use std::time::{Duration, SystemTime};
 use std::thread;
 use std::sync::atomic::Ordering;
 
+const MILLIS_PER_SECOND: f64 = 1000.0;
+const BLUETOOTH_SCAN_INTERVAL_STEP_SECS: u64 = 5;
+const BLUETOOTH_SCAN_INTERVAL_MAX_SECS: u64 = 60;
+
+pub(crate) fn duration_millis_to_song_seconds(duration_ms: u64) -> f64 {
+    duration_ms as f64 / MILLIS_PER_SECOND
+}
+
+pub(crate) fn resolve_player_path_transition(
+    current_path: Option<String>,
+    current_path_is_valid: bool,
+    replacement_path: Option<String>,
+) -> Option<String> {
+    if current_path_is_valid {
+        current_path
+    } else {
+        replacement_path
+    }
+}
+
+pub(crate) fn should_scan_for_player_path(has_player_path: bool) -> bool {
+    !has_player_path
+}
+
+pub(crate) fn should_start_scanning_in_start(
+    auto_discover_mode: bool,
+    has_player_path: bool,
+) -> bool {
+    auto_discover_mode && should_scan_for_player_path(has_player_path)
+}
+
+pub(crate) fn next_scan_interval_secs(current_secs: u64) -> u64 {
+    (current_secs + BLUETOOTH_SCAN_INTERVAL_STEP_SECS).min(BLUETOOTH_SCAN_INTERVAL_MAX_SECS)
+}
+
 /// Bluetooth player controller implementation
 /// This controller interfaces with Bluetooth audio devices via D-Bus using BlueZ MediaPlayer1 interface
 pub struct BluetoothPlayerController {
@@ -36,6 +71,9 @@ pub struct BluetoothPlayerController {
     
     /// Device name (friendly name)
     device_name: Arc<RwLock<Option<String>>>,
+
+    /// True when controller was created without a fixed device address.
+    auto_discover_mode: bool,
     
     /// Background thread handle for device scanning
     scan_thread: Arc<RwLock<Option<std::thread::JoinHandle<()>>>>,
@@ -61,6 +99,7 @@ impl Clone for BluetoothPlayerController {
             device_address: Arc::clone(&self.device_address),
             player_path: Arc::clone(&self.player_path),
             device_name: Arc::clone(&self.device_name),
+            auto_discover_mode: self.auto_discover_mode,
             scan_thread: Arc::new(RwLock::new(None)),
             stop_scanning: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             poll_thread: Arc::new(RwLock::new(None)),
@@ -128,6 +167,8 @@ impl BluetoothPlayerController {
     
     /// Create a new BluetoothPlayerController with a specific device address
     pub fn new_with_address(device_address: Option<String>) -> Self {
+        let auto_discover_mode = device_address.is_none();
+
         // Construct the player id WITH the "bluetooth:" prefix so it is the single
         // source of truth. The base controller stores this id and the inherent
         // BasePlayerController::notify_state_changed() stamps it onto every
@@ -161,6 +202,7 @@ impl BluetoothPlayerController {
             device_address: Arc::new(RwLock::new(device_address.clone())),
             player_path: Arc::new(RwLock::new(None)),
             device_name: Arc::new(RwLock::new(None)),
+            auto_discover_mode,
             scan_thread: Arc::new(RwLock::new(None)),
             stop_scanning: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             poll_thread: Arc::new(RwLock::new(None)),
@@ -295,11 +337,12 @@ impl BluetoothPlayerController {
         device_address: &Arc<RwLock<Option<String>>>,
     ) {
         let current_path = player_path.read().clone();
+        let mut current_path_is_valid = false;
 
         let device_addr = device_address.read().clone();
 
         // If we have a stored path, check if it's still valid
-        if let Some(path) = current_path {
+        if let Some(path) = current_path.clone() {
             let conn_guard = connection.lock();
             
             if let Some(conn) = conn_guard.as_ref() {
@@ -309,7 +352,7 @@ impl BluetoothPlayerController {
                 if let Ok(objects) = proxy.get_managed_objects() {
                     if objects.contains_key(&dbus::Path::from(path.clone())) {
                         // Current player path is still valid
-                        return;
+                        current_path_is_valid = true;
                     } else {
                         debug!("Current player path {} no longer exists, searching for new player", path);
                     }
@@ -321,16 +364,25 @@ impl BluetoothPlayerController {
                 return;
             }
         }
+
+        if current_path_is_valid {
+            return;
+        }
         
         // Current path is invalid or doesn't exist, try to find a new player
-        if let Some(addr) = device_addr {
-            // Find active player using static helper
-            if let Some(new_path) = Self::find_active_player_static(connection, &addr) {
-                info!("Found new active player at path: {}", new_path);
-                let mut guard = player_path.write();
-                *guard = Some(new_path);
-            }
+        let replacement_path = if let Some(addr) = device_addr {
+            Self::find_active_player_static(connection, &addr)
+        } else {
+            None
+        };
+
+        if let Some(ref new_path) = replacement_path {
+            info!("Found new active player at path: {}", new_path);
         }
+
+        let resolved_path = resolve_player_path_transition(current_path, false, replacement_path);
+        let mut guard = player_path.write();
+        *guard = resolved_path;
     }
 
     /// Static helper to find active player (for use in polling thread)
@@ -377,11 +429,12 @@ impl BluetoothPlayerController {
         }
         
         let current_path = self.player_path.read().clone();
+        let mut current_path_is_valid = false;
 
         let device_address = self.device_address.read().clone();
 
         // If we have a stored path, check if it's still valid
-        if let Some(path) = current_path {
+        if let Some(path) = current_path.clone() {
             let conn_guard = self.connection.lock();
             
             if let Some(conn) = conn_guard.as_ref() {
@@ -391,7 +444,7 @@ impl BluetoothPlayerController {
                 if let Ok(objects) = proxy.get_managed_objects() {
                     if objects.contains_key(&dbus::Path::from(path.clone())) {
                         // Current player path is still valid
-                        return true;
+                        current_path_is_valid = true;
                     } else {
                         debug!("Current player path {} no longer exists, searching for new player", path);
                     }
@@ -403,18 +456,28 @@ impl BluetoothPlayerController {
                 return false;
             }
         }
-        
-        // Current path is invalid or doesn't exist, try to find a new player
-        if let Some(addr) = device_address {
-            if let Some(new_path) = self.find_active_player(&addr) {
-                info!("Found new active player at path: {}", new_path);
-                let mut guard = self.player_path.write();
-                *guard = Some(new_path);
-                return true;
-            }
+
+        if current_path_is_valid {
+            return true;
         }
         
-        false
+        // Current path is invalid or doesn't exist, try to find a new player
+        let replacement_path = if let Some(addr) = device_address {
+            self.find_active_player(&addr)
+        } else {
+            None
+        };
+
+        if let Some(ref new_path) = replacement_path {
+            info!("Found new active player at path: {}", new_path);
+        }
+
+        let resolved_path = resolve_player_path_transition(current_path, false, replacement_path);
+        let has_resolved_path = resolved_path.is_some();
+        let mut guard = self.player_path.write();
+        *guard = resolved_path;
+        
+        has_resolved_path
     }
     
     /// Find the MediaPlayer1 object path for the device
@@ -554,8 +617,8 @@ impl BluetoothPlayerController {
                     }
                     "Duration" => {
                         if let Some(val) = variant.as_u64() {
-                            // Duration is in microseconds, convert to seconds
-                            let duration_secs = val as f64 / 1_000_000.0;
+                            // BlueZ MediaPlayer1 Track.Duration is milliseconds.
+                            let duration_secs = duration_millis_to_song_seconds(val);
                             duration = Some(duration_secs);
                             metadata.insert("duration".to_string(), serde_json::Value::Number(
                                 serde_json::Number::from_f64(duration_secs).unwrap_or(serde_json::Number::from(0))
@@ -642,8 +705,13 @@ impl BluetoothPlayerController {
             return;
         }
 
+<<<<<<< HEAD
         // Don't start if we already have a device
         if self.device_address.read().is_some() {
+=======
+        // Don't start if we already have an active player path.
+        if !should_scan_for_player_path(self.player_path.read().is_some()) {
+>>>>>>> origin/main
             return;
         }
         
@@ -655,6 +723,10 @@ impl BluetoothPlayerController {
         
         let handle = thread::spawn(move || {
             info!("Starting Bluetooth device scanning thread");
+<<<<<<< HEAD
+=======
+            let mut scan_interval_secs = BLUETOOTH_SCAN_INTERVAL_STEP_SECS;
+>>>>>>> origin/main
 
             if !Self::ensure_shared_dbus_connection(&connection) {
                 debug!("Bluetooth scanning thread exiting due to missing D-Bus connection");
@@ -663,8 +735,8 @@ impl BluetoothPlayerController {
             
             while !stop_flag.load(std::sync::atomic::Ordering::Relaxed) {
                 // Check if we still need to scan
-                if device_address.read().is_some() {
-                    // We found a device, stop scanning
+                if !should_scan_for_player_path(player_path.read().is_some()) {
+                    // We already have a player path, stop scanning.
                     break;
                 }
 
@@ -706,7 +778,8 @@ impl BluetoothPlayerController {
                 }
                 
                 // Wait 5 seconds before next scan
-                thread::sleep(Duration::from_secs(5));
+                thread::sleep(Duration::from_secs(scan_interval_secs));
+                scan_interval_secs = next_scan_interval_secs(scan_interval_secs);
             }
             
             debug!("Bluetooth scanning thread stopped");
@@ -725,7 +798,9 @@ impl BluetoothPlayerController {
         *self.device_name.write() = None;
         
         // Try to find a device immediately
-        self.find_player_path();
+        if self.find_player_path().is_none() && self.auto_discover_mode {
+            self.start_scanning_thread();
+        }
     }
     
 
@@ -793,7 +868,7 @@ impl BluetoothPlayerController {
             
             let duration = track_data.get("Duration")
                 .and_then(|v| v.as_u64())
-                .map(|d| d as f64 / 1000.0); // Convert ms to seconds
+                .map(duration_millis_to_song_seconds);
             
             // Create new song if we have track data
             if title.is_some() || artist.is_some() || album.is_some() {
@@ -1044,7 +1119,7 @@ impl PlayerController for BluetoothPlayerController {
             PlayerCommand::Next => self.send_dbus_command("Next"),
             PlayerCommand::Previous => self.send_dbus_command("Previous"),
             _ => {
-                warn!("Unsupported command for Bluetooth device: {}", command);
+                debug!("Unsupported command for Bluetooth device: {}", command);
                 false
             }
         }
@@ -1078,8 +1153,13 @@ impl PlayerController for BluetoothPlayerController {
             warn!("MediaPlayer1 interface not found for device: {:?}", addr);
             // Don't return false here as the device might connect later
 
+<<<<<<< HEAD
             // If we are in auto-discover mode, keep scanning for a device.
             if self.device_address.read().is_none() {
+=======
+            // In auto-discover mode, keep scanning whenever no player path is available.
+            if should_start_scanning_in_start(self.auto_discover_mode, self.player_path.read().is_some()) {
+>>>>>>> origin/main
                 self.start_scanning_thread();
             }
         }
@@ -1131,5 +1211,174 @@ impl PlayerController for BluetoothPlayerController {
         *self.player_path.write() = None;
         
         true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::players::PlayerController;
+
+    #[test]
+    fn test_bluetooth_controller_creation() {
+        let controller = BluetoothPlayerController::new_with_address(Some("80:B9:89:1E:B5:6F".to_string()));
+
+        assert_eq!(controller.get_player_name(), "bluetooth");
+        assert_eq!(controller.get_player_id(), "bluetooth:80:B9:89:1E:B5:6F");
+
+        let aliases = controller.get_aliases();
+        assert!(aliases.contains(&"bluetooth".to_string()));
+        assert!(aliases.contains(&"bluez".to_string()));
+        assert!(aliases.contains(&"bt".to_string()));
+
+        // Test that it has basic capabilities
+        let caps = controller.get_capabilities();
+        assert!(caps.has_capability(crate::data::PlayerCapability::Play));
+        assert!(caps.has_capability(crate::data::PlayerCapability::Pause));
+        assert!(caps.has_capability(crate::data::PlayerCapability::Next));
+        assert!(caps.has_capability(crate::data::PlayerCapability::Previous));
+    }
+
+    #[test]
+    fn test_bluetooth_controller_from_factory() {
+        use crate::players::player_factory::create_player_from_json_str;
+
+        let config = r#"
+        {
+            "bluetooth": {
+                "device_address": "80:B9:89:1E:B5:6F"
+            }
+        }
+        "#;
+
+        let result = create_player_from_json_str(config);
+        assert!(result.is_ok());
+
+        let controller = result.unwrap();
+        assert_eq!(controller.get_player_name(), "bluetooth");
+    }
+
+    #[test]
+    fn test_bluetooth_controller_auto_discover_id() {
+        let controller = BluetoothPlayerController::new_with_address(None);
+        assert_eq!(controller.get_player_id(), "bluetooth:auto-discover");
+    }
+
+    #[test]
+    fn test_bluetooth_controller_empty_address_edge_case() {
+        let controller = BluetoothPlayerController::new_with_address(Some(String::new()));
+        assert_eq!(controller.get_player_id(), "bluetooth:");
+    }
+
+    #[test]
+    fn test_bluetooth_unsupported_commands_return_false() {
+        let controller = BluetoothPlayerController::new_with_address(Some("80:B9:89:1E:B5:6F".to_string()));
+
+        assert!(!controller.send_command(PlayerCommand::Seek(42.0)));
+        assert!(!controller.send_command(PlayerCommand::SetLoopMode(crate::data::LoopMode::Track)));
+        assert!(!controller.send_command(PlayerCommand::SetRandom(true)));
+    }
+
+    #[test]
+    fn test_bluetooth_stop_is_idempotent() {
+        let controller = BluetoothPlayerController::new_with_address(Some("80:B9:89:1E:B5:6F".to_string()));
+
+        assert!(controller.stop());
+        assert!(controller.stop());
+    }
+
+    #[test]
+    fn test_bluetooth_factory_missing_device_address_defaults_to_auto_discover() {
+        use crate::players::player_factory::create_player_from_json_str;
+
+        let config = r#"
+        {
+            "bluetooth": {}
+        }
+        "#;
+
+        let result = create_player_from_json_str(config);
+        assert!(result.is_ok());
+
+        let controller = result.unwrap();
+        assert_eq!(controller.get_player_name(), "bluetooth");
+        assert_eq!(controller.get_player_id(), "bluetooth:auto-discover");
+    }
+
+    #[test]
+    fn test_bluetooth_factory_invalid_device_address_type_defaults_to_auto_discover() {
+        use crate::players::player_factory::create_player_from_json_str;
+
+        let config = r#"
+        {
+            "bluetooth": {
+                "device_address": 12345
+            }
+        }
+        "#;
+
+        let result = create_player_from_json_str(config);
+        assert!(result.is_ok());
+
+        let controller = result.unwrap();
+        assert_eq!(controller.get_player_name(), "bluetooth");
+        assert_eq!(controller.get_player_id(), "bluetooth:auto-discover");
+    }
+
+    #[test]
+    fn test_duration_millis_to_song_seconds_is_consistent() {
+        assert_eq!(duration_millis_to_song_seconds(0), 0.0);
+        assert_eq!(duration_millis_to_song_seconds(1000), 1.0);
+        assert_eq!(duration_millis_to_song_seconds(2500), 2.5);
+    }
+
+    #[test]
+    fn test_resolve_player_path_transition_keeps_valid_current_path() {
+        let current = Some("/org/bluez/hci0/dev_AA_BB/player0".to_string());
+        let replacement = Some("/org/bluez/hci0/dev_AA_BB/player1".to_string());
+
+        let resolved = resolve_player_path_transition(current.clone(), true, replacement);
+
+        assert_eq!(resolved, current);
+    }
+
+    #[test]
+    fn test_resolve_player_path_transition_clears_stale_path_when_no_replacement() {
+        let current = Some("/org/bluez/hci0/dev_AA_BB/player0".to_string());
+
+        let resolved = resolve_player_path_transition(current, false, None);
+
+        assert!(resolved.is_none());
+    }
+
+    #[test]
+    fn test_resolve_player_path_transition_uses_replacement_path() {
+        let replacement = Some("/org/bluez/hci0/dev_AA_BB/player1".to_string());
+
+        let resolved = resolve_player_path_transition(None, false, replacement.clone());
+
+        assert_eq!(resolved, replacement);
+    }
+
+    #[test]
+    fn test_should_scan_for_player_path() {
+        assert!(should_scan_for_player_path(false));
+        assert!(!should_scan_for_player_path(true));
+    }
+
+    #[test]
+    fn test_should_start_scanning_in_start_only_for_auto_discover_without_path() {
+        assert!(should_start_scanning_in_start(true, false));
+        assert!(!should_start_scanning_in_start(true, true));
+        assert!(!should_start_scanning_in_start(false, false));
+    }
+
+    #[test]
+    fn test_next_scan_interval_secs_steps_to_60() {
+        assert_eq!(next_scan_interval_secs(5), 10);
+        assert_eq!(next_scan_interval_secs(10), 15);
+        assert_eq!(next_scan_interval_secs(55), 60);
+        assert_eq!(next_scan_interval_secs(60), 60);
+        assert_eq!(next_scan_interval_secs(120), 60);
     }
 }

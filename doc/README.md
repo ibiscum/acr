@@ -7,6 +7,7 @@ This directory contains documentation for various aspects of the HiFiBerry Audio
 - [API Documentation](api.md) - REST API and WebSocket endpoints
 - [Caching](caching.md) - Information about the caching mechanisms used in Audiocontrol
 - [CLI Tools](cli_tools.md) - Command-line tools for interacting with Audiocontrol
+- [Controller State Machines](controller_state_machines.md) - Global and backend-specific runtime state/transition diagrams
 - [Generic Player Controller](generic_player_controller.md) - Configurable player implementation
 - [Image Grading System](imagegrading.md) - Quality scoring system for cover art images
 - [Last.fm Authentication](lastfm.md) - How to authenticate with Last.fm

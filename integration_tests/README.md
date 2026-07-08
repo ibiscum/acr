@@ -26,7 +26,7 @@ The tests start AudioControl server instances and make HTTP API requests to test
 ### Option 1: Using the test runner (recommended)
 
 ```bash
-python tests/run_tests.py
+cd integration_tests; ./run_tests.py
 ```
 
 This will:

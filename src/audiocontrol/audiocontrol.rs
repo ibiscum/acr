@@ -1,5 +1,5 @@
 use crate::players::PlayerController;
-use crate::data::{PlayerCommand, PlayerCapabilitySet, Song, LoopMode, PlaybackState, Track};
+use crate::data::{PlayerCommand, PlayerCapabilitySet, Song, LoopMode, PlaybackState, Track, PlayerEvent, PlayerSource};
 use crate::players::{create_player_from_json, PlayerCreationError};
 use crate::plugins::ActionPlugin;
 use serde_json::Value;
@@ -313,6 +313,14 @@ impl AudioController {
         let mut active_idx = self.active_index.write();
         *active_idx = index;
         debug!("Changing active controller to index {}", index);
+
+        // Publish an active player changed event for observers.
+        let controller = self.controllers[index].read();
+        let source = PlayerSource::new(controller.get_player_name(), controller.get_player_id());
+        EventBus::instance().publish(PlayerEvent::ActivePlayerChanged {
+            source: source.clone(),
+            player_id: source.player_id,
+        });
         true
     }
 

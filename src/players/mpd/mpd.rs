@@ -259,6 +259,7 @@ impl MPDPlayerController {
         debug!("Updating MPD connection to {}:{}", hostname, port);
         self.hostname = hostname.to_string();
         self.port = port;
+        self.base.set_player_id(&format!("{}:{}", hostname, port));
     }
     
     /// Get whether to load MPD library into memory
@@ -660,7 +661,7 @@ impl MPDPlayerController {
     
     /// Starts a background thread that listens for MPD events
     /// The thread will run until the running flag is set to false
-    fn start_event_listener(&self, running: Arc<AtomicBool>, self_arc: Arc<Self>) {
+    fn start_event_listener(&self, running: Arc<AtomicBool>, self_arc: Arc<Self>) -> thread::JoinHandle<()> {
         let hostname = self.hostname.clone();
         let port = self.port;
         
@@ -671,7 +672,7 @@ impl MPDPlayerController {
             info!("MPD event listener thread started");
             Self::run_event_loop(&hostname, port, running, self_arc);
             info!("MPD event listener thread shutting down");
-        });
+        })
     }
 
     /// Main event loop for listening to MPD events
@@ -1420,7 +1421,8 @@ impl MPDPlayerController {
 
 /// Structure to store player state for each instance
 struct PlayerInstanceData {
-    running_flag: Arc<AtomicBool>
+    running_flag: Arc<AtomicBool>,
+    listener_handle: Option<thread::JoinHandle<()>>,
 }
 
 /// A map to store running state for each player instance
@@ -1833,6 +1835,20 @@ impl PlayerController for MPDPlayerController {
 
     fn start(&self) -> bool {
         info!("Starting MPD player controller");
+
+        // Stop and join any existing listener thread to avoid overlap on restart.
+        let previous = {
+            let mut state = PLAYER_STATE.lock();
+            let instance_id = self as *const _ as usize;
+            state.remove(&instance_id)
+        };
+
+        if let Some(mut data) = previous {
+            data.running_flag.store(false, Ordering::SeqCst);
+            if let Some(handle) = data.listener_handle.take() {
+                let _ = handle.join();
+            }
+        }
         
         // Create a new Arc<Self> for thread-safe sharing of player instance
         let player_arc = Arc::new(self.clone());
@@ -1870,37 +1886,39 @@ impl PlayerController for MPDPlayerController {
             let mut state = PLAYER_STATE.lock();
             let instance_id = self as *const _ as usize;
 
-            if let Some(data) = state.get(&instance_id) {
-                // Stop any existing thread
-                data.running_flag.store(false, Ordering::SeqCst);
-            }
-
             // Start a new listener thread
-            self.start_event_listener(running.clone(), player_arc.clone());
+            let listener_handle = self.start_event_listener(running.clone(), player_arc.clone());
 
             // Store the running flag
-            state.insert(instance_id, PlayerInstanceData { running_flag: running });
+            state.insert(instance_id, PlayerInstanceData {
+                running_flag: running,
+                listener_handle: Some(listener_handle),
+            });
             true
         }
     }
     
     fn stop(&self) -> bool {
         info!("Stopping MPD player controller");
-        
-        // Signal the event listener thread to stop
-        {
+
+        // Signal the event listener thread to stop and join it if present.
+        let data = {
             let mut state = PLAYER_STATE.lock();
             let instance_id = self as *const _ as usize;
+            state.remove(&instance_id)
+        };
 
-            if let Some(data) = state.remove(&instance_id) {
-                data.running_flag.store(false, Ordering::SeqCst);
-                debug!("Signaled event listener thread to stop");
-                return true;
+        if let Some(mut player_data) = data {
+            player_data.running_flag.store(false, Ordering::SeqCst);
+            if let Some(handle) = player_data.listener_handle.take() {
+                let _ = handle.join();
             }
+            debug!("Signaled event listener thread to stop");
+            return true;
         }
 
         debug!("No active event listener thread found");
-        false
+        true
     }
     
     // Implement the get_library method for MPDPlayerController
@@ -2076,6 +2094,7 @@ impl PlayerController for MPDPlayerController {
 mod tests {
     use super::*;
     use serde_json::Value;
+    use serde_json::json;
     use tempfile::TempDir;
 
     /// Test that songs without cached metadata are not affected
@@ -2100,5 +2119,108 @@ mod tests {
         // Verify that no cached metadata was added, but existing metadata is preserved
         assert_eq!(enhanced_song.metadata.len(), 1);
         assert_eq!(enhanced_song.metadata.get("existing"), Some(&Value::String("data".to_string())));
+    }
+
+    #[test]
+    fn test_mpd_image_url_prefix() {
+        assert_eq!(mpd_image_url(), format!("{}/library/mpd/image", API_PREFIX));
+    }
+
+    #[test]
+    fn test_mpd_configured_music_directory_takes_precedence() {
+        let mut player = MPDPlayerController::with_connection("localhost", 6600);
+        player.set_music_directory("/tmp/test-music-dir".to_string());
+
+        assert_eq!(player.get_effective_music_directory(), Some("/tmp/test-music-dir".to_string()));
+    }
+
+    #[test]
+    fn test_mpd_set_connection_updates_player_id() {
+        let mut player = MPDPlayerController::with_connection("localhost", 6600);
+        assert_eq!(player.get_player_id(), "localhost:6600");
+        assert_eq!(player.base.get_player_id(), "localhost:6600");
+
+        player.set_connection("mpd.local", 7700);
+        assert_eq!(player.hostname(), "mpd.local");
+        assert_eq!(player.port(), 7700);
+        assert_eq!(player.get_player_id(), "mpd.local:7700");
+        assert_eq!(player.base.get_player_id(), "mpd.local:7700");
+    }
+
+    #[test]
+    fn test_mpd_stop_is_idempotent() {
+        let player = MPDPlayerController::with_connection("localhost", 6600);
+        assert!(player.stop());
+        assert!(player.stop());
+    }
+
+    #[test]
+    fn test_mpd_start_twice_then_stop_regression() {
+        let player = MPDPlayerController::with_connection("localhost", 6600);
+        assert!(player.start());
+        assert!(player.start());
+        assert!(player.stop());
+        assert!(player.stop());
+    }
+
+    #[test]
+    fn test_mpd_metadata_invalid_key_returns_none() {
+        let player = MPDPlayerController::with_connection("localhost", 6600);
+        assert_eq!(player.get_metadata_value("does_not_exist"), None);
+    }
+
+    #[test]
+    fn test_mpd_factory_invalid_parameter_types_use_defaults() {
+        use crate::players::player_factory::create_player_from_json_str;
+
+        let config = r#"
+        {
+            "mpd": {
+                "host": 123,
+                "port": "not-a-number",
+                "load_mpd_library": "yes",
+                "enhance_metadata": 1,
+                "extract_coverart": [],
+                "music_directory": false,
+                "library_read_only": "no",
+                "artist_separator": [", ", 5, " feat. "]
+            }
+        }
+        "#;
+
+        let controller = create_player_from_json_str(config).expect("factory should create mpd player");
+        assert_eq!(controller.get_player_name(), "mpd");
+        assert_eq!(controller.get_player_id(), "localhost:6600");
+
+        let mpd = controller
+            .as_any()
+            .downcast_ref::<MPDPlayerController>()
+            .expect("factory result should be MPDPlayerController");
+
+        assert!(mpd.load_mpd_library());
+        assert_eq!(mpd.get_enhance_metadata(), Some(true));
+        assert_eq!(mpd.get_extract_coverart(), Some(true));
+        assert_eq!(mpd.get_music_directory(), "");
+        assert!(!mpd.get_library_read_only());
+
+        let separators = mpd.get_artist_separators().expect("artist separators should be present");
+        assert_eq!(separators, [", ".to_string(), " feat. ".to_string()]);
+    }
+
+    #[test]
+    fn test_mpd_factory_out_of_range_port_wraps_regression() {
+        use crate::players::player_factory::create_player_from_json_str;
+
+        let config = json!({
+            "mpd": {
+                "host": "127.0.0.1",
+                "port": 70000
+            }
+        })
+        .to_string();
+
+        let controller = create_player_from_json_str(&config).expect("factory should create mpd player");
+        assert_eq!(controller.get_player_name(), "mpd");
+        assert_eq!(controller.get_player_id(), format!("127.0.0.1:{}", 70000u64 as u16));
     }
 }
