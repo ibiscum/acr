@@ -1498,7 +1498,7 @@ the backend system (e.g., MPD server) to look for new files on disk.
 
 #### Example
 ```bash
-curl -X POST http://<device-ip>:1080/api/library/mpd/update
+curl -X POST "$API_BASE_URL/library/mpd/update"
 ```
 
 ### Get Library Metadata
