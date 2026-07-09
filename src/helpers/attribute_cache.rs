@@ -23,19 +23,27 @@ pub fn parse_size_string(size_str: &str) -> Result<usize, String> {
     let size_str_upper = size_str.to_uppercase();
 
     // Handle different unit formats
-    let (number_str, multiplier) = if size_str_upper.ends_with("KB") || size_str_upper.ends_with("KIB") {
+    let (number_str, multiplier) = if size_str_upper.ends_with("KIB") {
+        (&size_str_upper[..size_str_upper.len()-3], 1024)
+    } else if size_str_upper.ends_with("KB") {
         (&size_str_upper[..size_str_upper.len()-2], 1024)
     } else if size_str_upper.ends_with("K") {
         (&size_str_upper[..size_str_upper.len()-1], 1024)
-    } else if size_str_upper.ends_with("MB") || size_str_upper.ends_with("MIB") {
+    } else if size_str_upper.ends_with("MIB") {
+        (&size_str_upper[..size_str_upper.len()-3], 1024 * 1024)
+    } else if size_str_upper.ends_with("MB") {
         (&size_str_upper[..size_str_upper.len()-2], 1024 * 1024)
     } else if size_str_upper.ends_with("M") {
         (&size_str_upper[..size_str_upper.len()-1], 1024 * 1024)
-    } else if size_str_upper.ends_with("GB") || size_str_upper.ends_with("GIB") {
+    } else if size_str_upper.ends_with("GIB") {
+        (&size_str_upper[..size_str_upper.len()-3], 1024 * 1024 * 1024)
+    } else if size_str_upper.ends_with("GB") {
         (&size_str_upper[..size_str_upper.len()-2], 1024 * 1024 * 1024)
     } else if size_str_upper.ends_with("G") {
         (&size_str_upper[..size_str_upper.len()-1], 1024 * 1024 * 1024)
-    } else if size_str_upper.ends_with("TB") || size_str_upper.ends_with("TIB") {
+    } else if size_str_upper.ends_with("TIB") {
+        (&size_str_upper[..size_str_upper.len()-3], 1024_usize.pow(4))
+    } else if size_str_upper.ends_with("TB") {
         (&size_str_upper[..size_str_upper.len()-2], 1024_usize.pow(4))
     } else if size_str_upper.ends_with("T") {
         (&size_str_upper[..size_str_upper.len()-1], 1024_usize.pow(4))
@@ -1093,14 +1101,18 @@ mod tests {
         assert_eq!(parse_size_string("1KB").unwrap(), 1024);
         assert_eq!(parse_size_string("1kB").unwrap(), 1024);
         assert_eq!(parse_size_string("1kb").unwrap(), 1024);
+        assert_eq!(parse_size_string("1KiB").unwrap(), 1024);
 
         assert_eq!(parse_size_string("2M").unwrap(), 2 * 1024 * 1024);
         assert_eq!(parse_size_string("2MB").unwrap(), 2 * 1024 * 1024);
         assert_eq!(parse_size_string("2mb").unwrap(), 2 * 1024 * 1024);
+        assert_eq!(parse_size_string("2MiB").unwrap(), 2 * 1024 * 1024);
 
         assert_eq!(parse_size_string("1G").unwrap(), 1024 * 1024 * 1024);
         assert_eq!(parse_size_string("1GB").unwrap(), 1024 * 1024 * 1024);
         assert_eq!(parse_size_string("1gb").unwrap(), 1024 * 1024 * 1024);
+        assert_eq!(parse_size_string("1GiB").unwrap(), 1024 * 1024 * 1024);
+        assert_eq!(parse_size_string("1TiB").unwrap(), 1024_usize.pow(4));
 
         // Test fractional values
         assert_eq!(parse_size_string("0.5K").unwrap(), 512);

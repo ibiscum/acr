@@ -219,11 +219,20 @@ pub fn split_if_multiple(artist_name: &str, custom_separators: Option<&[String]>
 ///
 /// # Returns
 /// * `Option<Vec<String>>` - None if single artist, or Some(Vec<String>) with split artist names if multiple
+fn mbid_split_cache_key(artist_name: &str, custom_separators: Option<&[String]>) -> String {
+    let separator_key = match custom_separators {
+        Some(seps) => format!("custom:{}", seps.join("|")),
+        None => "default".to_string(),
+    };
+    format!("{}{}::{}", ARTIST_SPLIT_CACHE_PREFIX, separator_key, artist_name)
+}
+
 pub fn split_artist_names_with_mbid_lookup(artist_name: &str, cache_only: bool, custom_separators: Option<&[String]>) -> Option<Vec<String>> {
     debug!("Checking if '{}' contains multiple artists (cache_only: {})", artist_name, cache_only);
 
-    // Create cache key for artist splits
-    let cache_key = format!("{}{}", ARTIST_SPLIT_CACHE_PREFIX, artist_name);
+    // Create cache key for artist splits and include separator configuration
+    // so default/custom separator calls do not collide.
+    let cache_key = mbid_split_cache_key(artist_name, custom_separators);
 
     // Try to get cached result first (no expiry)
     match attribute_cache::get::<Option<Vec<String>>>(&cache_key) {
@@ -611,5 +620,20 @@ mod tests {
             Some(artists) => assert!(artists.len() > 1),
             None => { /* acceptable: MusicBrainz disabled or threshold not met */ }
         }
+    }
+
+    #[test]
+    fn split_artist_names_with_mbid_lookup_cache_key_is_separator_specific() {
+        let artist_name = "Cache Isolation Artist A x Artist B";
+        let custom_separators = vec![" x ".to_string()];
+
+        let default_key = mbid_split_cache_key(artist_name, None);
+        let custom_key = mbid_split_cache_key(artist_name, Some(&custom_separators));
+
+        assert_ne!(default_key, custom_key, "default and custom separator cache keys must differ");
+        assert!(default_key.starts_with(ARTIST_SPLIT_CACHE_PREFIX));
+        assert!(custom_key.starts_with(ARTIST_SPLIT_CACHE_PREFIX));
+        assert!(default_key.contains("default::"));
+        assert!(custom_key.contains("custom: x ::"));
     }
 }

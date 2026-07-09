@@ -19,10 +19,7 @@ pub fn initialize_volume_control(config: &Value) {
 
     if let Some(volume_config) = get_service_config(config, "volume") {
         // Check if volume control is enabled
-        let enabled = volume_config
-            .get("enable")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(true);  // Default to enabled
+        let enabled = is_volume_control_enabled(volume_config);
 
         if !enabled {
             info!("Volume control is explicitly disabled in configuration");
@@ -39,12 +36,9 @@ pub fn initialize_volume_control(config: &Value) {
         }
 
         // Get the volume control type
-        let control_type = volume_config
-            .get("type")
-            .and_then(|v| v.as_str())
-            .unwrap_or("dummy");
+        let control_type = extract_control_type(volume_config);
 
-        let control: Box<dyn VolumeControl + Send + Sync> = match control_type {
+        let control: Box<dyn VolumeControl + Send + Sync> = match control_type.as_str() {
             #[cfg(all(feature = "alsa", not(windows)))]
             "alsa" => {
                 let device = volume_config
@@ -194,25 +188,12 @@ pub fn initialize_volume_control(config: &Value) {
                 Box::new(dummy_control)
             }
             "dummy" => {
-                let internal_name = volume_config
-                    .get("internal_name")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("dummy");
-
-                let display_name = volume_config
-                    .get("display_name")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("Dummy Volume Control");
-
-                let initial_percent = volume_config
-                    .get("initial_percent")
-                    .and_then(|v| v.as_f64())
-                    .unwrap_or(50.0);
+                let (internal_name, display_name, initial_percent) = extract_dummy_volume_config(volume_config);
 
                 info!("Initialized dummy volume control '{}' with initial volume {}%", display_name, initial_percent);
                 Box::new(DummyVolumeControl::new(
-                    internal_name.to_string(),
-                    display_name.to_string(),
+                    internal_name,
+                    display_name,
                     initial_percent
                 ))
             }
@@ -363,7 +344,6 @@ pub fn supports_volume_change_monitoring() -> bool {
 }
 
 // Pure function for extracting dummy volume control configuration
-#[cfg(test)]
 fn extract_dummy_volume_config(volume_config: &Value) -> (String, String, f64) {
     let internal_name = volume_config
         .get("internal_name")
@@ -377,16 +357,22 @@ fn extract_dummy_volume_config(volume_config: &Value) -> (String, String, f64) {
         .unwrap_or("Dummy Volume Control")
         .to_string();
 
-    let initial_percent = volume_config
+    let initial_percent_raw = volume_config
         .get("initial_percent")
         .and_then(|v| v.as_f64())
         .unwrap_or(50.0);
+
+    // Keep parsed config values in the same valid range expected by volume controls.
+    let initial_percent = if initial_percent_raw.is_finite() {
+        initial_percent_raw.clamp(0.0, 100.0)
+    } else {
+        50.0
+    };
 
     (internal_name, display_name, initial_percent)
 }
 
 // Pure function for checking if volume control is enabled
-#[cfg(test)]
 fn is_volume_control_enabled(volume_config: &Value) -> bool {
     volume_config
         .get("enable")
@@ -395,7 +381,6 @@ fn is_volume_control_enabled(volume_config: &Value) -> bool {
 }
 
 // Pure function for extracting control type
-#[cfg(test)]
 fn extract_control_type(volume_config: &Value) -> String {
     volume_config
         .get("type")
@@ -548,7 +533,11 @@ mod tests {
 
         let config_over = json!({ "initial_percent": 150.0 });
         let (_, _, percent_over) = extract_dummy_volume_config(&config_over);
-        assert_eq!(percent_over, 150.0); // Config can have out-of-range values
+        assert_eq!(percent_over, 100.0);
+
+        let config_under = json!({ "initial_percent": -10.0 });
+        let (_, _, percent_under) = extract_dummy_volume_config(&config_under);
+        assert_eq!(percent_under, 0.0);
     }
 
     #[test]

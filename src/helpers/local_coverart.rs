@@ -8,9 +8,9 @@ pub fn extract_cover_from_music_files(dir_path: &str) -> Option<(Vec<u8>, String
     use walkdir::WalkDir;
     use lofty::probe::Probe;
     use lofty::prelude::TaggedFileExt;
-    
+
     debug!("Searching for music files with embedded cover art in: {}", dir_path);
-    
+
     // Check if the directory exists
     if !Path::new(dir_path).exists() {
         debug!("Directory does not exist: {}", dir_path);
@@ -25,14 +25,14 @@ pub fn extract_cover_from_music_files(dir_path: &str) -> Option<(Vec<u8>, String
 
     for entry in walker.filter_map(|e| e.ok()) {
         let path = entry.path();
-        
+
         // Skip directories and non-music files
         if path.is_dir() || !is_audio_file(path) {
             continue;
         }
 
         audio_file_count += 1;
-        
+
         // Try to read tags from the file
         let tagged_file = match Probe::open(path).and_then(|probe| {
             probe.read()
@@ -48,12 +48,12 @@ pub fn extract_cover_from_music_files(dir_path: &str) -> Option<(Vec<u8>, String
 
         // Try to get picture from the primary tag
         let tag = tagged_file.primary_tag().or_else(|| tagged_file.first_tag());
-        
+
         if let Some(tag) = tag {
             // Look for pictures in the tag
             if let Some(picture) = tag.pictures().first() {
                 debug!("Found embedded cover art in file: {}", path.display());
-                
+
                 // Determine MIME type
                 let mime_type = picture
                     .mime_type()
@@ -63,7 +63,7 @@ pub fn extract_cover_from_music_files(dir_path: &str) -> Option<(Vec<u8>, String
 
                 // Get the image data
                 let data = picture.data().to_vec();
-                
+
                 debug!("Returning embedded cover art data, {} bytes", data.len());
                 return Some((data, mime_type));
             }
@@ -72,15 +72,28 @@ pub fn extract_cover_from_music_files(dir_path: &str) -> Option<(Vec<u8>, String
 
     debug!("No embedded cover art found in {} audio files, checking for standard cover files", audio_file_count);
     // Also check for standard cover files in the directory
-    let standard_covers = ["cover.jpg", "cover.png", "folder.jpg", "folder.png", "album.jpg", "album.png", "front.jpg", "front.png"];
-    
+    let standard_covers = [
+        "cover.jpg",
+        "cover.jpeg",
+        "cover.png",
+        "folder.jpg",
+        "folder.jpeg",
+        "folder.png",
+        "album.jpg",
+        "album.jpeg",
+        "album.png",
+        "front.jpg",
+        "front.jpeg",
+        "front.png",
+    ];
+
     for cover_name in standard_covers.iter() {
         let cover_path = format!("{}/{}", dir_path, cover_name);
         let path = Path::new(&cover_path);
-        
+
         if path.exists() && path.is_file() {
             debug!("Found standard cover file: {}", cover_path);
-            
+
             // Read the file
             match File::open(path) {
                 Ok(mut file) => {
@@ -95,7 +108,7 @@ pub fn extract_cover_from_music_files(dir_path: &str) -> Option<(Vec<u8>, String
                         } else {
                             "application/octet-stream"
                         }.to_string();
-                        
+
                         return Some((data, mime_type));
                     } else {
                         debug!("Failed to read data from {}", cover_path);
@@ -105,7 +118,7 @@ pub fn extract_cover_from_music_files(dir_path: &str) -> Option<(Vec<u8>, String
             }
         }
     }
-    
+
     debug!("No cover art found, returning None");
     None
 }
@@ -114,7 +127,7 @@ pub fn extract_cover_from_music_files(dir_path: &str) -> Option<(Vec<u8>, String
 pub fn save_cover_to_dir(dir_path: &str, data: &[u8]) -> bool {
     let cover_path = format!("{}/cover.jpg", dir_path);
     debug!("Attempting to save cover art to: {}", cover_path);
-    
+
     // Try to create the file and write the data
     match File::create(&cover_path) {
         Ok(mut file) => {
@@ -149,7 +162,7 @@ pub fn is_audio_file(path: &Path) -> bool {
 pub fn album_cache_key(artist: &str, album_name: &str, year: Option<i32>) -> String {
     let sanitized_artist = sanitize_for_path(artist);
     let sanitized_album = sanitize_for_path(album_name);
-    
+
     if let Some(y) = year {
         format!("albums/{}/{}-{}", sanitized_artist, y, sanitized_album)
     } else {
@@ -169,7 +182,7 @@ fn sanitize_for_path(input: &str) -> String {
             }
         })
         .collect::<String>();
-    
+
     sanitized.trim().to_string()
 }
 
@@ -195,7 +208,7 @@ mod tests {
         assert!(is_audio_file(Path::new("test.aac")));
         assert!(is_audio_file(Path::new("test.opus")));
         assert!(is_audio_file(Path::new("test.wma")));
-        
+
         assert!(!is_audio_file(Path::new("test.txt")));
         assert!(!is_audio_file(Path::new("test.jpg")));
         assert!(!is_audio_file(Path::new("test.png")));
@@ -222,12 +235,12 @@ mod tests {
             album_cache_key("Test Artist", "Test Album", Some(2023)),
             "albums/Test Artist/2023-Test Album"
         );
-        
+
         assert_eq!(
             album_cache_key("Test Artist", "Test Album", None),
             "albums/Test Artist/Test Album"
         );
-        
+
         assert_eq!(
             album_cache_key("Test/Artist", "Test:Album", Some(2023)),
             "albums/Test_Artist/2023-Test_Album"
@@ -238,13 +251,13 @@ mod tests {
     fn test_extract_cover_from_standard_files() {
         let test_path = get_test_data_path();
         let album_path = test_path.join("test_album");
-        
+
         if album_path.exists() {
             let result = extract_cover_from_music_files(&album_path.to_string_lossy());
-            
+
             // Should find the cover.jpg file we created
             assert!(result.is_some());
-            
+
             if let Some((data, mime_type)) = result {
                 assert!(!data.is_empty());
                 assert_eq!(mime_type, "image/jpeg");
@@ -259,13 +272,13 @@ mod tests {
     fn test_extract_cover_from_embedded_art() {
         let test_path = get_test_data_path();
         let album_path = test_path.join("test_album_embedded");
-        
+
         if album_path.exists() {
             let result = extract_cover_from_music_files(&album_path.to_string_lossy());
-            
+
             // Should find embedded cover art in the MP3 file
             assert!(result.is_some());
-            
+
             if let Some((data, mime_type)) = result {
                 assert!(!data.is_empty());
                 assert_eq!(mime_type, "image/jpeg");
@@ -282,13 +295,13 @@ mod tests {
     fn test_extract_cover_from_sine_wave_album() {
         let test_path = get_test_data_path();
         let album_path = test_path.join("test_album_sine_waves");
-        
+
         if album_path.exists() {
             let result = extract_cover_from_music_files(&album_path.to_string_lossy());
-            
+
             // Should find embedded cover art from one of the sine wave tracks
             assert!(result.is_some());
-            
+
             if let Some((data, mime_type)) = result {
                 assert!(!data.is_empty());
                 assert_eq!(mime_type, "image/jpeg");
@@ -309,24 +322,44 @@ mod tests {
     }
 
     #[test]
+    fn test_extract_cover_from_standard_jpeg_file() {
+        let temp_dir = std::env::temp_dir().join("acr_test_coverart_jpeg");
+        fs::create_dir_all(&temp_dir).unwrap();
+
+        let jpeg_data = b"fake jpeg bytes";
+        let cover_path = temp_dir.join("cover.jpeg");
+        fs::write(&cover_path, jpeg_data).unwrap();
+
+        let result = extract_cover_from_music_files(&temp_dir.to_string_lossy());
+        assert!(result.is_some());
+
+        if let Some((data, mime_type)) = result {
+            assert_eq!(data, jpeg_data);
+            assert_eq!(mime_type, "image/jpeg");
+        }
+
+        fs::remove_dir_all(&temp_dir).unwrap();
+    }
+
+    #[test]
     fn test_save_cover_to_dir() {
         let test_data = b"fake image data";
         let temp_dir = std::env::temp_dir().join("acr_test_cover");
-        
+
         // Create temp directory
         fs::create_dir_all(&temp_dir).unwrap();
-        
+
         let success = save_cover_to_dir(&temp_dir.to_string_lossy(), test_data);
         assert!(success);
-        
+
         // Check that the file was created
         let cover_path = temp_dir.join("cover.jpg");
         assert!(cover_path.exists());
-        
+
         // Check file contents
         let saved_data = fs::read(&cover_path).unwrap();
         assert_eq!(saved_data, test_data);
-        
+
         // Clean up
         fs::remove_dir_all(&temp_dir).unwrap();
     }

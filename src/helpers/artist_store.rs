@@ -485,6 +485,7 @@ impl ArtistStore {
             // Record if this is a partial match in the artist metadata
             if partial_match {
                 debug!("Partial match found for multi-artist name: {}", artist.name);
+                artist.ensure_metadata();
                 if let Some(meta) = &mut artist.metadata {
                     meta.is_partial_match = true;
                 }
@@ -919,6 +920,37 @@ mod tests {
             },
             _ => panic!("Should not have found the removed image"),
         }
+    }
+
+    #[test]
+    fn partial_match_flag_set_after_clear_metadata() {
+        let mut artist = Artist {
+            id: crate::data::Identifier::Numeric(42),
+            name: "Artist A & Artist B".to_string(),
+            is_multi: false,
+            metadata: None,
+        };
+
+        let partial_match = true;
+        let mbid_count = 1usize;
+
+        if mbid_count > 1 || partial_match {
+            artist.is_multi = true;
+            artist.clear_metadata();
+        }
+
+        if partial_match {
+            artist.ensure_metadata();
+            if let Some(meta) = &mut artist.metadata {
+                meta.is_partial_match = true;
+            }
+        }
+
+        assert!(artist.is_multi);
+        assert!(
+            artist.metadata.as_ref().is_some_and(|meta| meta.is_partial_match),
+            "is_partial_match should be set even after clear_metadata"
+        );
     }
 
     #[test]

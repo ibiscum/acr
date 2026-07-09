@@ -3,12 +3,18 @@ use std::sync::Arc;
 use parking_lot::RwLock;
 use std::collections::HashMap;
 use crate::data::album::Album;
+use std::time::Duration;
 
 const CACHE_KEY_PREFIX: &str = "album::genres::";
+const MUSICBRAINZ_REQUEST_DELAY_MS: u64 = 1000;
 
 /// Return the attribute cache key for a given album ID
 fn cache_key(album_id: &str) -> String {
     format!("{}{}", CACHE_KEY_PREFIX, album_id)
+}
+
+fn musicbrainz_request_delay() -> Duration {
+    Duration::from_millis(MUSICBRAINZ_REQUEST_DELAY_MS)
 }
 
 /// Load cached genres for an album from the attribute cache.
@@ -165,9 +171,8 @@ pub fn update_library_albums_genres_in_background(
                 );
             }
 
-            // MusicBrainz requires no more than 1 request/second. Sleep 50 ms here to
-            // stay well within the limit; for large libraries this is the primary throttle.
-            std::thread::sleep(std::time::Duration::from_millis(50));
+            // MusicBrainz requires no more than 1 request/second.
+            std::thread::sleep(musicbrainz_request_delay());
         }
 
         info!("Album genre update complete: {}/{} albums updated", updated, total);
@@ -190,6 +195,13 @@ mod tests {
     #[test]
     fn cache_key_is_unique_per_id() {
         assert_ne!(cache_key("1"), cache_key("2"));
+    }
+
+    #[test]
+    fn musicbrainz_request_delay_respects_one_request_per_second() {
+        let delay = musicbrainz_request_delay();
+        assert!(delay >= std::time::Duration::from_secs(1));
+        assert_eq!(delay, std::time::Duration::from_millis(MUSICBRAINZ_REQUEST_DELAY_MS));
     }
 
     // --- background update: album name collision guard ---

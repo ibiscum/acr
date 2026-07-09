@@ -75,12 +75,7 @@ fn update_artist_with_coverart(artist: Artist) -> Artist {
 pub fn update_data_for_artist(mut artist: Artist) -> Artist {
     debug!("Updating data for artist: {}", artist.name);
 
-    // Check if the artist already has MusicBrainz IDs set
-    let has_mbid = match &artist.metadata {
-        Some(meta) => !meta.mbid.is_empty(),
-        None => false,
-    };
-      if !has_mbid {
+    if should_lookup_mbids(&artist) {
         debug!("No MusicBrainz ID set for artist {}, attempting to retrieve it", artist.name);
 
         // Use the synchronous function to look up MusicBrainz IDs directly
@@ -113,6 +108,8 @@ pub fn update_data_for_artist(mut artist: Artist) -> Artist {
                 meta.is_partial_match = true;
             }
         }
+    } else if artist.is_multi {
+        debug!("Artist {} is already marked as multi-artist, skipping MBID lookup", artist.name);
     } else {
         debug!("Artist {} already has MusicBrainz ID(s)", artist.name);
     }
@@ -222,6 +219,15 @@ pub fn update_data_for_artist(mut artist: Artist) -> Artist {
 
     // Return the potentially updated artist
     artist
+}
+
+fn should_lookup_mbids(artist: &Artist) -> bool {
+    let has_mbid = artist
+        .metadata
+        .as_ref()
+        .is_some_and(|meta| !meta.mbid.is_empty());
+
+    !has_mbid && !artist.is_multi
 }
 
 /// Start a background thread to update metadata for all artists in the library sequentially
@@ -356,6 +362,7 @@ pub fn update_library_artists_metadata_in_background(
 
 #[cfg(test)]
 mod tests {
+    use super::should_lookup_mbids;
     use crate::data::artist::Artist;
     use crate::data::Identifier;
 
@@ -417,6 +424,36 @@ mod tests {
         // Control flow: has_mbid == true -> skip lookup branch
         let would_skip_lookup = has_mbid;
         assert!(would_skip_lookup);
+    }
+
+    #[test]
+    fn should_lookup_mbids_for_single_artist_without_mbid() {
+        let artist = Artist {
+            id: Identifier::Numeric(7),
+            name: "Lookup Candidate".to_string(),
+            is_multi: false,
+            metadata: None,
+        };
+
+        assert!(should_lookup_mbids(&artist));
+    }
+
+    #[test]
+    fn should_not_lookup_mbids_for_multi_artist_without_mbid() {
+        let artist = Artist {
+            id: Identifier::Numeric(8),
+            name: "Artist A & Artist B".to_string(),
+            is_multi: true,
+            metadata: None,
+        };
+
+        assert!(!should_lookup_mbids(&artist));
+    }
+
+    #[test]
+    fn should_not_lookup_mbids_when_mbid_exists() {
+        let artist = artist_with_mbid("Known Artist", "mbid-999");
+        assert!(!should_lookup_mbids(&artist));
     }
 
     // --- multi-artist detection clears metadata ---

@@ -83,10 +83,19 @@ pub struct SystemDetails {
 pub fn initialize_from_config(config: &serde_json::Value) {
     if let Some(configurator_config) = get_service_config(config, "configurator") {
         // Get URL if provided, otherwise use default
-        let url = configurator_config.get("url")
+        let raw_url = configurator_config.get("url")
             .and_then(|v| v.as_str())
             .unwrap_or(DEFAULT_CONFIGURATOR_URL);
-        
+
+        let url = {
+            let trimmed = raw_url.trim();
+            if trimmed.is_empty() {
+                DEFAULT_CONFIGURATOR_URL
+            } else {
+                trimmed
+            }
+        };
+
         {
             let mut url_guard = CONFIGURATOR_URL.write();
             *url_guard = url.to_string();
@@ -119,14 +128,14 @@ pub fn get_url() -> String {
 }
 
 /// Get system information from configurator API
-/// 
+///
 /// # Returns
 /// * `Result<SystemInfo, String>` - System information or error message
 pub fn get_system_info() -> Result<SystemInfo, String> {
     let url = format!("{}/api/v1/systeminfo", get_url());
-    
+
     debug!("Getting system information from configurator API: {}", url);
-    
+
     // Make the HTTP request
     match ureq::get(&url).call() {
         Ok(response) => {
@@ -175,7 +184,7 @@ mod tests {
     #[test]
     fn test_initialize_from_config_with_url() {
         let _guard = TEST_MUTEX.lock();
-        
+
         let config = json!({
             "services": {
                 "configurator": {
@@ -185,7 +194,7 @@ mod tests {
         });
 
         initialize_from_config(&config);
-        
+
         assert!(is_enabled()); // Always enabled
         assert_eq!(get_url(), "http://test.example.com:1081");
     }
@@ -193,13 +202,13 @@ mod tests {
     #[test]
     fn test_initialize_from_config_default() {
         let _guard = TEST_MUTEX.lock();
-        
+
         let config = json!({
             "services": {}
         });
 
         initialize_from_config(&config);
-        
+
         assert!(is_enabled()); // Always enabled
         assert_eq!(get_url(), DEFAULT_CONFIGURATOR_URL);
     }
@@ -208,6 +217,38 @@ mod tests {
     fn test_is_enabled_always_true() {
         // Configurator is always enabled
         assert!(is_enabled());
+    }
+
+    #[test]
+    fn test_initialize_from_config_whitespace_url_uses_default() {
+        let _guard = TEST_MUTEX.lock();
+
+        let config = json!({
+            "services": {
+                "configurator": {
+                    "url": "   \t  "
+                }
+            }
+        });
+
+        initialize_from_config(&config);
+        assert_eq!(get_url(), DEFAULT_CONFIGURATOR_URL);
+    }
+
+    #[test]
+    fn test_initialize_from_config_trims_url() {
+        let _guard = TEST_MUTEX.lock();
+
+        let config = json!({
+            "services": {
+                "configurator": {
+                    "url": "  http://test.example.com:1081  "
+                }
+            }
+        });
+
+        initialize_from_config(&config);
+        assert_eq!(get_url(), "http://test.example.com:1081");
     }
 
     #[test]
@@ -243,17 +284,17 @@ mod tests {
         }"#;
 
         let system_info: SystemInfo = serde_json::from_str(json_response).unwrap();
-        
+
         assert_eq!(system_info.status, Some("success".to_string()));
         assert!(system_info.pi_model.is_some());
         assert!(system_info.hat_info.is_some());
         assert!(system_info.soundcard.is_some());
         assert!(system_info.system.is_some());
-        
+
         let pi_model = system_info.pi_model.unwrap();
         assert_eq!(pi_model.name, Some("Raspberry Pi 4 Model B Rev 1.4".to_string()));
         assert_eq!(pi_model.version, Some("4".to_string()));
-        
+
         let system = system_info.system.unwrap();
         assert_eq!(system.hostname, Some("hifiberry-player".to_string()));
         assert_eq!(system.pretty_hostname, Some("HiFiBerry Music Player".to_string()));
@@ -293,12 +334,12 @@ mod tests {
         }"#;
 
         let system_info: SystemInfo = serde_json::from_str(json_response).unwrap();
-        
+
         assert_eq!(system_info.status, Some("error".to_string()));
         assert_eq!(system_info.error, Some("Failed to collect system info".to_string()));
         assert!(system_info.pi_model.is_some());
         assert!(system_info.system.is_some());
-        
+
         let system = system_info.system.unwrap();
         assert_eq!(system.hostname, None);
         assert_eq!(system.pretty_hostname, None);

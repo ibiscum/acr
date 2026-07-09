@@ -32,7 +32,7 @@ static SERVER_REGISTRY: Lazy<Mutex<LmsServerRegistry>> = Lazy::new(|| {
 pub struct LmsServerRegistry {
     /// Known LMS servers by IP address
     servers: HashMap<IpAddr, LmsServer>,
-    
+
     /// Currently connected server (if any)
     connected_server: Option<IpAddr>,
 }
@@ -51,9 +51,9 @@ impl LmsServerRegistry {
             connected_server: None,
         }
     }
-    
+
     /// Add a server to the registry
-    /// 
+    ///
     /// # Returns
     /// `true` if this is a new server, `false` if the server was already known
     pub fn add_server(&mut self, server: LmsServer) -> bool {
@@ -76,15 +76,15 @@ impl LmsServerRegistry {
             }
         }
     }
-    
+
     /// Remove a server from the registry
-    /// 
+    ///
     /// # Returns
     /// `true` if a server was removed, `false` otherwise
     pub fn remove_server(&mut self, ip: &IpAddr) -> bool {
         if let Some(server) = self.servers.remove(ip) {
             info!("Removed LMS server: {} at {}:{}", server.name, ip, server.port);
-            
+
             // If this was the connected server, clear the connection
             if self.connected_server == Some(*ip) {
                 self.connected_server = None;
@@ -95,19 +95,19 @@ impl LmsServerRegistry {
             false
         }
     }
-    
+
     /// Get a list of all known servers
     pub fn get_servers(&self) -> Vec<LmsServer> {
         self.servers.values().cloned().collect()
     }
-    
+
     /// Get a specific server by IP
     pub fn get_server(&self, ip: &IpAddr) -> Option<&LmsServer> {
         self.servers.get(ip)
     }
-    
+
     /// Set the current connected server
-    /// 
+    ///
     /// # Returns
     /// `true` if connection status changed, `false` otherwise
     pub fn set_connected(&mut self, ip: Option<&IpAddr>) -> bool {
@@ -116,7 +116,7 @@ impl LmsServerRegistry {
             (None, None) => false,
             _ => true,
         };
-        
+
         if new_connection {
             if let Some(new_ip) = ip {
                 if let Some(server) = self.servers.get(new_ip) {
@@ -143,12 +143,12 @@ impl LmsServerRegistry {
             false
         }
     }
-    
+
     /// Get the currently connected server
     pub fn get_connected(&self) -> Option<&LmsServer> {
         self.connected_server.as_ref().and_then(|ip| self.servers.get(ip))
     }
-    
+
     /// Clear all servers from the registry
     pub fn clear(&mut self) {
         if !self.servers.is_empty() {
@@ -157,7 +157,7 @@ impl LmsServerRegistry {
             self.connected_server = None;
         }
     }
-    
+
     /// Get the number of servers in the registry
     pub fn count(&self) -> usize {
         self.servers.len()
@@ -189,13 +189,13 @@ pub fn set_connected_server(ip: Option<&IpAddr>) -> bool {
 pub struct LmsServer {
     /// IP address of the server
     pub ip: IpAddr,
-    
+
     /// HTTP port for JSON-RPC API (typically 9000)
     pub port: u16,
-    
+
     /// Server name or hostname
     pub name: String,
-    
+
     /// Server version if available
     pub version: Option<String>,
 }
@@ -216,22 +216,22 @@ impl LmsServer {
 /// A vector of discovered LMS servers
 pub fn find_local_servers(timeout_secs: Option<u64>) -> io::Result<Vec<LmsServer>> {
     let timeout_duration = Duration::from_secs(timeout_secs.unwrap_or(DEFAULT_DISCOVERY_TIMEOUT));
-    
+
     debug!("Starting LMS discovery with timeout of {}s", timeout_duration.as_secs());
-    
+
     // Create a UDP socket for broadcast
     let socket = UdpSocket::bind("0.0.0.0:0")?;
     socket.set_broadcast(true)?;
-    
+
     // Set socket timeout for receive operations
     socket.set_read_timeout(Some(Duration::from_millis(500)))?;
-    
+
     // Prepare the discovery message that matches the working client format
     // Based on the format: eIPAD\0NAME\0JSON\0VERS\0UUID\0JVID\x06\x12\x34\x56\x78\x12\x34
     let player_name = "ACR_Discovery";
     let uuid = "ACR00000000000000"; // 16 byte UUID (simplified)
     let version = "1.0";  // Version string
-    
+
     // Build message following the working client format
     let mut discovery_msg = Vec::new();
     discovery_msg.push(b'e');  // Start with 'e' character
@@ -239,42 +239,42 @@ pub fn find_local_servers(timeout_secs: Option<u64>) -> io::Result<Vec<LmsServer
     discovery_msg.extend_from_slice(b"NAME\0");  // Name field
     discovery_msg.extend_from_slice(player_name.as_bytes());
     discovery_msg.push(0);  // Null terminator
-    discovery_msg.extend_from_slice(b"JSON\0");  // JSON capability 
+    discovery_msg.extend_from_slice(b"JSON\0");  // JSON capability
     discovery_msg.extend_from_slice(b"VERS\0");  // Version field
     discovery_msg.extend_from_slice(version.as_bytes());
     discovery_msg.push(0);  // Null terminator
     discovery_msg.extend_from_slice(b"UUID\0");  // UUID field
     discovery_msg.extend_from_slice(uuid.as_bytes());
     discovery_msg.push(0);  // Null terminator
-    
+
     // Add some identifying bytes (similar to the example)
     discovery_msg.extend_from_slice(&[0x12, 0x34, 0x56, 0x78, 0x12, 0x34]);
-    
+
     debug!("Sending discovery message: {:?}", discovery_msg);
-    
+
     // Send broadcast to the standard LMS SlimProto port
     let broadcast_addr = format!("255.255.255.255:{}", LMS_SLIMPROTO_PORT);
     debug!("Sending discovery broadcast to {}", broadcast_addr);
     socket.send_to(&discovery_msg, &broadcast_addr)?;
-    
+
     // Also try more specific broadcast addresses
     // This covers common subnet broadcast addresses
     for subnet in &["192.168.1.255", "192.168.0.255", "10.0.0.255", "10.0.1.255"] {
         let addr = format!("{}:{}", subnet, LMS_SLIMPROTO_PORT);
         let _ = socket.send_to(&discovery_msg, &addr);
     }
-    
+
     let mut local_servers = HashMap::new();
     let mut buffer = [0u8; BUFFER_SIZE];
-    
+
     // Keep receiving until timeout
     let start_time = Instant::now();
-    
+
     while start_time.elapsed() < timeout_duration {
         match socket.recv_from(&mut buffer) {
             Ok((bytes_read, src_addr)) => {
                 debug!("Received {} bytes from {}", bytes_read, src_addr);
-                
+
                 // Try to parse the response
                 if let Some(server) = parse_server_response(&buffer[..bytes_read], src_addr.ip()) {
                     // Add to our local HashMap for later merging
@@ -291,20 +291,20 @@ pub fn find_local_servers(timeout_secs: Option<u64>) -> io::Result<Vec<LmsServer
             }
         }
     }
-    
+
     // Update the global server registry with discovered servers
     update_server_registry(&local_servers);
-    
+
     // Convert HashMap to Vec
     let discovered_servers: Vec<LmsServer> = local_servers.values().cloned().collect();
-    
+
     // Only log once at the end with the total count
     if !discovered_servers.is_empty() {
         info!("Discovered {} LMS servers", discovered_servers.len());
     } else {
         debug!("No LMS servers discovered");
     }
-    
+
     Ok(discovered_servers)
 }
 
@@ -314,19 +314,19 @@ fn update_server_registry(new_servers: &HashMap<IpAddr, LmsServer>) {
         let mut registry = SERVER_REGISTRY.lock();
         // Track servers to remove (not found in the current discovery)
         let mut servers_to_remove = Vec::new();
-        
+
         // Check for servers that have disappeared
         for ip in registry.servers.keys() {
             if !new_servers.contains_key(ip) {
                 servers_to_remove.push(*ip);
             }
         }
-        
+
         // Remove servers that weren't found in this discovery
         for ip in servers_to_remove {
             registry.remove_server(&ip);
         }
-        
+
         // Add or update new servers
         for server in new_servers.values() {
             registry.add_server(server.clone());
@@ -341,37 +341,33 @@ fn parse_server_response(buffer: &[u8], src_addr: IpAddr) -> Option<LmsServer> {
         debug!("Response too short: {} bytes", buffer.len());
         return None;
     }
-    
+
     let response_type = &buffer[0..4];
-    
+
     if response_type == b"SERV" {
         debug!("Received SERV response from {}", src_addr);
-        
+
         // Extract server info from the response
         // Parse more detailed server information if available
         let mut name = "Logitech Media Server".to_string();
         let mut version = None;
-        
+
         // Try to extract server name, version from the response
         if let Ok(response_str) = std::str::from_utf8(&buffer[4..]) {
             // Extract name if available
-            if let Some(name_start) = response_str.find("name=") {
-                if let Some(end) = response_str[name_start + 5..].find('&') {
-                    name = response_str[name_start + 5..name_start + 5 + end].to_string();
-                }
+            if let Some(parsed_name) = extract_query_value(response_str, "name") {
+                name = parsed_name;
             }
-            
+
             // Extract version if available
-            if let Some(ver_start) = response_str.find("vers=") {
-                if let Some(end) = response_str[ver_start + 5..].find('&') {
-                    version = Some(response_str[ver_start + 5..ver_start + 5 + end].to_string());
-                }
+            if let Some(parsed_version) = extract_query_value(response_str, "vers") {
+                version = Some(parsed_version);
             }
         } else {
             // Try binary parsing for older LMS versions
             name = format!("LMS at {}", src_addr);
         }
-        
+
         Some(LmsServer {
             ip: src_addr,
             port: LMS_HTTP_PORT,  // Default HTTP port for LMS JSON-RPC API
@@ -381,7 +377,7 @@ fn parse_server_response(buffer: &[u8], src_addr: IpAddr) -> Option<LmsServer> {
     } else if response_type == b"ENAM" && buffer.len() > 5 {
         // Handle ENAME format responses (seen in logs)
         debug!("Received ENAME response from {}", src_addr);
-        
+
         if buffer.len() > 6 { // Ensure we have enough bytes for the separator and some text
             // Check if the response has the 0x1C separator byte
             let server_name_start = if buffer[5] == 0x1C {
@@ -391,11 +387,11 @@ fn parse_server_response(buffer: &[u8], src_addr: IpAddr) -> Option<LmsServer> {
                 // No separator, start after ENAME
                 5
             };
-            
+
             if let Ok(response_str) = std::str::from_utf8(&buffer[server_name_start..]) {
                 let name = response_str.trim().to_string();
                 debug!("Extracted server name: {}", name);
-                
+
                 Some(LmsServer {
                     ip: src_addr,
                     port: LMS_HTTP_PORT,
@@ -422,14 +418,14 @@ fn parse_server_response(buffer: &[u8], src_addr: IpAddr) -> Option<LmsServer> {
     } else if let Ok(response_str) = std::str::from_utf8(buffer) {
         // Try to handle other text-based responses
         debug!("Received text response: {}", response_str);
-        
+
         // Check if this looks like an LMS announcement
-        if response_str.contains("ENAME") || 
-           response_str.contains("SqueezeCenter") || 
+        if response_str.contains("ENAME") ||
+           response_str.contains("SqueezeCenter") ||
            response_str.contains("Logitech Media Server") ||
            response_str.contains("Squeezebox Server") ||
            response_str.contains("Music Server") {  // More permissive check
-            
+
             // Extract the server name if possible
             let name = extract_server_name(response_str)
                 .unwrap_or_else(|| {
@@ -437,7 +433,7 @@ fn parse_server_response(buffer: &[u8], src_addr: IpAddr) -> Option<LmsServer> {
                     if let Some(idx) = response_str.find("ENAME") {
                         // Account for possible 0x1C separator after ENAME
                         let start_idx = idx + 5;
-                        if start_idx < response_str.len() && 
+                        if start_idx < response_str.len() &&
                           (response_str.as_bytes()[start_idx] == 0x1C) {
                             response_str[start_idx + 1..].trim().to_string()
                         } else {
@@ -447,10 +443,10 @@ fn parse_server_response(buffer: &[u8], src_addr: IpAddr) -> Option<LmsServer> {
                         format!("LMS at {}", src_addr)
                     }
                 });
-            
+
             // Extract version if available
             let version = extract_server_version(response_str);
-            
+
             Some(LmsServer {
                 ip: src_addr,
                 port: LMS_HTTP_PORT,
@@ -467,16 +463,22 @@ fn parse_server_response(buffer: &[u8], src_addr: IpAddr) -> Option<LmsServer> {
     }
 }
 
+fn extract_query_value(message: &str, key: &str) -> Option<String> {
+    let needle = format!("{}=", key);
+    let idx = message.find(&needle)?;
+    let start = idx + needle.len();
+    let remainder = &message[start..];
+    let end = remainder.find(&['\r', '\n', '&'][..]).unwrap_or(remainder.len());
+    Some(remainder[..end].trim().to_string())
+}
+
 /// Extract server name from text response
 fn extract_server_name(message: &str) -> Option<String> {
     // Look for server name in different formats
-    if let Some(idx) = message.find("SERVER_NAME=") {
-        let start = idx + "SERVER_NAME=".len();
-        if let Some(end) = message[start..].find(&['\r', '\n', '&'][..]) {
-            return Some(message[start..start + end].trim().to_string());
-        }
+    if let Some(name) = extract_query_value(message, "SERVER_NAME") {
+        return Some(name);
     }
-    
+
     // Try alternative formats
     if let Some(idx) = message.find("Name: ") {
         let start = idx + "Name: ".len();
@@ -484,27 +486,21 @@ fn extract_server_name(message: &str) -> Option<String> {
             return Some(message[start..start + end].trim().to_string());
         }
     }
-    
-    if let Some(idx) = message.find("name=") {
-        let start = idx + "name=".len();
-        if let Some(end) = message[start..].find(&['\r', '\n', '&'][..]) {
-            return Some(message[start..start + end].trim().to_string());
-        }
+
+    if let Some(name) = extract_query_value(message, "name") {
+        return Some(name);
     }
-    
+
     None
 }
 
 /// Extract server version from text response
 fn extract_server_version(message: &str) -> Option<String> {
     // Look for version in different formats
-    if let Some(idx) = message.find("VERSION=") {
-        let start = idx + "VERSION=".len();
-        if let Some(end) = message[start..].find(&['\r', '\n', '&'][..]) {
-            return Some(message[start..start + end].trim().to_string());
-        }
+    if let Some(version) = extract_query_value(message, "VERSION") {
+        return Some(version);
     }
-    
+
     // Try alternative formats
     if let Some(idx) = message.find("Version: ") {
         let start = idx + "Version: ".len();
@@ -512,14 +508,11 @@ fn extract_server_version(message: &str) -> Option<String> {
             return Some(message[start..start + end].trim().to_string());
         }
     }
-    
-    if let Some(idx) = message.find("vers=") {
-        let start = idx + "vers=".len();
-        if let Some(end) = message[start..].find(&['\r', '\n', '&'][..]) {
-            return Some(message[start..start + end].trim().to_string());
-        }
+
+    if let Some(version) = extract_query_value(message, "vers") {
+        return Some(version);
     }
-    
+
     None
 }
 
@@ -529,7 +522,7 @@ fn extract_server_version(message: &str) -> Option<String> {
 /// A vector of MAC addresses for all network interfaces
 pub fn get_local_mac_addresses() -> io::Result<Vec<MacAddress>> {
     let mut addresses = Vec::new();
-    
+
     match get_if_addrs() {
         Ok(if_addrs) => {
             for interface in if_addrs {
@@ -537,10 +530,10 @@ pub fn get_local_mac_addresses() -> io::Result<Vec<MacAddress>> {
                 if let Ok(Some(mac)) = mac_address::mac_address_by_name(&interface.name) {
                     // Check if the MAC is non-zero
                     let mac_str = mac.to_string();
-                    if mac_str != "00:00:00:00:00:00" && 
-                       mac_str != "00-00-00-00-00-00" && 
+                    if mac_str != "00:00:00:00:00:00" &&
+                       mac_str != "00-00-00-00-00-00" &&
                        mac_str != "000000000000" {
-                        debug!("Found MAC address {} for interface {}", 
+                        debug!("Found MAC address {} for interface {}",
                                mac, interface.name);
                         addresses.push(mac);
                     } else {
@@ -550,7 +543,7 @@ pub fn get_local_mac_addresses() -> io::Result<Vec<MacAddress>> {
                     debug!("No MAC address found for interface {}", interface.name);
                 }
             }
-            
+
             if addresses.is_empty() {
                 // Fallback to getting all MAC addresses if the above method didn't work
                 if let Ok(Some(mac)) = mac_address::get_mac_address() {
@@ -566,13 +559,13 @@ pub fn get_local_mac_addresses() -> io::Result<Vec<MacAddress>> {
                     }
                 }
             }
-            
+
             if addresses.is_empty() {
                 warn!("No valid MAC addresses found for local interfaces");
             } else {
                 debug!("Found {} valid local MAC addresses", addresses.len());
             }
-            
+
             Ok(addresses)
         },
         Err(e) => {
@@ -584,15 +577,41 @@ pub fn get_local_mac_addresses() -> io::Result<Vec<MacAddress>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+    use std::net::Ipv4Addr;
+
     #[test]
+    fn regression_extract_query_value_reads_last_token_without_separator() {
+        let message = "name=Living Room LMS";
+        assert_eq!(extract_query_value(message, "name"), Some("Living Room LMS".to_string()));
+    }
+
+    #[test]
+    fn regression_parse_serv_response_reads_name_and_version_without_trailing_ampersand() {
+        let source_ip = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 10));
+        let payload = b"SERVname=Kitchen LMS&vers=8.5.0";
+
+        let server = parse_server_response(payload, source_ip).expect("expected parsed server");
+        assert_eq!(server.ip, source_ip);
+        assert_eq!(server.name, "Kitchen LMS");
+        assert_eq!(server.version, Some("8.5.0".to_string()));
+        assert_eq!(server.port, LMS_HTTP_PORT);
+    }
+
+    #[test]
+    fn regression_extract_server_version_accepts_last_field() {
+        let message = "foo=bar&vers=8.4.1";
+        assert_eq!(extract_server_version(message), Some("8.4.1".to_string()));
+    }
+
+    #[test]
+    #[ignore = "Live network discovery test; run manually when validating LMS environment"]
     fn test_discover_lms_servers() {
         // This test will actively try to discover LMS servers
         match find_local_servers(Some(5)) {
             Ok(servers) => {
                 println!("Discovered {} LMS servers:", servers.len());
                 for (i, server) in servers.iter().enumerate() {
-                    println!("  {}. {} at {}:{} (version: {:?})", 
+                    println!("  {}. {} at {}:{} (version: {:?})",
                              i+1, server.name, server.ip, server.port, server.version);
                 }
             },

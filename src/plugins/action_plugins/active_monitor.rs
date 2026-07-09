@@ -29,7 +29,7 @@ impl ActiveMonitor {
     }
 
     /// Try to find a player controller by name and ID and make it active
-    fn set_active_player(&self, player_name: &str, player_id: &str) {
+    fn set_active_player(&self, player_name: &str, player_id: &str) -> bool {
         if let Some(controller) = self.base.get_controller() {
             // First check if the given player is already active
             if let Some(active_controller) = controller.get_active_controller() {
@@ -45,7 +45,7 @@ impl ActiveMonitor {
                    active_player.get_player_id() == player_id {
                     debug!("ActiveMonitor: Player {}:{} is already active, no change needed",
                            player_name, player_id);
-                    return;
+                    return true;
                 }
             }
 
@@ -70,14 +70,18 @@ impl ActiveMonitor {
                 if controller.set_active_controller(idx) {
                     info!("ActiveMonitor: Successfully set active player to {}:{}",
                           player_name, player_id);
+                    true
                 } else {
                     warn!("ActiveMonitor: Failed to set active player");
+                    false
                 }
             } else {
                 warn!("ActiveMonitor: Could not find player {}:{} to set active", player_name, player_id);
+                false
             }
         } else {
             warn!("ActiveMonitor: No valid AudioController reference available");
+            false
         }
     }
 
@@ -167,8 +171,15 @@ impl ActiveMonitor {
             if state == PlaybackState::Playing {
                 info!("ActiveMonitor: Detected state transition to Playing from {}:{}",
                        source.player_name(), source.player_id());
-                self.set_active_player(source.player_name(), source.player_id());
-                self.enforce_single_playback(source.player_name(), source.player_id());
+                if self.set_active_player(source.player_name(), source.player_id()) {
+                    self.enforce_single_playback(source.player_name(), source.player_id());
+                } else {
+                    debug!(
+                        "ActiveMonitor: Skipping single-playback enforcement because source {}:{} is not active/resolvable",
+                        source.player_name(),
+                        source.player_id()
+                    );
+                }
             }
         }
     }
@@ -474,5 +485,47 @@ mod tests {
 
         assert_eq!(controller.get_player_name(), "mpd");
         assert_eq!(controller.get_player_id(), "localhost:6600");
+    }
+
+    #[test]
+    fn unknown_playing_source_does_not_pause_known_players() {
+        let mut controller = AudioController::new();
+
+        let first_commands = Arc::new(Mutex::new(Vec::new()));
+        let second_commands = Arc::new(Mutex::new(Vec::new()));
+
+        let pause_caps = PlayerCapabilitySet::from_slice(&[PlayerCapability::Pause]);
+
+        controller.add_controller(Box::new(TestPlayerController::new(
+            "first",
+            "A",
+            PlaybackState::Playing,
+            pause_caps,
+            Arc::clone(&first_commands),
+        )));
+        controller.add_controller(Box::new(TestPlayerController::new(
+            "second",
+            "B",
+            PlaybackState::Playing,
+            pause_caps,
+            Arc::clone(&second_commands),
+        )));
+
+        let controller = Arc::new(controller);
+        let initial_active_name = controller.get_player_name();
+        let initial_active_id = controller.get_player_id();
+
+        let mut monitor = ActiveMonitor::new();
+        monitor.base.set_controller(Arc::downgrade(&controller));
+
+        monitor.handle_event_bus_events(PlayerEvent::StateChanged {
+            source: PlayerSource::new("ghost".to_string(), "missing".to_string()),
+            state: PlaybackState::Playing,
+        });
+
+        assert_eq!(controller.get_player_name(), initial_active_name);
+        assert_eq!(controller.get_player_id(), initial_active_id);
+        assert_eq!(first_commands.lock().len(), 0);
+        assert_eq!(second_commands.lock().len(), 0);
     }
 }

@@ -26,7 +26,7 @@ impl BackgroundJob {
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
-        
+
         Self {
             id,
             name,
@@ -39,43 +39,43 @@ impl BackgroundJob {
             finish_time: None,
         }
     }
-    
+
     /// Update the job with progress information
     pub fn update_progress(&mut self, progress: Option<String>, completed: Option<usize>, total: Option<usize>) {
         self.last_update = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
-        
+
         if let Some(prog) = progress {
             self.progress = Some(prog);
         }
-        
+
         if let Some(comp) = completed {
             self.completed_items = Some(comp);
         }
-        
+
         if let Some(tot) = total {
             self.total_items = Some(tot);
         }
-        
+
         debug!("Updated background job '{}': {:?}", self.id, self);
     }
-    
+
     /// Mark the job as finished
     pub fn mark_finished(&mut self) {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
-        
+
         self.finished = true;
         self.finish_time = Some(now);
         self.last_update = now;
-        
+
         debug!("Marked background job '{}' as finished", self.id);
     }
-    
+
     /// Get the duration since the job started in seconds
     pub fn duration_seconds(&self) -> u64 {
         let now = SystemTime::now()
@@ -84,7 +84,7 @@ impl BackgroundJob {
             .as_secs();
         now.saturating_sub(self.start_time)
     }
-    
+
     /// Get the duration since the last update in seconds
     pub fn time_since_last_update(&self) -> u64 {
         let now = SystemTime::now()
@@ -107,13 +107,13 @@ impl BackgroundJobs {
             jobs: Arc::new(Mutex::new(HashMap::new())),
         }
     }
-    
+
     /// Get the global singleton instance
     pub fn instance() -> &'static BackgroundJobs {
         static INSTANCE: OnceLock<BackgroundJobs> = OnceLock::new();
         INSTANCE.get_or_init(BackgroundJobs::new)
     }
-    
+
     /// Register a new background job
     pub fn register_job(&self, id: String, name: String) -> Result<(), String> {
         let job = BackgroundJob::new(id.clone(), name);
@@ -127,7 +127,7 @@ impl BackgroundJobs {
         jobs.insert(id.clone(), job);
         Ok(())
     }
-    
+
     /// Update progress for an existing job
     pub fn update_job(&self, id: &str, progress: Option<String>, completed: Option<usize>, total: Option<usize>) -> Result<(), String> {
         let mut jobs = self.jobs.lock();
@@ -138,7 +138,7 @@ impl BackgroundJobs {
             Err(format!("Job with ID '{}' not found", id))
         }
     }
-    
+
     /// Mark a job as completed/finished
     pub fn complete_job(&self, id: &str) -> Result<(), String> {
         let mut jobs = self.jobs.lock();
@@ -150,17 +150,23 @@ impl BackgroundJobs {
             Err(format!("Job with ID '{}' not found", id))
         }
     }
-    
+
     /// Get all currently running background jobs
     pub fn get_all_jobs(&self) -> Result<Vec<BackgroundJob>, String> {
-        Ok(self.jobs.lock().values().cloned().collect())
+        Ok(self
+            .jobs
+            .lock()
+            .values()
+            .filter(|job| !job.finished)
+            .cloned()
+            .collect())
     }
-    
+
     /// Get a specific job by ID
     pub fn get_job(&self, id: &str) -> Result<Option<BackgroundJob>, String> {
         Ok(self.jobs.lock().get(id).cloned())
     }
-    
+
     /// Get the count of currently running jobs
     pub fn job_count(&self) -> usize {
         self.jobs.lock().len()
@@ -190,4 +196,39 @@ pub fn get_job(id: &str) -> Result<Option<BackgroundJob>, String> {
 
 pub fn job_count() -> usize {
     BackgroundJobs::instance().job_count()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn reset_jobs() {
+        BackgroundJobs::instance().jobs.lock().clear();
+    }
+
+    #[test]
+    fn get_all_jobs_returns_only_running_jobs() {
+        reset_jobs();
+
+        register_job("job1".to_string(), "First job".to_string()).unwrap();
+        register_job("job2".to_string(), "Second job".to_string()).unwrap();
+        complete_job("job2").unwrap();
+
+        let running = get_all_jobs().unwrap();
+        assert_eq!(running.len(), 1);
+        assert_eq!(running[0].id, "job1");
+        assert!(!running[0].finished);
+    }
+
+    #[test]
+    fn get_job_returns_finished_job_by_id() {
+        reset_jobs();
+
+        register_job("job_done".to_string(), "Completed job".to_string()).unwrap();
+        complete_job("job_done").unwrap();
+
+        let job = get_job("job_done").unwrap().unwrap();
+        assert!(job.finished);
+        assert!(job.finish_time.is_some());
+    }
 }

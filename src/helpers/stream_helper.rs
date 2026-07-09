@@ -5,6 +5,9 @@ use std::net::TcpStream;
 use url::Url;
 use log::debug;
 
+#[cfg(unix)]
+use std::os::unix::fs::FileTypeExt;
+
 #[cfg(windows)]
 use std::thread;
 #[cfg(windows)]
@@ -44,34 +47,41 @@ impl StreamWrapper {
             StreamWrapper::ReadOnly(reader) => Ok(reader.as_mut()),
             StreamWrapper::ReadWrite(stream) => Ok(stream.as_mut()),
             StreamWrapper::WriteOnly(_) => Err(io::Error::new(
-                io::ErrorKind::PermissionDenied, 
+                io::ErrorKind::PermissionDenied,
                 "Stream is write-only"
             )),
         }
     }
-    
+
     /// Convert the wrapper to a writable stream
     pub fn as_writer(&mut self) -> io::Result<&mut dyn Write> {
         match self {
             StreamWrapper::WriteOnly(writer) => Ok(writer.as_mut()),
             StreamWrapper::ReadWrite(stream) => Ok(stream.as_mut()),
             StreamWrapper::ReadOnly(_) => Err(io::Error::new(
-                io::ErrorKind::PermissionDenied, 
+                io::ErrorKind::PermissionDenied,
                 "Stream is read-only"
             )),
         }
     }
 }
 
+#[cfg(unix)]
+fn is_fifo_path(path: &Path) -> bool {
+    std::fs::metadata(path)
+        .map(|metadata| metadata.file_type().is_fifo())
+        .unwrap_or(false)
+}
+
 /// Open a stream from a source which can be a URL or a file path
-/// 
+///
 /// # Arguments
-/// 
+///
 /// * `source` - URL or file path to open
 /// * `mode` - Access mode (Read, Write, or ReadWrite)
-/// 
+///
 /// # Returns
-/// 
+///
 /// A wrapped stream object that can be used for reading, writing, or both
 pub fn open_stream(source: &str, mode: AccessMode) -> io::Result<StreamWrapper> {
     if let Ok(url) = Url::parse(source) {
@@ -80,7 +90,7 @@ pub fn open_stream(source: &str, mode: AccessMode) -> io::Result<StreamWrapper> 
                 let host = url.host_str().ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Missing host"))?;
                 let port = url.port().ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Missing port"))?;
                 let stream = TcpStream::connect((host, port))?;
-                
+
                 match mode {
                     AccessMode::Read => {
                         let reader = stream.try_clone()?;
@@ -100,22 +110,22 @@ pub fn open_stream(source: &str, mode: AccessMode) -> io::Result<StreamWrapper> 
     } else {
         // Assume it's a path to a FIFO or regular file
         let path = Path::new(source);
-        
+
         #[cfg(windows)]
         {
             // Windows named pipe handling with retry logic
-            
+
             const FILE_FLAG_OVERLAPPED: u32 = 0x40000000;
             const ERROR_PIPE_BUSY: i32 = 231;
             const PIPE_TIMEOUT_MS: u64 = 5000; // 5 seconds timeout
-            
+
             // Try to open the pipe with multiple attempts
             let mut attempts = 0;
             let max_attempts = 10;
-            
+
             loop {
                 let mut options = OpenOptions::new();
-                
+
                 // Set access mode
                 match mode {
                     AccessMode::Read => {
@@ -128,12 +138,12 @@ pub fn open_stream(source: &str, mode: AccessMode) -> io::Result<StreamWrapper> 
                         options.read(true).write(true);
                     }
                 }
-                
+
                 // Add Windows-specific options
                 options.custom_flags(FILE_FLAG_OVERLAPPED);
-                
+
                 let result = options.open(path);
-                
+
                 match result {
                     Ok(file) => {
                         match mode {
@@ -146,15 +156,15 @@ pub fn open_stream(source: &str, mode: AccessMode) -> io::Result<StreamWrapper> 
                         // Check if this is the "pipe busy" error
                         if e.raw_os_error() == Some(ERROR_PIPE_BUSY) {
                             attempts += 1;
-                            
+
                             if attempts >= max_attempts {
                                 warn!("Failed to open pipe after {} attempts: all pipe instances are busy", max_attempts);
                                 return Err(e);
                             }
-                            
+
                             // Wait before retrying
                             let wait_time = Duration::from_millis(PIPE_TIMEOUT_MS / max_attempts);
-                            debug!("Pipe busy, waiting {}ms before retry attempt {}/{}", 
+                            debug!("Pipe busy, waiting {}ms before retry attempt {}/{}",
                                   wait_time.as_millis(), attempts, max_attempts);
                             thread::sleep(wait_time);
                             continue;
@@ -170,7 +180,7 @@ pub fn open_stream(source: &str, mode: AccessMode) -> io::Result<StreamWrapper> 
         {
             // Unix file/FIFO handling
             let mut options = OpenOptions::new();
-            
+
             // Set access mode
             match mode {
                 AccessMode::Read => {
@@ -183,27 +193,82 @@ pub fn open_stream(source: &str, mode: AccessMode) -> io::Result<StreamWrapper> 
                     options.read(true).write(true);
                 }
             }
-            
-            // For FIFOs/named pipes, we need to ensure proper blocking behavior
-            // Check if this looks like a FIFO path (contains "pipe" in the name)
-            // and we're opening for read access
-            let is_fifo_read = matches!(mode, AccessMode::Read | AccessMode::ReadWrite) 
-                && (source.contains("pipe") || source.contains("fifo"));
-            
+
+            // For FIFOs/named pipes, we need to ensure proper blocking behavior.
+            let is_fifo_read = matches!(mode, AccessMode::Read | AccessMode::ReadWrite)
+                && is_fifo_path(path);
+
             if is_fifo_read {
                 debug!("Opening what appears to be a FIFO for reading: {}", source);
                 // For FIFOs, we want to ensure blocking behavior
                 // Don't set O_NONBLOCK - this ensures the open() call itself may block
                 // until a writer is available, which is the desired behavior for pipes
             }
-            
+
             let file = options.open(path)?;
-            
+
             match mode {
                 AccessMode::Read => Ok(StreamWrapper::ReadOnly(Box::new(file))),
                 AccessMode::Write => Ok(StreamWrapper::WriteOnly(Box::new(file))),
                 AccessMode::ReadWrite => Ok(StreamWrapper::ReadWrite(Box::new(file))),
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_access_mode_variants_are_distinct() {
+        assert_ne!(AccessMode::Read, AccessMode::Write);
+        assert_ne!(AccessMode::Read, AccessMode::ReadWrite);
+        assert_ne!(AccessMode::Write, AccessMode::ReadWrite);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn regression_is_fifo_path_detects_regular_file_as_non_fifo() {
+        let base = std::env::temp_dir();
+        let unique = format!(
+            "acr_stream_helper_regular_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock should be monotonic enough for test")
+                .as_nanos()
+        );
+        let path = base.join(unique);
+
+        std::fs::write(&path, b"data").expect("should create temp file");
+        assert!(!is_fifo_path(&path));
+
+        std::fs::remove_file(&path).expect("should cleanup temp file");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn regression_is_fifo_path_detects_fifo_even_without_fifo_name() {
+        let base = std::env::temp_dir();
+        let unique = format!(
+            "acr_stream_helper_named_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock should be monotonic enough for test")
+                .as_nanos()
+        );
+        let path = base.join(unique);
+
+        let status = std::process::Command::new("mkfifo")
+            .arg(&path)
+            .status()
+            .expect("mkfifo must be available on unix for this test");
+        assert!(status.success());
+
+        assert!(is_fifo_path(&path));
+
+        std::fs::remove_file(&path).expect("should cleanup fifo");
     }
 }

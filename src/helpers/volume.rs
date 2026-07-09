@@ -98,6 +98,14 @@ impl DecibelRange {
 
     /// Convert percentage (0-100) to decibel value within this range
     pub fn percent_to_db(&self, percent: f64) -> f64 {
+        if percent.is_nan() {
+            return self.min_db;
+        }
+
+        if percent.is_infinite() {
+            return if percent.is_sign_positive() { self.max_db } else { self.min_db };
+        }
+
         if percent <= 0.0 {
             self.min_db
         } else if percent >= 100.0 {
@@ -109,6 +117,14 @@ impl DecibelRange {
 
     /// Convert decibel value to percentage (0-100) within this range
     pub fn db_to_percent(&self, db: f64) -> f64 {
+        if db.is_nan() {
+            return 0.0;
+        }
+
+        if db.is_infinite() {
+            return if db.is_sign_positive() { 100.0 } else { 0.0 };
+        }
+
         if db <= self.min_db {
             0.0
         } else if db >= self.max_db {
@@ -1159,5 +1175,23 @@ mod tests {
             // Should round-trip accurately
             assert!((percent - back_to_percent).abs() < 0.001);
         }
+    }
+
+    #[test]
+    fn regression_decibel_range_percent_to_db_handles_non_finite_inputs() {
+        let range = DecibelRange::new(-60.0, 0.0);
+
+        assert_eq!(range.percent_to_db(f64::NAN), -60.0);
+        assert_eq!(range.percent_to_db(f64::NEG_INFINITY), -60.0);
+        assert_eq!(range.percent_to_db(f64::INFINITY), 0.0);
+    }
+
+    #[test]
+    fn regression_decibel_range_db_to_percent_handles_non_finite_inputs() {
+        let range = DecibelRange::new(-60.0, 0.0);
+
+        assert_eq!(range.db_to_percent(f64::NAN), 0.0);
+        assert_eq!(range.db_to_percent(f64::NEG_INFINITY), 0.0);
+        assert_eq!(range.db_to_percent(f64::INFINITY), 100.0);
     }
 }

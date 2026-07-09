@@ -32,10 +32,10 @@ impl ChunkCollector {
             total_chunks,
         }
     }
-    
+
     pub fn add_chunk(&mut self, chunk_id: u32, data: Vec<u8>) -> Option<Vec<u8>> {
         self.chunks.insert(chunk_id, data);
-        
+
         // Check if we have all chunks
         if self.chunks.len() as u32 == self.total_chunks {
             // Combine chunks in order
@@ -60,23 +60,23 @@ pub fn parse_shairport_message(data: &[u8]) -> ShairportMessage {
         // Parse chunk header: "ssncchnk" + chunk_id (4 bytes) + total_chunks (4 bytes) + data_type (8 bytes)
         let chunk_id = u32::from_be_bytes([data[8], data[9], data[10], data[11]]);
         let total_chunks = u32::from_be_bytes([data[12], data[13], data[14], data[15]]);
-        
+
         // Extract data type (next 8 bytes after header)
         let data_type = String::from_utf8_lossy(&data[16..24]).to_string();
-        
+
         // Skip null bytes in the payload to find actual data
         let mut payload_start = 24;
         while payload_start < data.len() && data[payload_start] == 0 {
             payload_start += 1;
         }
-        
+
         let payload = if payload_start < data.len() {
             data[payload_start..].to_vec()
         } else {
             // No actual data, just padding
             Vec::new()
         };
-        
+
         return ShairportMessage::ChunkData {
             chunk_id,
             total_chunks,
@@ -84,12 +84,12 @@ pub fn parse_shairport_message(data: &[u8]) -> ShairportMessage {
             data: payload,
         };
     }
-    
+
     // Extract command (first 8 bytes) and payload (rest)
     if data.len() >= 8 {
         let command = &data[0..8];
         let payload = &data[8..];
-        
+
         // Handle commands that are exactly 8 bytes (no payload)
         match command {
             b"ssncpaus" => return ShairportMessage::Control("PAUSE".to_string()),
@@ -100,10 +100,10 @@ pub fn parse_shairport_message(data: &[u8]) -> ShairportMessage {
             b"ssncPICT" => return ShairportMessage::Control("PICTURE_REQUEST".to_string()),
             _ => {}
         }
-        
+
         // Handle commands with payloads
         match command {
-            // Session start/end with IDs  
+            // Session start/end with IDs
             b"ssncmdst" => {
                 if let Ok(content) = std::str::from_utf8(payload) {
                     return ShairportMessage::Control(format!("METADATA_START: {}", content));
@@ -114,7 +114,7 @@ pub fn parse_shairport_message(data: &[u8]) -> ShairportMessage {
                     return ShairportMessage::Control(format!("METADATA_END: {}", content));
                 }
             },
-            
+
             // Connection info (UTF-8 payload)
             b"ssncdisc" => {
                 if let Ok(content) = std::str::from_utf8(payload) {
@@ -141,7 +141,7 @@ pub fn parse_shairport_message(data: &[u8]) -> ShairportMessage {
                     return ShairportMessage::Control(format!("SERVER_NAME: {}", content));
                 }
             },
-            
+
             // Playback control (UTF-8 payload)
             b"ssncpvol" => {
                 if let Ok(content) = std::str::from_utf8(payload) {
@@ -153,7 +153,7 @@ pub fn parse_shairport_message(data: &[u8]) -> ShairportMessage {
                     return ShairportMessage::Control(format!("PROGRESS: {}", content));
                 }
             },
-            
+
             // Core metadata (UTF-8 payload) - from iTunes, etc.
             b"coreasal" => {
                 if let Ok(content) = std::str::from_utf8(payload) {
@@ -224,7 +224,7 @@ pub fn parse_shairport_message(data: &[u8]) -> ShairportMessage {
                     return ShairportMessage::Control(format!("SORT_COMPOSER: {}", content));
                 }
             },
-            
+
             // Client/session information (UTF-8 payload)
             b"ssncflsr" => {
                 if let Ok(content) = std::str::from_utf8(payload) {
@@ -236,7 +236,7 @@ pub fn parse_shairport_message(data: &[u8]) -> ShairportMessage {
                     return ShairportMessage::Control(format!("PREVIOUS_FRAME_SEQUENCE: {}", content));
                 }
             },
-            
+
             // Binary core metadata messages (binary payload)
             b"coreasdk" => {
                 // Song Data Kind - single byte value
@@ -282,7 +282,7 @@ pub fn parse_shairport_message(data: &[u8]) -> ShairportMessage {
                     return ShairportMessage::Control(format!("CAPABILITIES: {}", capability));
                 }
             },
-            
+
             // Additional DACP and ShairportSync message types
             b"ssncdapo" => {
                 // DACP Port
@@ -294,7 +294,7 @@ pub fn parse_shairport_message(data: &[u8]) -> ShairportMessage {
                 }
             },
             b"ssncdaid" => {
-                // DACP ID 
+                // DACP ID
                 if let Ok(content) = std::str::from_utf8(payload) {
                     return ShairportMessage::Control(format!("DACP_ID: {}", content));
                 }
@@ -366,7 +366,7 @@ pub fn parse_shairport_message(data: &[u8]) -> ShairportMessage {
             _ => {}
         }
     }
-    
+
     // Try to parse as UTF-8 text for shorter messages or unknown formats
     if let Ok(text) = std::str::from_utf8(data) {
         let trimmed = text.trim();
@@ -413,11 +413,11 @@ pub fn get_image_dimensions(data: &[u8], format: &str) -> String {
 
 pub fn get_jpeg_dimensions(data: &[u8]) -> String {
     let mut i = 2; // Skip initial 0xFF 0xD8
-    
+
     while i + 4 < data.len() {
         if data[i] == 0xFF {
             let marker = data[i + 1];
-            
+
             // SOF0, SOF1, SOF2 markers contain dimension info
             if (0xC0..=0xC3).contains(&marker)
                 && i + 9 < data.len() {
@@ -425,7 +425,7 @@ pub fn get_jpeg_dimensions(data: &[u8]) -> String {
                     let width = u16::from_be_bytes([data[i + 7], data[i + 8]]);
                     return format!("{}x{}", width, height);
                 }
-            
+
             // Skip this segment
             if i + 3 < data.len() {
                 let length = u16::from_be_bytes([data[i + 2], data[i + 3]]);
@@ -437,7 +437,7 @@ pub fn get_jpeg_dimensions(data: &[u8]) -> String {
             i += 1;
         }
     }
-    
+
     "Unknown".to_string()
 }
 
@@ -512,8 +512,8 @@ pub fn update_song_from_message(song: &mut Song, message: &ShairportMessage) -> 
                         // Ignore sort fields
                         false
                     }
-                    "PICTURE_START" | "PICTURE_END" | "METADATA_START" | "METADATA_END" | 
-                    "ITEM_ID" | "SONG_DATA_KIND" | "FRAME_SEQUENCE_REFERENCE" | 
+                    "PICTURE_START" | "PICTURE_END" | "METADATA_START" | "METADATA_END" |
+                    "ITEM_ID" | "SONG_DATA_KIND" | "FRAME_SEQUENCE_REFERENCE" |
                     "PREVIOUS_FRAME_SEQUENCE" | "CLIENT_IP" | "SERVER_IP" | "SERVER_NAME" |
                     "DACP_PORT" | "DACP_ID" | "ACTIVE_REMOTE" | "PROGRESS" | "USER_AGENT" |
                     "CLIENT_DEVICE_ID" | "CLIENT_MODEL" | "CLIENT_MAC" | "FRAME_POSITION" |
@@ -538,14 +538,14 @@ pub fn update_song_from_message(song: &mut Song, message: &ShairportMessage) -> 
         }
         ShairportMessage::ChunkData { data_type, data, .. } => {
             let clean_type = data_type.trim_end_matches('\0');
-            
+
             // Handle text metadata from chunk data
             if let Ok(text) = std::str::from_utf8(data) {
                 let text = text.trim();
                 if text.is_empty() {
                     return false;
                 }
-                
+
                 match clean_type {
                     "ssncasar" => {
                         song.artist = Some(text.to_string());
@@ -587,7 +587,7 @@ pub fn update_song_from_message(song: &mut Song, message: &ShairportMessage) -> 
                         // Store other text metadata, but filter out internal protocol messages
                         if clean_type.starts_with("ssnc") && !text.is_empty() {
                             let key = if clean_type.len() > 4 { &clean_type[4..] } else { clean_type };
-                            
+
                             // Filter out internal protocol messages
                             let should_skip = matches!(key,
                                 "pcst" | "pcen" | "mdst" | "mden" | // Picture/metadata start/end
@@ -596,7 +596,7 @@ pub fn update_song_from_message(song: &mut Song, message: &ShairportMessage) -> 
                                 "phbt" | "phb0" | "styp" | "flsr" | "pfls" | // Frame/stream info
                                 "disc" | "conn" | "clip" | "svip" | "snam" // Connection info
                             );
-                            
+
                             if !should_skip {
                                 song.metadata.insert(key.to_string(), serde_json::Value::String(text.to_string()));
                                 true
@@ -635,7 +635,7 @@ pub fn update_song_from_message(song: &mut Song, message: &ShairportMessage) -> 
                         // Store binary metadata as base64, but filter out internal protocol messages
                         if clean_type.starts_with("ssnc") && !data.is_empty() {
                             let key = if clean_type.len() > 4 { &clean_type[4..] } else { clean_type };
-                            
+
                             // Filter out internal protocol messages
                             let should_skip = matches!(key,
                                 "pcst" | "pcen" | "mdst" | "mden" | // Picture/metadata start/end
@@ -644,11 +644,11 @@ pub fn update_song_from_message(song: &mut Song, message: &ShairportMessage) -> 
                                 "phbt" | "phb0" | "styp" | "flsr" | "pfls" | // Frame/stream info
                                 "disc" | "conn" | "clip" | "svip" | "snam" // Connection info
                             );
-                            
+
                             if !should_skip {
                                 let base64_data = general_purpose::STANDARD.encode(data);
                                 song.metadata.insert(
-                                    format!("{}_binary", key), 
+                                    format!("{}_binary", key),
                                     serde_json::Value::String(base64_data)
                                 );
                                 true
@@ -680,7 +680,7 @@ pub fn song_has_significant_metadata(song: &Song) -> bool {
 pub fn display_song_metadata(song: &Song) {
     println!("♪ Current Track:");
     println!("  ┌─────────────────────────────────────────────");
-    
+
     if let Some(title) = &song.title {
         println!("  │ Title:     {}", title);
     }
@@ -714,27 +714,27 @@ pub fn display_song_metadata(song: &Song) {
         let seconds = (duration % 60.0) as i32;
         println!("  │ Duration:  {}:{:02}", minutes, seconds);
     }
-    
+
     // Display additional metadata
     for (key, value) in &song.metadata {
         if let Some(str_value) = value.as_str() {
             // Filter out internal protocol messages from display
             let should_skip = matches!(key.as_str(),
-                "PICTURE_START" | "PICTURE_END" | "METADATA_START" | "METADATA_END" | 
-                "ITEM_ID" | "SONG_DATA_KIND" | "FRAME_SEQUENCE_REFERENCE" | 
+                "PICTURE_START" | "PICTURE_END" | "METADATA_START" | "METADATA_END" |
+                "ITEM_ID" | "SONG_DATA_KIND" | "FRAME_SEQUENCE_REFERENCE" |
                 "PREVIOUS_FRAME_SEQUENCE" | "CLIENT_IP" | "SERVER_IP" | "SERVER_NAME" |
                 "DACP_PORT" | "DACP_ID" | "ACTIVE_REMOTE" | "PROGRESS" | "USER_AGENT" |
                 "CLIENT_DEVICE_ID" | "CLIENT_MODEL" | "CLIENT_MAC" | "FRAME_POSITION" |
                 "FIRST_FRAME_POSITION" | "STREAM_TYPE" | "SONG_TIME_MS" | "CAPABILITIES" |
                 "DISCOVERED" | "CONNECTED" | "SORT_NAME" | "SORT_ARTIST" | "SORT_ALBUM" | "SORT_COMPOSER"
             );
-            
+
             if !str_value.is_empty() && !key.ends_with("_binary") && !should_skip {
                 println!("  │ {}:  {}", key, str_value);
             }
         }
     }
-    
+
     println!("  └─────────────────────────────────────────────");
     println!();
 }
@@ -758,7 +758,7 @@ impl ChunkedUdpCollector {
             chunk_collectors: HashMap::new(),
         }
     }
-    
+
     /// Process a chunked UDP packet and return complete data if all chunks are received
     /// Returns (packet_tag, complete_data) if a complete message is assembled
     pub fn process_chunked_packet(&mut self, buffer: &[u8], bytes_received: usize) -> Option<(u32, Vec<u8>)> {
@@ -766,40 +766,96 @@ impl ChunkedUdpCollector {
         if bytes_received < 24 || &buffer[0..8] != b"ssncchnk" {
             return None;
         }
-        
+
         // Parse chunked message
         let chunk_ix = u32::from_be_bytes([buffer[8], buffer[9], buffer[10], buffer[11]]);
         let chunk_total = u32::from_be_bytes([buffer[12], buffer[13], buffer[14], buffer[15]]);
         let packet_tag = u32::from_be_bytes([buffer[16], buffer[17], buffer[18], buffer[19]]);
         let _packet_type = u32::from_be_bytes([buffer[20], buffer[21], buffer[22], buffer[23]]);
-        
+
         let chunk_data = &buffer[24..bytes_received];
-        
+
         // Get or create collector for this packet tag
         self.chunk_collectors.entry(packet_tag).or_insert_with(|| ChunkCollector::new(chunk_total, format!("tag_{:08x}", packet_tag)));
-        
+
         if let Some(collector) = self.chunk_collectors.get_mut(&packet_tag) {
-            if let Some(complete_data) = collector.add_chunk(chunk_ix + 1, chunk_data.to_vec()) {
+            if let Some(complete_data) = collector.add_chunk(chunk_ix, chunk_data.to_vec()) {
                 // Remove the collector since we're done with it
                 self.chunk_collectors.remove(&packet_tag);
                 return Some((packet_tag, complete_data));
             }
         }
-        
+
         None
     }
-    
+
     /// Check if a buffer contains a chunked UDP message
     pub fn is_chunked_message(buffer: &[u8], bytes_received: usize) -> bool {
         bytes_received >= 24 && &buffer[0..8] == b"ssncchnk"
     }
-    
+
     /// Get packet tag from chunked message (for filtering)
     pub fn get_packet_tag(buffer: &[u8], bytes_received: usize) -> Option<u32> {
         if Self::is_chunked_message(buffer, bytes_received) {
             Some(u32::from_be_bytes([buffer[16], buffer[17], buffer[18], buffer[19]]))
         } else {
             None
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_chunk_packet(chunk_ix: u32, chunk_total: u32, packet_tag: u32, payload: &[u8]) -> Vec<u8> {
+        let mut packet = Vec::new();
+        packet.extend_from_slice(b"ssncchnk");
+        packet.extend_from_slice(&chunk_ix.to_be_bytes());
+        packet.extend_from_slice(&chunk_total.to_be_bytes());
+        packet.extend_from_slice(&packet_tag.to_be_bytes());
+        packet.extend_from_slice(&0u32.to_be_bytes());
+        packet.extend_from_slice(payload);
+        packet
+    }
+
+    #[test]
+    fn regression_process_chunked_packet_reassembles_two_chunks() {
+        let packet_tag = 0x11223344;
+        let mut collector = ChunkedUdpCollector::new();
+
+        let first = make_chunk_packet(0, 2, packet_tag, b"hello ");
+        let second = make_chunk_packet(1, 2, packet_tag, b"world");
+
+        assert_eq!(collector.process_chunked_packet(&first, first.len()), None);
+
+        let assembled = collector.process_chunked_packet(&second, second.len());
+        match assembled {
+            Some((tag, data)) => {
+                assert_eq!(tag, packet_tag);
+                assert_eq!(data, b"hello world");
+            }
+            None => panic!("expected complete message after second chunk"),
+        }
+    }
+
+    #[test]
+    fn regression_process_chunked_packet_reassembles_out_of_order() {
+        let packet_tag = 0xaabbccdd;
+        let mut collector = ChunkedUdpCollector::new();
+
+        let second = make_chunk_packet(1, 2, packet_tag, b"world");
+        let first = make_chunk_packet(0, 2, packet_tag, b"hello ");
+
+        assert_eq!(collector.process_chunked_packet(&second, second.len()), None);
+
+        let assembled = collector.process_chunked_packet(&first, first.len());
+        match assembled {
+            Some((tag, data)) => {
+                assert_eq!(tag, packet_tag);
+                assert_eq!(data, b"hello world");
+            }
+            None => panic!("expected complete message after receiving missing chunk"),
         }
     }
 }

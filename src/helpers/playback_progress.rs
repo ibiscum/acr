@@ -38,8 +38,11 @@ impl PlayerProgress {
             return; // Ignore invalid and negative positions
         }
 
+        // Normalize signed zero to keep a consistent non-negative representation.
+        let normalized_position = if position == 0.0 { 0.0 } else { position };
+
         let mut inner = self.inner.lock();
-        inner.position = position;
+        inner.position = normalized_position;
         inner.last_update = Instant::now();
     }
 
@@ -497,5 +500,16 @@ mod tests {
             thread::sleep(Duration::from_millis(20));
             assert_eq!(progress.get_position(), 0.0);
         }
+    }
+
+    #[test]
+    fn regression_negative_zero_position_normalized_to_positive_zero() {
+        let progress = PlayerProgress::new();
+
+        progress.set_position(-0.0);
+        let position = progress.get_position();
+
+        assert_eq!(position, 0.0);
+        assert!(!position.is_sign_negative());
     }
 }

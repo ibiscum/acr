@@ -55,17 +55,17 @@ impl SettingsDb {
             .parent()
             .map(Path::to_path_buf)
             .unwrap_or_else(|| PathBuf::from("."));
-        
+
         // Try to ensure the directory exists
         if let Err(e) = std::fs::create_dir_all(&db_dir) {
             error!("Failed to create directory for settings database: {}", e);
         }
-        
+
         // Try to open the SQLite database
         let db = match rusqlite::Connection::open(&db_path) {
             Ok(conn) => {
                 info!("Successfully opened settings database at {:?}", db_path);
-                
+
                 // Create the settings table if it doesn't exist
                 if let Err(e) = conn.execute(
                     "CREATE TABLE IF NOT EXISTS settings (
@@ -107,7 +107,7 @@ impl SettingsDb {
             }
         }
     }
-    
+
     /// Initialize the global settings database with a custom directory path as string
     pub fn initialize<P: AsRef<Path>>(path: P) -> Result<(), String> {
         Self::initialize_global(path)
@@ -121,17 +121,17 @@ impl SettingsDb {
             .parent()
             .map(Path::to_path_buf)
             .unwrap_or_else(|| PathBuf::from("."));
-        
+
         // Try to ensure the directory exists
         if let Err(e) = std::fs::create_dir_all(&db_dir) {
             return Err(format!("Failed to create directory for settings database: {}", e));
         }
-        
+
         // Try to open the new SQLite database
         let db = match rusqlite::Connection::open(&db_path) {
             Ok(conn) => {
                 info!("Successfully opened settings database at {:?}", db_path);
-                
+
                 // Create the settings table if it doesn't exist
                 if let Err(e) = conn.execute(
                     "CREATE TABLE IF NOT EXISTS settings (
@@ -142,7 +142,7 @@ impl SettingsDb {
                 ) {
                     return Err(format!("Failed to create settings table: {}", e));
                 }
-                
+
                 Some(conn)
             },
             Err(e) => {
@@ -150,12 +150,12 @@ impl SettingsDb {
                 return Err(format!("Failed to open SQLite database: {}", e));
             }
         };
-        
+
         // Update the instance
         self.db_path = db_path;
         self.db = db;
         self.memory_cache.clear(); // Clear memory cache as we have a new DB
-        
+
         Ok(())
     }
 
@@ -192,7 +192,7 @@ impl SettingsDb {
                 ) {
                     return Err(format!("Failed to store in database: {}", e));
                 }
-                
+
                 Ok(())
             },
             None => Err("Database not available".to_string()),
@@ -235,7 +235,7 @@ impl SettingsDb {
                     Ok(stmt) => stmt,
                     Err(e) => return Err(format!("Failed to prepare query: {}", e)),
                 };
-                
+
                 match stmt.query_row(rusqlite::params![key], |row| {
                     let data: Vec<u8> = row.get(0)?;
                     Ok(data)
@@ -246,7 +246,7 @@ impl SettingsDb {
                             Ok(value) => value,
                             Err(e) => return Err(format!("Failed to deserialize from database: {}", e)),
                         };
-                        
+
                         self.memory_cache.insert(key.to_string(), Arc::new(data));
                         Ok(Some(result))
                     },
@@ -336,7 +336,7 @@ impl SettingsDb {
                     Ok(stmt) => stmt,
                     Err(e) => return Err(format!("Failed to prepare query: {}", e)),
                 };
-                
+
                 match stmt.exists(rusqlite::params![key]) {
                     Ok(exists) => Ok(exists),
                     Err(e) => Err(format!("Database error: {}", e)),
@@ -358,14 +358,14 @@ impl SettingsDb {
                     Ok(stmt) => stmt,
                     Err(e) => return Err(format!("Failed to prepare query: {}", e)),
                 };
-                
+
                 let key_iter = match stmt.query_map([], |row| {
                     row.get::<_, String>(0)
                 }) {
                     Ok(iter) => iter,
                     Err(e) => return Err(format!("Failed to query keys: {}", e)),
                 };
-                
+
                 let mut keys = Vec::new();
                 for key_result in key_iter {
                     match key_result {
@@ -412,7 +412,7 @@ impl SettingsDb {
                     Ok(stmt) => stmt,
                     Err(e) => return Err(format!("Failed to prepare count query: {}", e)),
                 };
-                
+
                 match stmt.query_row([], |row| row.get::<_, i64>(0)) {
                     Ok(count) => Ok(count as usize),
                     Err(e) => Err(format!("Failed to count rows: {}", e)),
@@ -545,9 +545,9 @@ pub fn is_favourite_song(artist: &str, title: &str) -> Result<bool, String> {
 pub fn get_all_favourite_songs() -> Result<Vec<(String, String)>, String> {
     let all_keys = get_all_keys()?;
     let mut favourite_songs = Vec::new();
-    
+
     for key in all_keys {
-        if key.starts_with("favourite_song:") {
+        if key.starts_with("favourite_song:") && get_bool(&key)?.unwrap_or(false) {
             // Extract artist and title from the key
             let parts: Vec<&str> = key.strip_prefix("favourite_song:").unwrap().splitn(2, ':').collect();
             if parts.len() == 2 {
@@ -558,7 +558,7 @@ pub fn get_all_favourite_songs() -> Result<Vec<(String, String)>, String> {
             }
         }
     }
-    
+
     Ok(favourite_songs)
 }
 
@@ -663,42 +663,42 @@ mod tests {
     fn test_settings_db_basic_functionality() {
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().to_str().unwrap();
-        
+
         let mut db = SettingsDb::with_directory(db_path);
-        
+
         // Test string storage and retrieval
         assert!(db.set_string("user_name", "alice").is_ok());
         assert_eq!(db.get_string("user_name").unwrap(), Some("alice".to_string()));
-        
+
         // Test integer storage and retrieval
         assert!(db.set_int("volume", 75).is_ok());
         assert_eq!(db.get_int("volume").unwrap(), Some(75));
-        
+
         // Test boolean storage and retrieval
         assert!(db.set_bool("shuffle_enabled", true).is_ok());
         assert_eq!(db.get_bool("shuffle_enabled").unwrap(), Some(true));
-        
+
         // Test non-existent key
         assert_eq!(db.get_string("non_existent").unwrap(), None);
-        
+
         // Test key existence
         assert!(db.contains_key("user_name").unwrap());
         assert!(!db.contains_key("non_existent").unwrap());
-        
+
         // Test key removal
         assert!(db.remove("user_name").unwrap());
         assert!(!db.contains_key("user_name").unwrap());
-        
+
         // Test get all keys
         let keys = db.get_all_keys().unwrap();
         assert_eq!(keys.len(), 2);
         assert!(keys.contains(&"volume".to_string()));
         assert!(keys.contains(&"shuffle_enabled".to_string()));
-        
+
         // Test length
         assert_eq!(db.len().unwrap(), 2);
         assert!(!db.is_empty().unwrap());
-        
+
         // Test clear
         assert!(db.clear().is_ok());
         assert_eq!(db.len().unwrap(), 0);
@@ -710,19 +710,19 @@ mod tests {
     fn test_settings_db_with_defaults() {
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().to_str().unwrap();
-        
+
         let mut db = SettingsDb::with_directory(db_path);
-        
+
         // Test defaults for non-existent keys
         assert_eq!(db.get_string_with_default("missing_string", "default").unwrap(), "default");
         assert_eq!(db.get_int_with_default("missing_int", 42).unwrap(), 42);
         assert_eq!(db.get_bool_with_default("missing_bool", false).unwrap(), false);
-        
+
         // Test defaults when values exist
         db.set_string("existing_string", "value").unwrap();
         db.set_int("existing_int", 123).unwrap();
         db.set_bool("existing_bool", true).unwrap();
-        
+
         assert_eq!(db.get_string_with_default("existing_string", "default").unwrap(), "value");
         assert_eq!(db.get_int_with_default("existing_int", 42).unwrap(), 123);
         assert_eq!(db.get_bool_with_default("existing_bool", false).unwrap(), true);
@@ -733,14 +733,14 @@ mod tests {
     fn test_settings_db_persistence() {
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().to_str().unwrap();
-        
+
         // Store some data
         {
             let mut db = SettingsDb::with_directory(db_path);
             db.set_string("persistent_key", "persistent_value").unwrap();
             db.set_int("persistent_number", 999).unwrap();
         }
-        
+
         // Create new instance and verify data persists
         {
             let mut db = SettingsDb::with_directory(db_path);
@@ -754,9 +754,9 @@ mod tests {
     fn test_settings_db_complex_types() {
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().to_str().unwrap();
-        
+
         let mut db = SettingsDb::with_directory(db_path);
-        
+
         // Test storing complex JSON-serializable types
         let settings = serde_json::json!({
             "theme": "dark",
@@ -766,7 +766,7 @@ mod tests {
                 "treble": -1
             }
         });
-        
+
         assert!(db.set("user_preferences", &settings).is_ok());
         let retrieved: serde_json::Value = db.get("user_preferences").unwrap().unwrap();
         assert_eq!(retrieved, settings);
@@ -778,36 +778,36 @@ mod tests {
         // Initialize the global settings database with a temporary path for testing
         let temp_dir = TempDir::new().unwrap();
         let test_path = temp_dir.path().to_str().unwrap();
-        
+
         // Initialize the global database
         SettingsDb::initialize(test_path).ok();
-        
+
         // Clear any existing data first
         clear().ok(); // Ignore errors if not initialized
-        
+
         // Test global functions
         assert!(set_string("global_test", "value").is_ok());
         assert_eq!(get_string("global_test").unwrap(), Some("value".to_string()));
-        
+
         assert!(set_int("global_int", 42).is_ok());
         assert_eq!(get_int("global_int").unwrap(), Some(42));
-        
+
         assert!(set_bool("global_bool", true).is_ok());
         assert_eq!(get_bool("global_bool").unwrap(), Some(true));
-        
+
         // Test with defaults
         assert_eq!(get_string_with_default("missing", "default").unwrap(), "default");
         assert_eq!(get_int_with_default("missing", 100).unwrap(), 100);
         assert_eq!(get_bool_with_default("missing", false).unwrap(), false);
-        
+
         // Test key operations
         assert!(contains_key("global_test").unwrap());
         let all_keys = get_all_keys().unwrap();
         assert!(all_keys.contains(&"global_test".to_string()));
-        
+
         assert!(remove("global_test").unwrap());
         assert!(!contains_key("global_test").unwrap());
-        
+
         // Clean up
         clear().ok();
     }
@@ -821,56 +821,78 @@ mod tests {
         // Initialize the global settings database with a temporary path for testing
         let temp_dir = TempDir::new().unwrap();
         let test_path = temp_dir.path().to_str().unwrap();
-        
+
         // Initialize the global database
         SettingsDb::initialize(test_path).ok();
-        
+
         // Clear any existing data first
         clear().ok(); // Ignore errors if not initialized
-        
+
         let provider = SettingsDbFavouriteProvider::new();
-        
+
         // Initially should have 0 favorites
         assert_eq!(provider.get_favourite_count(), Some(0));
-        
+
         // Create test songs
         let mut song1 = Song::default();
         song1.artist = Some("Test Artist 1".to_string());
         song1.title = Some("Test Song 1".to_string());
-        
+
         let mut song2 = Song::default();
         song2.artist = Some("Test Artist 2".to_string());
         song2.title = Some("Test Song 2".to_string());
-        
+
         let mut song3 = Song::default();
         song3.artist = Some("Test Artist 3".to_string());
         song3.title = Some("Test Song 3".to_string());
-        
+
         // Add first favorite
         assert!(provider.add_favourite(&song1).is_ok());
         assert_eq!(provider.get_favourite_count(), Some(1));
-        
+
         // Add second favorite
         assert!(provider.add_favourite(&song2).is_ok());
         assert_eq!(provider.get_favourite_count(), Some(2));
-        
+
         // Add third favorite
         assert!(provider.add_favourite(&song3).is_ok());
         assert_eq!(provider.get_favourite_count(), Some(3));
-        
+
         // Remove one favorite
         assert!(provider.remove_favourite(&song2).is_ok());
         assert_eq!(provider.get_favourite_count(), Some(2));
-        
+
         // Remove another favorite
         assert!(provider.remove_favourite(&song1).is_ok());
         assert_eq!(provider.get_favourite_count(), Some(1));
-        
+
         // Remove last favorite
         assert!(provider.remove_favourite(&song3).is_ok());
         assert_eq!(provider.get_favourite_count(), Some(0));
-        
+
         // Clean up
+        clear().ok();
+    }
+
+    #[test]
+    #[serial]
+    fn regression_get_all_favourite_songs_ignores_false_values() {
+        let temp_dir = TempDir::new().unwrap();
+        let test_path = temp_dir.path().to_str().unwrap();
+
+        SettingsDb::initialize(test_path).ok();
+        clear().ok();
+
+        add_favourite_song("Artist A", "Song A").unwrap();
+
+        // Simulate a stored key explicitly set to false; this should not count as favourite.
+        let false_key = "favourite_song:artist_b:song_b";
+        set_bool(false_key, false).unwrap();
+
+        let favourites = get_all_favourite_songs().unwrap();
+        assert_eq!(favourites.len(), 1);
+        assert_eq!(favourites[0], ("artist a".to_string(), "song a".to_string()));
+
         clear().ok();
     }
 
@@ -881,15 +903,15 @@ mod tests {
         use std::sync::Arc;
         use parking_lot::Mutex;
         use std::thread;
-        
+
         let temp_dir = TempDir::new().expect("Failed to create temp directory");
         let db_path = temp_dir.path().to_str().unwrap();
         let db = Arc::new(Mutex::new(SettingsDb::with_directory(db_path)));
-        
+
         let num_threads = 10;
         let operations_per_thread = 50;
         let mut handles = vec![];
-        
+
         // Spawn multiple threads that set and get values concurrently
         for thread_id in 0..num_threads {
             let db_clone = Arc::clone(&db);
@@ -897,13 +919,13 @@ mod tests {
                 for i in 0..operations_per_thread {
                     let key = format!("thread_{}_key_{}", thread_id, i);
                     let value = format!("thread_{}_value_{}", thread_id, i);
-                    
+
                     // Set value
                     {
                         let mut db_guard = db_clone.lock();
                         db_guard.set_string(&key, &value).expect("Failed to set value in thread");
                     }
-                    
+
                     // Get value back
                     {
                         let mut db_guard = db_clone.lock();
@@ -914,18 +936,18 @@ mod tests {
             });
             handles.push(handle);
         }
-        
+
         // Wait for all threads to complete
         for handle in handles {
             handle.join().expect("Thread panicked");
         }
-        
+
         // Verify all data is still accessible
         for thread_id in 0..num_threads {
             for i in 0..operations_per_thread {
                 let key = format!("thread_{}_key_{}", thread_id, i);
                 let expected_value = format!("thread_{}_value_{}", thread_id, i);
-                
+
                 let mut db_guard = db.lock();
                 let retrieved = db_guard.get_string(&key).expect("Failed to get value after threads");
                 assert_eq!(retrieved, Some(expected_value));
@@ -941,11 +963,11 @@ mod tests {
         use parking_lot::Mutex;
         use std::thread;
         use std::time::Duration;
-        
+
         let temp_dir = TempDir::new().expect("Failed to create temp directory");
         let db_path = temp_dir.path().to_str().unwrap();
         let db = Arc::new(Mutex::new(SettingsDb::with_directory(db_path)));
-        
+
         // Pre-populate with some data
         {
             let mut db_guard = db.lock();
@@ -955,11 +977,11 @@ mod tests {
                 db_guard.set_string(&key, &value).expect("Failed to set initial value");
             }
         }
-        
+
         let num_reader_threads = 3;
         let num_writer_threads = 2;
         let mut handles = vec![];
-        
+
         // Spawn reader threads that access the same keys concurrently
         for _thread_id in 0..num_reader_threads {
             let db_clone = Arc::clone(&db);
@@ -967,7 +989,7 @@ mod tests {
                 for _iteration in 0..50 {
                     for key_id in 0..10 {
                         let key = format!("shared_key_{}", key_id);
-                        
+
                         // Just verify we can read some value, don't care about the exact content
                         // since writers might be updating it concurrently
                         {
@@ -975,7 +997,7 @@ mod tests {
                             let _retrieved = db_mut.get_string(&key);
                             // Don't assert on value since it may be updated by writers
                         }
-                        
+
                         // Small sleep to increase chance of interleaving
                         thread::sleep(Duration::from_millis(1));
                     }
@@ -983,7 +1005,7 @@ mod tests {
             });
             handles.push(handle);
         }
-        
+
         // Spawn writer threads that update existing keys
         for thread_id in 0..num_writer_threads {
             let db_clone = Arc::clone(&db);
@@ -992,24 +1014,24 @@ mod tests {
                     for key_id in 0..10 {
                         let key = format!("shared_key_{}", key_id);
                         let new_value = format!("updated_by_thread_{}_iter_{}_{}", thread_id, iteration, key_id);
-                        
+
                         {
                             let mut db_mut = db_clone.lock();
                             let _ = db_mut.set_string(&key, &new_value); // Ignore errors
                         }
-                        
+
                         thread::sleep(Duration::from_millis(2));
                     }
                 }
             });
             handles.push(handle);
         }
-        
+
         // Wait for all threads to complete
         for handle in handles {
             let _ = handle.join(); // Ignore panics from individual threads
         }
-        
+
         // Test passes if we get here without deadlocks
     }
 
@@ -1019,29 +1041,29 @@ mod tests {
         use std::thread;
         use std::sync::Arc;
         use std::sync::atomic::{AtomicUsize, Ordering};
-        
+
         // Initialize global database with a temp directory first
         let temp_dir = TempDir::new().expect("Failed to create temp directory");
         SettingsDb::initialize_global(temp_dir.path()).expect("Failed to initialize global database");
-        
+
         let num_threads = 8;
         let operations_per_thread = 25;
         let success_counter = Arc::new(AtomicUsize::new(0));
         let mut handles = vec![];
-        
+
         // Clear global database first to ensure clean state
         clear().ok(); // Ignore errors if not initialized
-        
+
         // Spawn multiple threads that use global database functions
         for thread_id in 0..num_threads {
             let counter_clone = Arc::clone(&success_counter);
             let handle = thread::spawn(move || {
                 let mut successful_operations = 0;
-                
+
                 for i in 0..operations_per_thread {
                     let key = format!("global_thread_{}_key_{}", thread_id, i);
                     let value = format!("global_thread_{}_value_{}", thread_id, i);
-                    
+
                     // Set value using global function
                     if set_string(&key, &value).is_ok() {
                         // Get value back using global function
@@ -1054,31 +1076,31 @@ mod tests {
                             _ => {} // Failed to retrieve
                         }
                     }
-                    
+
                     // Test removal occasionally
                     if i % 5 == 0 {
                         remove(&key).ok(); // Ignore errors
                     }
                 }
-                
+
                 counter_clone.fetch_add(successful_operations, Ordering::Relaxed);
             });
             handles.push(handle);
         }
-        
+
         // Wait for all threads to complete
         for handle in handles {
             let _ = handle.join(); // Ignore panics
         }
-        
+
         // Verify that most operations were successful
         // We expect some operations to fail due to removals, but most should succeed
         let total_successful = success_counter.load(Ordering::Relaxed);
         let expected_minimum = (num_threads * operations_per_thread) / 3; // At least 33% success rate (relaxed)
-        assert!(total_successful >= expected_minimum, 
-            "Expected at least {} successful operations, got {}", 
+        assert!(total_successful >= expected_minimum,
+            "Expected at least {} successful operations, got {}",
             expected_minimum, total_successful);
-        
+
         // Clean up
         clear().ok();
     }
@@ -1090,11 +1112,11 @@ mod tests {
         use parking_lot::Mutex;
         use std::thread;
         use std::time::Duration;
-        
+
         let temp_dir = TempDir::new().expect("Failed to create temp directory");
         let db_path = temp_dir.path().to_str().unwrap();
         let db = Arc::new(Mutex::new(SettingsDb::with_directory(db_path)));
-        
+
         // Pre-populate the database to test memory cache behavior
         {
             let mut db_guard = db.lock();
@@ -1106,10 +1128,10 @@ mod tests {
                 let _ = db_guard.get_string(&key);
             }
         }
-        
+
         let num_threads = 5;
         let mut handles = vec![];
-        
+
         // Spawn threads that repeatedly access cached values
         for _thread_id in 0..num_threads {
             let db_clone = Arc::clone(&db);
@@ -1117,7 +1139,7 @@ mod tests {
                 for _iteration in 0..20 {
                     for key_id in 0..10 {
                         let key = format!("memory_key_{}", key_id);
-                        
+
                         {
                             let mut db_mut = db_clone.lock();
                             // This should hit the memory cache
@@ -1127,14 +1149,14 @@ mod tests {
                             let has_cached = db_mut.memory_cache.contains_key(&key);
                             assert!(has_cached, "Key {} should be in memory cache", key);
                         }
-                        
+
                         thread::sleep(Duration::from_millis(1));
                     }
                 }
             });
             handles.push(handle);
         }
-        
+
         // Wait for all threads to complete
         for handle in handles {
             handle.join().expect("Thread panicked");
@@ -1148,14 +1170,14 @@ mod tests {
         use parking_lot::Mutex;
         use std::thread;
         use std::time::Duration;
-        
+
         let temp_dir = TempDir::new().expect("Failed to create temp directory");
         let db_path = temp_dir.path().to_str().unwrap();
         let db = Arc::new(Mutex::new(SettingsDb::with_directory(db_path)));
-        
+
         let num_access_threads = 4;
         let mut handles = vec![];
-        
+
         // Spawn threads that continuously add and access data
         for thread_id in 0..num_access_threads {
             let db_clone = Arc::clone(&db);
@@ -1163,26 +1185,26 @@ mod tests {
                 for i in 0..30 {
                     let key = format!("clear_thread_{}_key_{}", thread_id, i);
                     let value = format!("clear_value_{}", i);
-                    
+
                     // Set value
                     {
                         let mut db_guard = db_clone.lock();
                         db_guard.set_string(&key, &value).ok(); // Ignore errors
                     }
-                    
+
                     // Try to get value
                     {
                         let mut db_guard = db_clone.lock();
                         let _retrieved = db_guard.get_string(&key);
                         // Don't assert here as clear might remove the value
                     }
-                    
+
                     thread::sleep(Duration::from_millis(1));
                 }
             });
             handles.push(handle);
         }
-        
+
         // Spawn a thread that periodically clears the database
         let db_clear = Arc::clone(&db);
         let clear_handle = thread::spawn(move || {
@@ -1193,12 +1215,12 @@ mod tests {
             }
         });
         handles.push(clear_handle);
-        
+
         // Wait for all threads to complete
         for handle in handles {
             handle.join().expect("Thread panicked");
         }
-        
+
         // Test should complete without deadlocks or panics
         // The exact state of the database is not important, just that it didn't crash
     }
@@ -1209,50 +1231,50 @@ mod tests {
         use std::sync::Arc;
         use parking_lot::Mutex;
         use std::thread;
-        
+
         let temp_dir = TempDir::new().expect("Failed to create temp directory");
         let db_path = temp_dir.path().to_str().unwrap();
         let db = Arc::new(Mutex::new(SettingsDb::with_directory(db_path)));
-        
+
         let num_threads = 6;
         let mut handles = vec![];
-        
+
         // Spawn threads that work with different data types concurrently
         for thread_id in 0..num_threads {
             let db_clone = Arc::clone(&db);
             let handle = thread::spawn(move || {
                 for i in 0..20 {
                     let base_key = format!("thread_{}_item_{}", thread_id, i);
-                    
+
                     {
                         let mut db_guard = db_clone.lock();
-                        
+
                         // Set different types of data
                         let string_key = format!("{}_string", base_key);
                         let int_key = format!("{}_int", base_key);
                         let bool_key = format!("{}_bool", base_key);
-                        
+
                         let string_value = format!("value_{}", i);
                         let int_value = (thread_id * 100 + i) as i64;
                         let bool_value = i % 2 == 0;
-                        
+
                         db_guard.set_string(&string_key, &string_value).expect("Failed to set string");
                         db_guard.set_int(&int_key, int_value).expect("Failed to set int");
                         db_guard.set_bool(&bool_key, bool_value).expect("Failed to set bool");
                     }
-                    
+
                     // Read back and verify
                     {
                         let mut db_guard = db_clone.lock();
-                        
+
                         let string_key = format!("{}_string", base_key);
                         let int_key = format!("{}_int", base_key);
                         let bool_key = format!("{}_bool", base_key);
-                        
+
                         let expected_string = format!("value_{}", i);
                         let expected_int = (thread_id * 100 + i) as i64;
                         let expected_bool = i % 2 == 0;
-                        
+
                         assert_eq!(db_guard.get_string(&string_key).unwrap(), Some(expected_string));
                         assert_eq!(db_guard.get_int(&int_key).unwrap(), Some(expected_int));
                         assert_eq!(db_guard.get_bool(&bool_key).unwrap(), Some(expected_bool));
@@ -1261,12 +1283,12 @@ mod tests {
             });
             handles.push(handle);
         }
-        
+
         // Wait for all threads to complete
         for handle in handles {
             handle.join().expect("Thread panicked");
         }
-        
+
         // Verify final state
         let mut db_guard = db.lock();
         let total_keys = db_guard.get_all_keys().unwrap().len();
@@ -1282,19 +1304,19 @@ mod tests {
         use std::thread;
         use crate::data::song::Song;
         use crate::helpers::favourites::FavouriteProvider;
-        
+
         // Initialize global database with a temp directory first
         let temp_dir = TempDir::new().expect("Failed to create temp directory");
         SettingsDb::initialize_global(temp_dir.path()).expect("Failed to initialize global database");
-        
+
         // Clear any existing data first
         clear().ok();
-        
+
         let provider = Arc::new(SettingsDbFavouriteProvider::new());
         let num_threads = 4;
         let songs_per_thread = 10;
         let mut handles = vec![];
-        
+
         // Spawn threads that add/remove favourites concurrently
         for thread_id in 0..num_threads {
             let provider_clone = Arc::clone(&provider);
@@ -1303,13 +1325,13 @@ mod tests {
                     let mut song = Song::default();
                     song.artist = Some(format!("Artist_{}", thread_id));
                     song.title = Some(format!("Song_{}_{}", thread_id, i));
-                    
+
                     // Add favourite
                     provider_clone.add_favourite(&song).expect("Failed to add favourite");
-                    
+
                     // Check if it's marked as favourite
                     assert!(provider_clone.is_favourite(&song).expect("Failed to check favourite"));
-                    
+
                     // Remove every other favourite to test removal
                     if i % 2 == 0 {
                         provider_clone.remove_favourite(&song).expect("Failed to remove favourite");
@@ -1319,18 +1341,18 @@ mod tests {
             });
             handles.push(handle);
         }
-        
+
         // Wait for all threads to complete
         for handle in handles {
             handle.join().expect("Thread panicked");
         }
-        
+
         // Check final favourite count
         // Each thread adds songs_per_thread favourites but removes half of them
         let expected_count = num_threads * (songs_per_thread / 2);
         let actual_count = provider.get_favourite_count().unwrap_or(0);
         assert_eq!(actual_count, expected_count);
-        
+
         // Clean up
         clear().ok();
     }

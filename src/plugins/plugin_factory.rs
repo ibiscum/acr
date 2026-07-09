@@ -27,13 +27,13 @@ impl PluginFactory {
         let mut factory = Self {
             registry: HashMap::new(),
         };
-        
+
         // Register built-in plugins
         factory.register_builtin_plugins();
-        
+
         factory
     }
-    
+
     /// Register all built-in plugins
     fn register_builtin_plugins(&mut self) {
         // Register EventLogger that logs all events by default
@@ -42,13 +42,13 @@ impl PluginFactory {
                 let only_active = config.get("only_active")
                     .and_then(Value::as_bool)
                     .unwrap_or(false);
-                
+
                 // Get log level from config
                 let log_level = config.get("log_level")
                     .and_then(Value::as_str)
                     .map(LogLevel::from)
                     .unwrap_or_default();
-                
+
                 // Get event types to log if specified
                 let event_types = config.get("event_types")
                     .and_then(|v| {
@@ -66,13 +66,13 @@ impl PluginFactory {
                             None
                         }
                     });
-                
+
                 Some(Box::new(EventLogger::with_config(only_active, log_level, event_types)) as Box<dyn Plugin>)
             } else {
                 Some(Box::new(EventLogger::new(false)) as Box<dyn Plugin>)
             }
         });
-        
+
         // Register ActiveMonitor that automatically sets active player on play events
         self.register("active-monitor", |_config| {
             Some(Box::new(ActiveMonitor::new()) as Box<dyn Plugin>)
@@ -93,7 +93,7 @@ impl PluginFactory {
             }
         });
     }
-    
+
     /// Register a new plugin constructor with JSON config support
     pub fn register<F>(&mut self, name: &str, constructor: F)
     where
@@ -102,16 +102,16 @@ impl PluginFactory {
         if self.registry.contains_key(name) {
             warn!("Plugin with name '{}' already registered, overwriting", name);
         }
-        
+
         self.registry.insert(name.to_string(), Box::new(constructor));
         info!("Registered plugin: {}", name);
     }
-    
+
     /// Create a new instance of a plugin by name
     pub fn create(&self, name: &str) -> Option<Box<dyn Plugin>> {
         self.create_with_config(name, None)
     }
-    
+
     /// Create a new instance of a plugin by name with configuration
     pub fn create_with_config(&self, name: &str, config: Option<&Value>) -> Option<Box<dyn Plugin>> {
         match self.registry.get(name) {
@@ -126,7 +126,7 @@ impl PluginFactory {
             }
         }
     }
-    
+
     /// Create a plugin instance from a JSON configuration string
     /// The JSON should have format: { "plugin-type": { params } }
     pub fn create_from_json(&self, json_config: &str) -> Option<Box<dyn Plugin>> {
@@ -137,10 +137,10 @@ impl PluginFactory {
                     error!("Invalid JSON config: expected a single plugin configuration");
                     return None;
                 }
-                
+
                 // Get the first (and only) entry
                 let (plugin_type, params) = config_map.iter().next().unwrap();
-                
+
                 info!("Creating plugin of type '{}' from JSON", plugin_type);
                 self.create_with_config(plugin_type, Some(params))
             }
@@ -150,7 +150,7 @@ impl PluginFactory {
             }
         }
     }
-    
+
     /// Create multiple plugins from a JSON array of configurations
     /// The JSON should have format: [ { "plugin-type-1": { params1 } }, { "plugin-type-2": { params2 } } ]
     pub fn create_plugins_from_json(&self, json_configs: &str) -> Vec<Box<dyn Plugin>> {
@@ -163,7 +163,7 @@ impl PluginFactory {
                             error!("Invalid plugin config in array: expected a single plugin configuration");
                             return None;
                         }
-                        
+
                         let (plugin_type, params) = config_map.iter().next().unwrap();
                         self.create_with_config(plugin_type, Some(params))
                     })
@@ -175,25 +175,27 @@ impl PluginFactory {
             }
         }
     }
-    
+
     /// Get a list of all registered plugin names
     pub fn available_plugins(&self) -> Vec<String> {
-        self.registry.keys().cloned().collect()
+        let mut plugins: Vec<String> = self.registry.keys().cloned().collect();
+        plugins.sort();
+        plugins
     }
-    
+
     /// Check if a plugin with the given name is registered
     pub fn is_registered(&self, name: &str) -> bool {
         self.registry.contains_key(name)    }
-    
+
     /// Create a new instance of an ActionPlugin by name
     pub fn create_action_plugin(&self, name: &str) -> Option<Box<dyn ActionPlugin + Send + Sync>> {
         self.create_action_plugin_with_config(name, None)
     }
-    
+
     /// Create a new instance of an ActionPlugin by name with configuration
     pub fn create_action_plugin_with_config(&self, name: &str, config: Option<&Value>) -> Option<Box<dyn ActionPlugin + Send + Sync>> {
         let plugin = self.create_with_config(name, config)?;
-        
+
         // Try to downcast the plugin to the specific ActionPlugin type
         if plugin.as_any().downcast_ref::<ActiveMonitor>().is_some() {
             // For ActiveMonitor, create a new instance
@@ -204,13 +206,13 @@ impl PluginFactory {
                 let only_active = config_val.get("only_active")
                     .and_then(Value::as_bool)
                     .unwrap_or(false);
-                
+
                 // Get log level from config
                 let log_level = config_val.get("log_level")
                     .and_then(Value::as_str)
                     .map(LogLevel::from)
                     .unwrap_or_default();
-                
+
                 // Get event types to log if specified
                 let event_types = config_val.get("event_types")
                     .and_then(|v| {
@@ -228,7 +230,7 @@ impl PluginFactory {
                             None
                         }
                     });
-                
+
                 Some(Box::new(EventLogger::with_config(only_active, log_level, event_types)) as Box<dyn ActionPlugin + Send + Sync>)
             } else {
                 // Use default values
@@ -255,7 +257,7 @@ impl PluginFactory {
             None
         }
     }
-    
+
     /// Create an action plugin from a JSON configuration string
     pub fn create_action_plugin_from_json(&self, json_config: &str) -> Option<Box<dyn ActionPlugin + Send + Sync>> {
         match serde_json::from_str::<Map<String, Value>>(json_config) {
@@ -265,10 +267,10 @@ impl PluginFactory {
                     error!("Invalid JSON config: expected a single action plugin configuration");
                     return None;
                 }
-                
+
                 // Get the first (and only) entry
                 let (plugin_type, params) = config_map.iter().next().unwrap();
-                
+
                 info!("Creating action plugin of type '{}' from JSON", plugin_type);
                 self.create_action_plugin_with_config(plugin_type, Some(params))
             }
@@ -278,7 +280,7 @@ impl PluginFactory {
             }
         }
     }
-    
+
     /// Returns a default JSON configuration for all available action plugins
     ///
     /// This function provides a complete configuration for all action plugins
@@ -297,8 +299,50 @@ impl PluginFactory {
             }),
             // Add other built-in action plugins here with their default configuration
         ];
-        
+
         serde_json::to_string_pretty(&plugins).unwrap_or_else(|_| "[]".to_string())    }
-    
+
     // sample_json_config method for event filters removed as it's no longer used
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn regression_available_plugins_is_sorted_and_contains_builtins() {
+        let factory = PluginFactory::new();
+        let plugins = factory.available_plugins();
+
+        let mut expected = vec![
+            "active-monitor".to_string(),
+            "event-logger".to_string(),
+            "lastfm".to_string(),
+        ];
+        expected.sort();
+
+        assert_eq!(plugins, expected);
+    }
+
+    #[test]
+    fn regression_create_from_json_rejects_multiple_plugin_entries() {
+        let factory = PluginFactory::new();
+        let json = r#"{
+            "event-logger": {"only_active": true},
+            "active-monitor": {}
+        }"#;
+
+        assert!(factory.create_from_json(json).is_none());
+    }
+
+    #[test]
+    fn regression_create_from_json_creates_event_logger() {
+        let factory = PluginFactory::new();
+        let json = r#"{"event-logger":{"only_active":false}}"#;
+
+        let plugin = factory.create_from_json(json);
+        assert!(plugin.is_some());
+        let plugin = plugin.unwrap();
+        assert!(plugin.as_any().downcast_ref::<EventLogger>().is_some());
+    }
 }

@@ -22,6 +22,15 @@ pub fn lms_image_url() -> String {
     format!("{}/library/lms/image", API_PREFIX)
 }
 
+fn normalize_numeric_track_id(candidate: &str) -> Option<String> {
+    let trimmed = candidate.trim();
+    if trimmed.parse::<u64>().is_ok() {
+        return Some(trimmed.to_string());
+    }
+
+    None
+}
+
 /// Configuration for LMSAudioController
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LMSAudioConfig {
@@ -85,42 +94,42 @@ impl Default for LMSAudioConfig {
 pub struct LMSAudioController {
     /// Base controller providing common functionality
     base: BasePlayerController,
-    
+
     /// Controller configuration
     config: Arc<RwLock<LMSAudioConfig>>,
-    
+
     /// LMS RPC client for API calls
     client: Arc<RwLock<Option<LmsRpcClient>>>,
-    
+
     /// Player object for interacting with the LMS server
     player: Arc<RwLock<Option<LMSPlayer>>>,
-    
+
     /// Last known connection state
     is_connected: Arc<AtomicBool>,
-    
+
     /// Flag to control the reconnection thread
     running: Arc<AtomicBool>,
-    
+
     /// Currently connected server address
     connected_server: Arc<RwLock<Option<String>>>,
-    
+
     /// CLI listener for receiving real-time events from the LMS server
     cli_listener: Arc<RwLock<Option<LMSListener>>>,
-    
+
     /// Strong reference to the AudioControllerRef trait object
     /// This ensures the controller stays alive while the listener is active
     controller_ref: Arc<RwLock<Option<Arc<dyn AudioControllerRef>>>>,
-    
+
     /// Last time an event was seen from this player
     last_seen: Arc<RwLock<Option<SystemTime>>>,
-    
+
     /// Library interface for accessing the LMS music library
     library: Arc<RwLock<Option<crate::players::lms::library::LMSLibrary>>>,
 }
 
 impl LMSAudioController {
     /// Helper method to process player_mac configuration values
-    /// 
+    ///
     /// # Arguments
     /// * `mac_strings` - Configured MAC addresses to check
     /// * `include_local` - If true, add local MAC addresses too
@@ -130,7 +139,7 @@ impl LMSAudioController {
     fn prepare_mac_addresses(&self, mac_strings: &[String], include_local: bool) -> Vec<String> {
         let mut result = Vec::new();
         let mut should_include_local = include_local;
-        
+
         // Check if "local" is in the list, which is a special value
         for mac in mac_strings {
             if mac.to_lowercase() == "local" {
@@ -140,7 +149,7 @@ impl LMSAudioController {
                 result.push(mac.clone());
             }
         }
-        
+
         // If we need to include local MACs, add them now
         if should_include_local {
             match get_local_mac_addresses() {
@@ -149,12 +158,12 @@ impl LMSAudioController {
                     let local_macs: Vec<String> = addresses.iter()
                         .map(crate::helpers::mac_address::mac_to_lowercase_string)
                         .collect();
-                    
+
                     // Add local MACs that aren't already in the list (case insensitive comparison)
                     for local_mac in local_macs {
-                        let already_exists = result.iter().any(|existing_mac| 
+                        let already_exists = result.iter().any(|existing_mac|
                             crate::helpers::mac_address::mac_equal_ignore_case(existing_mac, &local_mac));
-                        
+
                         if !already_exists {
                             result.push(local_mac);
                         }
@@ -165,12 +174,12 @@ impl LMSAudioController {
                 }
             }
         }
-        
+
         result
     }
 
     /// Create a new LMS audio controller
-    /// 
+    ///
     /// # Arguments
     /// * `config` - JSON configuration
     pub fn new(config_json: Value) -> Self {
@@ -185,19 +194,19 @@ impl LMSAudioController {
                 LMSAudioConfig::default()
             }
         };
-        
+
         // Log the configured MAC addresses
         if !config.player_macs.is_empty() {
             info!("LMS controller configured with player MACs: {:?}", config.player_macs);
         }
-        
+
         let is_connected = Arc::new(AtomicBool::new(false));
         let running = Arc::new(AtomicBool::new(true));
         let connected_server = Arc::new(RwLock::new(None));
-        
+
         // Create a new controller with base functionality
         let base = BasePlayerController::with_player_info("lms", "lms");
-        
+
         // Initialize the controller's capabilities
         let capabilities = vec![
             PlayerCapability::Play,
@@ -214,7 +223,7 @@ impl LMSAudioController {
             PlayerCapability::Length
         ];
         base.set_capabilities(capabilities, false);
-        
+
         // Create a new controller
         let controller = Self {
             base,
@@ -229,20 +238,20 @@ impl LMSAudioController {
             last_seen: Arc::new(RwLock::new(None)),
             library: Arc::new(RwLock::new(None)),
         };
-        
+
         // Initialize the player using find_server_connection
         let (connected, server_opt, player_mac_opt, _) = controller.find_server_connection(&config);
-        
+
         if let (true, Some(server), Some(player_mac)) = (connected, server_opt, player_mac_opt) {
-            
+
             info!("Found a matching LMS server: {} with player MAC: {}", server, player_mac);
-            
+
             // Create a client for the found server
             let client = LmsRpcClient::new(&server, config.port);
-            
+
             // Create the LMSPlayer instance
             let player = LMSPlayer::new(client.clone(), &player_mac);
-            
+
             // Store the client and player
             { let mut client_lock = controller.client.write(); *client_lock = Some(client.clone()); }
 
@@ -260,70 +269,70 @@ impl LMSAudioController {
                     *library_lock = None;
                 }
             }
-            
+
             // Update connection state
             controller.is_connected.store(true, Ordering::SeqCst);
-            
+
             // Store the connected server
             { let mut connected_server = controller.connected_server.write(); *connected_server = Some(server.clone()); }
-            
+
             // Start the CLI listener
             controller.start_cli_listener(&server, &player_mac);
         } else {
             warn!("No LMS server found with our MAC addresses connected, will retry in background");
         }
-        
+
         debug!("Created new LMS audio controller");
         controller
     }
-    
+
     /// Start the reconnection thread
     fn start_reconnection_thread(&self) {
         let config = self.config.read().clone();
-        
+
         // Don't start the reconnection thread if the interval is 0 (disabled)
         if config.reconnection_interval == 0 {
             info!("LMS reconnection is disabled (interval = 0)");
             return;
         }
-        
+
         let interval = Duration::from_secs(config.reconnection_interval);
         let is_connected = self.is_connected.clone();
         let running = self.running.clone();
         let controller_config = self.config.clone();
         let base = self.base.clone();
-        
+
         // Create a clone of the controller so we can use the find_server_connection method
         let controller = self.clone();
-        
+
         thread::spawn(move || {
             info!("LMS reconnection thread started (interval: {} seconds)", config.reconnection_interval);
-            
+
             while running.load(Ordering::SeqCst) {
                 // Sleep for the configured interval
                 thread::sleep(interval);
-                
+
                 if !running.load(Ordering::SeqCst) {
                     break;
                 }
-                
+
                 // Get the current connection state
                 let was_connected = is_connected.load(Ordering::SeqCst);
-                
+
                 // Read the current configuration
                 let current_config = controller_config.read().clone();
-                
+
                 // Check connection status using find_server_connection
                 let (now_connected, found_server, matched_mac, _) = controller.find_server_connection(&current_config);
-                
+
                 // Update connection state if it changed
                 if was_connected != now_connected {
                     is_connected.store(now_connected, Ordering::SeqCst);
-                    
+
                     if now_connected {
                         info!("LMS connection established");
                         base.notify_state_changed(PlaybackState::Stopped);
-                        
+
                         // Start the CLI listener if we have both server and player information
                         if let (Some(server), Some(player_id)) = (found_server, matched_mac) {
                             controller.start_cli_listener(&server, &player_id);
@@ -331,43 +340,43 @@ impl LMSAudioController {
                     } else {
                         info!("LMS connection lost");
                         base.notify_state_changed(PlaybackState::Disconnected);
-                        
+
                         // Stop the CLI listener when connection is lost
                         controller.stop_cli_listener();
                     }
                 }
-                
+
                 // If still disconnected, log an attempt with MAC addresses
                 if !now_connected {
                     if !current_config.player_macs.is_empty() {
                         // Check if "local" was in the original configuration
                         let has_local = current_config.player_macs.iter().any(|m| m.to_lowercase() == "local");
                         if has_local {
-                            info!("LMS player still disconnected (tested configured and local MAC addresses) - will retry in {} seconds", 
+                            info!("LMS player still disconnected (tested configured and local MAC addresses) - will retry in {} seconds",
                                   config.reconnection_interval);
                         } else {
-                            info!("LMS player still disconnected (tested configured MAC addresses: {}) - will retry in {} seconds", 
+                            info!("LMS player still disconnected (tested configured MAC addresses: {}) - will retry in {} seconds",
                                   current_config.player_macs.join(", "), config.reconnection_interval);
                         }
                     } else {
-                        debug!("LMS player still disconnected, no MAC addresses available - will retry in {} seconds", 
+                        debug!("LMS player still disconnected, no MAC addresses available - will retry in {} seconds",
                                config.reconnection_interval);
                     }
                 }
             }
-            
+
             // Stop the CLI listener when stopping the reconnection thread
             controller.stop_cli_listener();
-            
+
             info!("LMS reconnection thread stopped");
         });
     }
-    
+
     /// Find a server that any of the configured MAC addresses is connected to
-    /// 
+    ///
     /// # Arguments
     /// * `config` - Controller configuration
-    /// 
+    ///
     /// # Returns
     /// A tuple containing:
     /// - Boolean indicating if a connection was found
@@ -388,7 +397,7 @@ impl LMSAudioController {
                     debug!("Already connected to server {}, checking if still connected", server);
 
                     // Check if still connected to this server
-                    if crate::players::lms::player_finder::is_player(server, vec![player_id.to_string()]) {
+                    if crate::players::lms::player_finder::is_player_on_port(server, config.port, &[player_id.to_string()]) {
                         debug!("Still connected to server {}", server);
                         return (true, Some(server.clone()), Some(player_id.to_string()), None);
                     } else {
@@ -404,30 +413,30 @@ impl LMSAudioController {
                 return (false, Some(server.clone()), None, None);
             }
         }
-        
+
         // If not already connected and no server stored, proceed with server discovery
-        
+
         // Check if we already have a server address stored in config
         if let Some(saved_server) = &config.server {
             // Try with the configured server first
             let saved_server_str = saved_server.clone();
             debug!("Using configured server address: {}", saved_server_str);
-            
+
             // Process MAC addresses including "local" keyword
             let all_mac_addresses = self.prepare_mac_addresses(&config.player_macs, true);
-            
+
             // Skip if no MAC addresses to check
             if !all_mac_addresses.is_empty() {
                 // Create a client for the configured server
                 let client = LmsRpcClient::new(&saved_server_str, config.port);
-                
+
                 // Find any matching player
                 if let Ok(players) = client.clone().get_players() {
                     for player in &players {
                         match normalize_mac_address(&player.playerid) {
                             Ok(player_mac) => {
                                 let player_mac_str = crate::helpers::mac_address::mac_to_lowercase_string(&player_mac);
-                                
+
                                 // Check if this player matches any of our MAC addresses
                                 for mac in &all_mac_addresses {
                                     if crate::helpers::mac_address::mac_equal_ignore_case(&player_mac_str, mac) {
@@ -447,7 +456,7 @@ impl LMSAudioController {
                 }
             }
         }
-        
+
         // Only perform discovery if we've never connected before
         // Check if we've never found a server by checking both connected_server and config.server
         let never_connected = {
@@ -455,14 +464,14 @@ impl LMSAudioController {
             let no_config_server = config.server.is_none();
             no_connected_server && no_config_server
         };
-        
+
         if never_connected {
             // Only do full server discovery if we've never connected before
-            
+
             // Gather servers to check
             let mut servers_to_check = Vec::new();
             let mac_addresses = config.player_macs.clone();
-            
+
             // Use autodiscovery if enabled
             if config.autodiscovery {
                 match crate::players::lms::lms_server::find_local_servers(Some(2)) {
@@ -478,26 +487,26 @@ impl LMSAudioController {
                     }
                 }
             }
-            
+
             // Process MAC addresses including "local" keyword
             let all_mac_addresses = self.prepare_mac_addresses(&mac_addresses, true);
-            
+
             // Try to find a server with any of our MAC addresses connected
             if !all_mac_addresses.is_empty() && !servers_to_check.is_empty() {
                 // Use find_my_server to locate a matching server
-                if let Some(found_server) = crate::players::lms::player_finder::find_my_server(servers_to_check, all_mac_addresses.clone()) {
+                if let Some(found_server) = crate::players::lms::player_finder::find_my_server_on_port(&servers_to_check, config.port, &all_mac_addresses) {
                     debug!("Found matching server: {}", found_server);
-                    
+
                     // Create a client for the found server
                     let client = LmsRpcClient::new(&found_server, config.port);
-                    
+
                     // Find the specific matched player
                     if let Ok(players) = client.clone().get_players() {
                         for player in &players {
                             match normalize_mac_address(&player.playerid) {
                                 Ok(player_mac) => {
                                     let player_mac_str = crate::helpers::mac_address::mac_to_lowercase_string(&player_mac);
-                                    
+
                                     // Check if this player matches any of our MAC addresses
                                     for mac in &all_mac_addresses {
                                         if crate::helpers::mac_address::mac_equal_ignore_case(&player_mac_str, mac) {
@@ -507,7 +516,7 @@ impl LMSAudioController {
                                                 info!("Storing discovered server {} for future reconnections", found_server);
                                                 config_write.server = Some(found_server.clone());
                                             }
-                                            
+
                                             return (
                                                 true,
                                                 Some(found_server),
@@ -521,13 +530,13 @@ impl LMSAudioController {
                             }
                         }
                     }
-                    
+
                     // Found a server but couldn't determine the specific player
                     return (true, Some(found_server), None, None);
                 }
             }
         }
-        
+
         // No matching server found
         (false, None, None, None)
     }
@@ -535,22 +544,22 @@ impl LMSAudioController {
     /// Start the CLI listener for this player and server
     fn start_cli_listener(&self, server: &str, player_id: &str) {
         debug!("Starting CLI listener for server {} and player {}", server, player_id);
-        
+
         // First stop any existing listener
         self.stop_cli_listener();
-        
+
         // Create a strong reference to self that will be stored alongside the listener
         let controller_arc: Arc<dyn AudioControllerRef> = Arc::new(self.clone());
-        
+
         // Create a weak reference from the strong reference
         let controller_ref = Arc::downgrade(&controller_arc);
-        
+
         // Create a new CLI listener
         let mut listener = LMSListener::new(server, player_id, controller_ref);
-        
+
         // Start the listener
         listener.start();
-        
+
         // Store the listener and the strong reference to the controller
         {
             let mut cli_lock = self.cli_listener.write();
@@ -562,7 +571,7 @@ impl LMSAudioController {
         // Store the strong reference to the controller
         { let mut controller_ref_lock = self.controller_ref.write(); *controller_ref_lock = Some(controller_arc); }
     }
-    
+
     /// Stop the CLI listener if running
     fn stop_cli_listener(&self) {
         {
@@ -578,10 +587,10 @@ impl LMSAudioController {
     }
 
     /// Get the current song and send a SongChanged event to listeners
-    /// 
+    ///
     /// This method fetches the current song from the LMS server and
     /// sends a SongChanged event to all registered listeners.
-    /// 
+    ///
     /// # Returns
     /// The current Song if available, or None if no song is playing
     pub fn update_and_notify_song(&self) -> Option<Song> {
@@ -589,10 +598,10 @@ impl LMSAudioController {
         if !self.is_connected.load(Ordering::SeqCst) {
             return None;
         }
-        
+
         // Get the current song
         let song = self.get_song();
-        
+
         // Send the SongChanged event
         debug!("Sending SongChanged event: {:?}", song);
         if let Some(ref s) = song {
@@ -600,16 +609,16 @@ impl LMSAudioController {
         } else {
             self.base.notify_song_changed(None);
         }
-        
+
         // Return the song for potential further use
         song
     }
-    
+
     /// Get the current position and send a PositionChanged event to listeners
-    /// 
+    ///
     /// This method fetches the current playback position from the LMS server and
     /// sends a PositionChanged event to all registered listeners.
-    /// 
+    ///
     /// # Returns
     /// The current position in seconds if available, or None if position cannot be determined
     pub fn update_and_notify_position(&self) -> Option<f64> {
@@ -617,16 +626,16 @@ impl LMSAudioController {
         if !self.is_connected.load(Ordering::SeqCst) {
             return None;
         }
-        
+
         // Get the current position
         let position = self.get_position();
-        
+
         if let Some(pos) = position {
             // Send the PositionChanged event
             debug!("Sending PositionChanged event: position={}", pos);
             self.base.notify_position_changed(pos);
         }
-        
+
         // Return the position for potential further use
         position
     }
@@ -664,7 +673,7 @@ impl PlayerController for LMSAudioController {
     fn get_capabilities(&self) -> PlayerCapabilitySet {
         self.base.get_capabilities()
     }
-    
+
     fn get_song(&self) -> Option<Song> {
         // Check if we're connected first
         if !self.is_connected.load(Ordering::SeqCst) {
@@ -706,7 +715,7 @@ impl PlayerController for LMSAudioController {
         // Return empty queue if we couldn't get the queue from the player
         Vec::new()
     }
-    
+
     fn get_loop_mode(&self) -> LoopMode {
         // Check if we're connected first
         if !self.is_connected.load(Ordering::SeqCst) {
@@ -739,13 +748,13 @@ impl PlayerController for LMSAudioController {
 
         LoopMode::None
     }
-    
+
     fn get_playback_state(&self) -> PlaybackState {
         // First check if player is connected - this is just an atomic read, so it's safe
         if !self.is_connected.load(Ordering::SeqCst) {
             return PlaybackState::Disconnected;
         }
-        
+
         // Get player and server configuration
         let config = match self.config.try_read() {
             Some(cfg) => cfg.clone(),
@@ -754,7 +763,7 @@ impl PlayerController for LMSAudioController {
                 return PlaybackState::Unknown;
             }
         };
-        
+
         // Get server address from config
         let server_address = match &config.server {
             Some(address) => address.clone(),
@@ -763,7 +772,7 @@ impl PlayerController for LMSAudioController {
                 return PlaybackState::Unknown;
             }
         };
-        
+
         // Get player ID without locks that could block
         let player_id = match self.player.try_read() {
             Some(guard) => {
@@ -784,15 +793,15 @@ impl PlayerController for LMSAudioController {
         // Create a fresh LmsRpcClient for this specific request
         let temp_client = LmsRpcClient::new(&server_address, config.port)
             .with_timeout(2); // short 2-second timeout
-        
-        // Make a direct synchronous request 
+
+        // Make a direct synchronous request
         match temp_client.get_player_status(&player_id) {
             Ok(status) => {
                 // Check if power is on first
                 if status.power == 0 {
                     return PlaybackState::Disconnected;  // Use Disconnected for powered-off state
                 }
-                
+
                 // Check mode to determine playback state
                 match status.mode.as_str() {
                     "play" => PlaybackState::Playing,
@@ -811,7 +820,7 @@ impl PlayerController for LMSAudioController {
             }
         }
     }
-    
+
     fn get_position(&self) -> Option<f64> {
         // Check if we're connected first
         if !self.is_connected.load(Ordering::SeqCst) {
@@ -828,7 +837,7 @@ impl PlayerController for LMSAudioController {
 
         None
     }
-    
+
     fn get_shuffle(&self) -> bool {
         // Check if we're connected first
         if !self.is_connected.load(Ordering::SeqCst) {
@@ -854,30 +863,30 @@ impl PlayerController for LMSAudioController {
 
         false
     }
-    
+
     fn get_player_name(&self) -> String {
         self.base.get_player_name()
     }
-    
+
     fn get_aliases(&self) -> Vec<String> {
         vec!["lms".to_string(), "squeezelite".to_string()]
     }
-    
+
     fn get_player_id(&self) -> String {
         self.base.get_player_id()
     }
-    
+
     fn get_last_seen(&self) -> Option<SystemTime> {
         self.base.get_last_seen()
     }
-    
+
     fn send_command(&self, command: PlayerCommand) -> bool {
         // Use cached connection state
         if !self.is_connected.load(Ordering::SeqCst) {
             debug!("Cannot send command - LMS player is disconnected");
             return false;
         }
-        
+
         // Get player instance
         let player = {
             let player_guard = self.player.read();
@@ -889,7 +898,7 @@ impl PlayerController for LMSAudioController {
                 }
             }
         };
-        
+
         // Process different commands
         match command {
             PlayerCommand::Play => {
@@ -1014,14 +1023,14 @@ impl PlayerController for LMSAudioController {
             },
             PlayerCommand::SetLoopMode(mode) => {
                 debug!("Sending loop mode command to LMS player with mode: {:?}", mode);
-                
+
                 // Convert LoopMode to LMS repeat mode (0=off, 1=song, 2=playlist)
                 let repeat_mode = match mode {
                     LoopMode::None => 0,
                     LoopMode::Track => 1,
                     LoopMode::Playlist => 2,
                 };
-                
+
                 match player.set_repeat(repeat_mode) {
                     Ok(_) => {
                         debug!("Loop mode command sent successfully");
@@ -1033,8 +1042,8 @@ impl PlayerController for LMSAudioController {
                         warn!("Failed to send loop mode command: {}", e);
                         false
                     }
-                }            
-            },            
+                }
+            },
             PlayerCommand::ClearQueue => {
                 debug!("Sending clear queue command to LMS player");
                 match player.clear_queue() {
@@ -1080,43 +1089,44 @@ impl PlayerController for LMSAudioController {
                 }
             },
             PlayerCommand::QueueTracks { uris, insert_at_beginning, metadata: _ } => {
-                debug!("Adding {} tracks to LMS player queue at {}", 
-                      uris.len(), 
+                debug!("Adding {} tracks to LMS player queue at {}",
+                      uris.len(),
                       if insert_at_beginning { "beginning" } else { "end" });
                 if uris.is_empty() {
                     debug!("No URIs provided to queue");
                     // Nothing to do, but not an error
                     return true;
                 }
-                
+
                 let mut all_success = true;
-                
+
                 // Process each URI
                 for uri in uris {
                     // For LMS, we need to handle this differently based on URI format:
                     // If it looks like a track ID (numeric), use our add_to_queue method
                     // Otherwise, it might be a file path or URL
-                      if uri.trim().parse::<u64>().is_ok() {
+                    if let Some(track_id) = normalize_numeric_track_id(&uri) {
                         // Looks like a numeric track ID, use add_to_queue method with track_id
-                        match player.add_to_queue(&uri, insert_at_beginning) {
+                        match player.add_to_queue(&track_id, insert_at_beginning) {
                             Ok(_) => {
-                                debug!("Successfully added track ID {} to queue", uri);
+                                debug!("Successfully added track ID {} to queue", track_id);
                             },
                             Err(e) => {
-                                warn!("Failed to add track ID {} to queue: {}", uri, e);
+                                warn!("Failed to add track ID {} to queue: {}", track_id, e);
                                 all_success = false;
                             }
-                        }                    } else {
+                        }
+                    } else {
                         // URI-based track additions are not supported
                         warn!("URI-based track addition is not supported for LMS player: {}", uri);
                         warn!("Only numeric track IDs are supported for adding to LMS queue");
                         all_success = false;
                     }
                 }
-                
+
                 // If any track was successfully added, notify listeners
                 self.base.notify_queue_changed();
-                
+
                 all_success
             },
             // Other commands are not yet implemented
@@ -1126,11 +1136,11 @@ impl PlayerController for LMSAudioController {
             }
         }
     }
-    
+
     fn as_any(&self) -> &dyn Any {
         self
     }
-    
+
     fn start(&self) -> bool {
         // Read the configuration to get access to configured MACs
         let config = self.config.read().clone();
@@ -1194,34 +1204,34 @@ impl PlayerController for LMSAudioController {
             } else {
                 // Check if "local" was in the original configuration
                 let has_local = config.player_macs.iter().any(|mac| mac.to_lowercase() == "local");
-                
+
                 if has_local {
-                    info!("LMS player is disconnected - tested configured and local MAC addresses: {}", 
+                    info!("LMS player is disconnected - tested configured and local MAC addresses: {}",
                         all_test_macs.join(", "));
                 } else {
-                    info!("LMS player is disconnected - tested configured MAC addresses: {}", 
+                    info!("LMS player is disconnected - tested configured MAC addresses: {}",
                         all_test_macs.join(", "));
                 }
             }
         }
-        
+
         // Start the reconnection thread
         self.start_reconnection_thread();
-        
+
         // Return true as the player controller started successfully,
         // even if the connection to LMS server failed
         true
     }
-    
+
     fn stop(&self) -> bool {
         // Stop the reconnection thread
         self.running.store(false, Ordering::SeqCst);
         info!("LMS player stopping, reconnection thread will terminate");
-        
+
         // Not yet implemented - would perform any necessary cleanup
         true
     }
-    
+
     fn get_library(&self) -> Option<Box<dyn LibraryInterface>> {
         // Check config first
         if !self.config.read().enable_library {
@@ -1237,7 +1247,7 @@ impl PlayerController for LMSAudioController {
                 return Some(Box::new(lib.clone()));
             }
         }
-        
+
         // If we're connected but don't have a library yet, try to create one
         if self.is_connected.load(Ordering::SeqCst) {
             let connected_server_guard = self.connected_server.read();
@@ -1257,7 +1267,7 @@ impl PlayerController for LMSAudioController {
                 return Some(Box::new(library));
             }
         }
-        
+
         debug!("No LMS library available");
         None
     }
@@ -1271,31 +1281,52 @@ impl AudioControllerRef for LMSAudioController {
         *last_seen = Some(SystemTime::now());
         debug!("Updated last_seen timestamp for LMS player");
     }
-    
+
     /// Handle state change notifications from CLI listener
     fn state_changed(&self, state: PlaybackState) {
         // First update the last seen timestamp
         self.seen();
-        
+
         // Notify all registered listeners about the state change
         debug!("LMS state changed to: {:?}", state);
         self.base.notify_state_changed(state);
     }
-    
+
     /// Update song information and notify listeners
     fn update_song(&self) {
         debug!("CLI listener requested song update");
         self.update_and_notify_song();
     }
-    
+
     /// Update position information and notify listeners
     fn update_position(&self) {
         debug!("CLI listener requested position update");
         self.update_and_notify_position();
     }
-    
+
     /// Get a reference to self for downcasting
     fn as_any(&self) -> &dyn std::any::Any {
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_numeric_track_id;
+
+    #[test]
+    fn regression_normalize_numeric_track_id_trims_valid_values() {
+        assert_eq!(normalize_numeric_track_id("42"), Some("42".to_string()));
+        assert_eq!(normalize_numeric_track_id("  42  "), Some("42".to_string()));
+        assert_eq!(normalize_numeric_track_id("0007"), Some("0007".to_string()));
+    }
+
+    #[test]
+    fn regression_normalize_numeric_track_id_rejects_non_numeric_values() {
+        assert_eq!(normalize_numeric_track_id(""), None);
+        assert_eq!(normalize_numeric_track_id(" "), None);
+        assert_eq!(normalize_numeric_track_id("abc"), None);
+        assert_eq!(normalize_numeric_track_id("12a"), None);
+        assert_eq!(normalize_numeric_track_id("-1"), None);
     }
 }

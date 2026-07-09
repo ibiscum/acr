@@ -16,16 +16,16 @@ type WeakAudioController = Weak<dyn AudioControllerRef>;
 pub trait AudioControllerRef: Send + Sync {
     /// Notify that an event was seen from this player
     fn seen(&self);
-    
+
     /// Notify that player state has changed
     fn state_changed(&self, state: PlaybackState);
-    
+
     /// Update song information and notify listeners
     fn update_song(&self);
-    
+
     /// Update position information and notify listeners
     fn update_position(&self);
-    
+
     /// Convert to Any for dynamic casting
     fn as_any(&self) -> &dyn std::any::Any;
 }
@@ -52,12 +52,18 @@ fn is_ignored_command(cmd_parts: &[String]) -> bool {
     if cmd_parts.is_empty() {
         return false;
     }
-    
+
     // Join the command parts to create the full command string
     let full_command = cmd_parts.join(" ");
-    
+
     // Check if the full command starts with any of the ignored commands
     IGNORED_COMMANDS.iter().any(|ignored| full_command.starts_with(ignored))
+}
+
+fn decode_component(component: &str) -> String {
+    decode(component)
+        .map(|c| c.into_owned())
+        .unwrap_or_else(|_| component.to_string())
 }
 
 /// LMSListener connects to the Logitech Media Server CLI interface on port 9090
@@ -65,26 +71,26 @@ fn is_ignored_command(cmd_parts: &[String]) -> bool {
 pub struct LMSListener {
     /// Server address (hostname or IP)
     server_address: String,
-    
+
     /// Player ID (MAC address)
     player_id: String,
-    
+
     /// Running flag to control the listener thread
     running: Arc<AtomicBool>,
-    
+
     /// Thread handle for the listener
     thread_handle: Option<thread::JoinHandle<()>>,
-    
+
     /// Reference to the parent audio controller
     controller: WeakAudioController,
-    
+
     /// Last time displaynotify was processed (to avoid duplicate events)
     last_display_notify: Arc<RwLock<Option<SystemTime>>>,
 }
 
 impl LMSListener {
     /// Create a new LMS CLI listener
-    /// 
+    ///
     /// # Arguments
     /// * `server` - Server address (hostname or IP)
     /// * `player_id` - Player ID (MAC address)
@@ -99,7 +105,7 @@ impl LMSListener {
             last_display_notify: Arc::new(RwLock::new(None)),
         }
     }
-    
+
     /// Start the listener thread
     pub fn start(&mut self) {
         // Check if already running
@@ -107,14 +113,14 @@ impl LMSListener {
             debug!("LMSListener already running");
             return;
         }
-        
+
         self.running.store(true, Ordering::SeqCst);
         let server = self.server_address.clone();
         let player_id = self.player_id.clone();
         let running = self.running.clone();
         let controller = self.controller.clone();
         let last_display_notify = self.last_display_notify.clone();
-        
+
         self.thread_handle = Some(thread::spawn(move || {
             // Main connection loop - try to reconnect if connection fails
             while running.load(Ordering::SeqCst) {
@@ -129,7 +135,7 @@ impl LMSListener {
                     Err(e) => {
                         // Connection failed, try again after a delay
                         error!("Failed to connect to LMS CLI: {}", e);
-                        
+
                         if running.load(Ordering::SeqCst) {
                             warn!("Will retry LMS CLI connection in 10 seconds...");
                             thread::sleep(Duration::from_secs(10));
@@ -137,18 +143,18 @@ impl LMSListener {
                     }
                 };
             }
-            
+
             debug!("LMSListener thread exiting");
         }));
-        
+
         debug!("LMSListener started for server {} and player {}", self.server_address, self.player_id);
     }
-    
+
     /// Parse an LMS event string into MAC address and command components
-    /// 
+    ///
     /// # Arguments
     /// * `event` - Raw event string from LMS CLI
-    /// 
+    ///
     /// # Returns
     /// A tuple containing:
     /// - Optional MAC address if present in the event
@@ -156,81 +162,73 @@ impl LMSListener {
     fn parse_lms_event(event: &str) -> (Option<String>, Vec<String>) {
         // Split the event into components
         let components: Vec<&str> = event.split_whitespace().collect();
-        
+
         if components.is_empty() {
             return (None, Vec::new());
         }
-        
+
         // Check if the first component looks like a MAC address
         // LMS encodes colons as %3A in the CLI
         let first = components[0];
-        let is_mac_addr = first.contains("%3A") || first.contains(":");
-        
+        let first_lower = first.to_ascii_lowercase();
+        let is_mac_addr = first_lower.contains("%3a") || first.contains(":");
+
         if is_mac_addr {
             // Try to decode the URL-encoded MAC address
-            match decode(first) {
-                Ok(mac) => {
-                    // Return the MAC and the rest of the components
-                    let mac_str = mac.to_string();
-                    let cmd_parts: Vec<String> = components[1..].iter()
-                        .map(|&s| decode(s).unwrap_or_else(|_| s.to_string().into()).to_string())
-                        .collect();
-                    
-                    (Some(mac_str), cmd_parts)
-                },
-                Err(_) => {
-                    // If decoding failed, return as-is
-                    (Some(first.to_string()), components[1..].iter().map(|&s| s.to_string()).collect())
-                }
-            }
+            let mac_str = decode_component(first);
+            let cmd_parts: Vec<String> = components[1..].iter()
+                .map(|&s| decode_component(s))
+                .collect();
+
+            (Some(mac_str), cmd_parts)
         } else {
-            // No MAC address, return all components
-            (None, components.iter().map(|&s| s.to_string()).collect())
+            // No MAC address, return all decoded components
+            (None, components.iter().map(|&s| decode_component(s)).collect())
         }
     }
-    
+
     /// Connect to the server and listen for messages
     fn connect_and_listen(server: &str, player_id: &str, running: Arc<AtomicBool>, controller: WeakAudioController, last_display_notify: Arc<RwLock<Option<SystemTime>>>) -> Result<(), String> {
         // Connect to the LMS CLI on port 9090
         let address = format!("{}:9090", server);
         debug!("Connecting to LMS CLI at {}", address);
-        
+
         let stream = match TcpStream::connect(&address) {
             Ok(s) => s,
             Err(e) => return Err(format!("Failed to connect to LMS CLI: {}", e)),
         };
-        
+
         // Set read timeout to allow checking the running flag periodically
         if let Err(e) = stream.set_read_timeout(Some(Duration::from_secs(1))) {
             return Err(format!("Failed to set read timeout: {}", e));
         }
-        
+
         // Subscribe to server events
         debug!("Subscribing to LMS events for player {}", player_id);
         let mut write_stream = stream.try_clone().map_err(|e| format!("Failed to clone TCP stream: {}", e))?;
-        
+
         // Send the listen command to start receiving events
         if let Err(e) = write_stream.write_all(b"listen 1\n") {
             return Err(format!("Failed to send listen command: {}", e));
         }
-        
+
         // Create a buffered reader for reading lines from the stream
         let reader = BufReader::new(stream);
-        
+
         // Read lines until the connection is closed or the running flag is set to false
         info!("Connected to LMS CLI, receiving events...");
-        
+
         for line in reader.lines() {
             if !running.load(Ordering::SeqCst) {
                 debug!("LMSListener thread stopping");
                 break;
             }
-            
+
             match line {
                 Ok(line) => {
                     // Parse the event
                     let (mac_opt, cmd_parts) = Self::parse_lms_event(&line);
-                    
+
                     // Only update last_seen timestamp if the MAC address matches our player_id
                     if let Some(mac_addr) = &mac_opt {
                         // Use the MAC address helper to compare addresses case-insensitively
@@ -253,7 +251,7 @@ impl LMSListener {
                         trace!("Skipping empty event");
                         continue;
                     }
-                    
+
                     // Log the event with structured information
                     if let Some(mac_addr) = mac_opt {
                         if cmd_parts.is_empty() {
@@ -269,7 +267,7 @@ impl LMSListener {
                             } else {
                                 String::new()
                             };
-                            
+
                             match cmd.as_str() {
                                 "playlist" => {
                                     if cmd_parts.len() > 1 {
@@ -277,7 +275,7 @@ impl LMSListener {
                                         match cmd_parts[1].as_str() {
                                             "newsong" => {
                                                 let song_title = if cmd_parts.len() > 2 { &cmd_parts[2] } else { "Unknown" };
-                                                warn!("LMS event: Player {} started new song: {} (full command: playlist {})", 
+                                                warn!("LMS event: Player {} started new song: {} (full command: playlist {})",
                                                     mac_addr, song_title, all_args);
                                             },
                                             "pause" => {
@@ -291,7 +289,7 @@ impl LMSListener {
                                                     let shuffle_enabled = mode != "0";
                                                     debug!("LMS event: Player {} shuffle mode changed to {} ({})",
                                                           mac_addr, mode, if shuffle_enabled { "on" } else { "off" });
-                                                          
+
                                                     // Notify the controller about the shuffle mode change
                                                     if let Some(ctrl) = controller.upgrade() {
                                                         // Use this AudioControllerRef trait object to access the BasePlayerController
@@ -313,7 +311,7 @@ impl LMSListener {
                                                 if cmd_parts.len() > 2 {
                                                     let mode = &cmd_parts[2];
                                                     debug!("LMS event: Player {} repeat mode changed to {}", mac_addr, mode);
-                                                    
+
                                                     // Notify the controller about the loop mode change
                                                     if let Some(ctrl) = controller.upgrade() {
                                                         // Convert the mode to LoopMode enum and notify
@@ -349,9 +347,9 @@ impl LMSListener {
                                     let all_args = cmd_parts[1..].join(" ");
                                     let is_paused = cmd_parts.len() > 1 && cmd_parts[1] == "1";
                                     let state = if is_paused { "paused" } else { "resumed" };
-                                    debug!("LMS event: Player {} {} (full command: pause {})", 
+                                    debug!("LMS event: Player {} {} (full command: pause {})",
                                         mac_addr, state, all_args);
-                                    
+
                                     // Notify the audio controller about the state change
                                     match controller.upgrade() {
                                         Some(ctrl) => {
@@ -370,9 +368,9 @@ impl LMSListener {
                                 "client" => {
                                     let all_args = cmd_parts[1..].join(" ");
                                     if cmd_parts.len() > 1 {
-                                        warn!("LMS event: Player {} client {} (full command: client {})", 
+                                        warn!("LMS event: Player {} client {} (full command: client {})",
                                             mac_addr, cmd_parts[1], all_args);
-                                        
+
                                         // Handle disconnect and reconnect events with state changes
                                         match cmd_parts[1].as_str() {
                                             "disconnect" => {
@@ -408,7 +406,7 @@ impl LMSListener {
                                                     if let Ok(mode) = cmd_parts[3].parse::<u8>() {
                                                         debug!("LMS server event: Setting repeat mode to {} (full command: prefset {})",
                                                             mode, all_args);
-                                                        
+
                                                         // Find the loop mode based on the numeric value
                                                         let loop_mode = match mode {
                                                             0 => crate::data::LoopMode::None,
@@ -419,7 +417,7 @@ impl LMSListener {
                                                                 crate::data::LoopMode::None
                                                             }
                                                         };
-                                                        
+
                                                         // Notify all controllers about this change,
                                                         // as it's a server-wide setting
                                                         if let Some(ctrl) = controller.upgrade() {
@@ -435,10 +433,10 @@ impl LMSListener {
                                                     if let Ok(mode) = cmd_parts[3].parse::<u8>() {
                                                         debug!("LMS server event: Setting shuffle mode to {} (full command: prefset {})",
                                                             mode, all_args);
-                                                        
+
                                                         // Convert to boolean: anything non-zero is considered "on"
                                                         let shuffle_enabled = mode != 0;
-                                                        
+
                                                         // Notify all controllers about this change,
                                                         // as it's a server-wide setting
                                                         if let Some(ctrl) = controller.upgrade() {
@@ -451,20 +449,20 @@ impl LMSListener {
                                                 },
                                                 _ => {
                                                     // Other server settings
-                                                    warn!("LMS server event: Setting {} {} = {} (full command: prefset {})", 
+                                                    warn!("LMS server event: Setting {} {} = {} (full command: prefset {})",
                                                         cmd_parts[1], cmd_parts[2],
-                                                        if cmd_parts.len() > 3 { &cmd_parts[3] } else { "" }, 
+                                                        if cmd_parts.len() > 3 { &cmd_parts[3] } else { "" },
                                                         all_args);
                                                 }
                                             }
                                         } else {
-                                            warn!("LMS server event: Setting {} = {} (full command: prefset {})", 
-                                                cmd_parts[1], 
+                                            warn!("LMS server event: Setting {} = {} (full command: prefset {})",
+                                                cmd_parts[1],
                                                 if cmd_parts.len() > 2 { &cmd_parts[2] } else { "" },
                                                 all_args);
                                         }
                                     } else {
-                                        warn!("LMS server event: prefset {} (full command: {})", 
+                                        warn!("LMS server event: prefset {} (full command: {})",
                                             all_args, line);
                                     }
                                 },
@@ -473,7 +471,7 @@ impl LMSListener {
                                     // This is a good opportunity to refresh song and position information
                                     let now = SystemTime::now();
                                     let mut last_notify = last_display_notify.write();
-                                    
+
                                     let should_skip = if let Some(last_time) = *last_notify {
                                         match now.duration_since(last_time) {
                                             Ok(duration) => duration < Duration::from_millis(200),
@@ -485,16 +483,16 @@ impl LMSListener {
                                     } else {
                                         false
                                     };
-                                    
+
                                     if should_skip {
                                         debug!("Skipping duplicate displaynotify event");
                                         continue;
                                     }
-                                    
+
                                     *last_notify = Some(now);
-                                    
+
                                     debug!("LMS event: Display notification received, updating song and position");
-                                    
+
                                     if let Some(ctrl) = controller.upgrade() {
                                         // Update song and position information
                                         ctrl.update_song();
@@ -507,9 +505,9 @@ impl LMSListener {
                                     let all_args = cmd_parts[1..].join(" ");
                                     let is_powered = cmd_parts.len() > 1 && cmd_parts[1] == "1";
                                     let power_state = if is_powered { "on" } else { "off" };
-                                    warn!("LMS event: Player {} power {} (full command: power {})", 
+                                    warn!("LMS event: Player {} power {} (full command: power {})",
                                         mac_addr, power_state, all_args);
-                                    
+
                                     // Update player state based on power status
                                     if let Some(ctrl) = controller.upgrade() {
                                         if is_powered {
@@ -528,7 +526,7 @@ impl LMSListener {
                                 "time" => {
                                     let position = if cmd_parts.len() > 1 { &cmd_parts[1] } else { "unknown" };
                                     debug!("LMS event: Player {} position update: {} seconds", mac_addr, position);
-                                    
+
                                     // Update player position when time events are received
                                     if let Some(ctrl) = controller.upgrade() {
                                         ctrl.update_position();
@@ -555,7 +553,7 @@ impl LMSListener {
                             } else {
                                 String::new()
                             };
-                            
+
                             match cmd.as_str() {
                                 "prefset" => {
                                     let all_args = cmd_parts[1..].join(" ");
@@ -568,7 +566,7 @@ impl LMSListener {
                                                     if let Ok(mode) = cmd_parts[3].parse::<u8>() {
                                                         warn!("LMS server event: Setting repeat mode to {} (full command: prefset {})",
                                                             mode, all_args);
-                                                        
+
                                                         // Find the loop mode based on the numeric value
                                                         let loop_mode = match mode {
                                                             0 => crate::data::LoopMode::None,
@@ -579,7 +577,7 @@ impl LMSListener {
                                                                 crate::data::LoopMode::None
                                                             }
                                                         };
-                                                        
+
                                                         // Notify all controllers about this change,
                                                         // as it's a server-wide setting
                                                         if let Some(ctrl) = controller.upgrade() {
@@ -595,10 +593,10 @@ impl LMSListener {
                                                     if let Ok(mode) = cmd_parts[3].parse::<u8>() {
                                                         warn!("LMS server event: Setting shuffle mode to {} (full command: prefset {})",
                                                             mode, all_args);
-                                                        
+
                                                         // Convert to boolean: anything non-zero is considered "on"
                                                         let shuffle_enabled = mode != 0;
-                                                        
+
                                                         // Notify all controllers about this change,
                                                         // as it's a server-wide setting
                                                         if let Some(ctrl) = controller.upgrade() {
@@ -611,20 +609,20 @@ impl LMSListener {
                                                 },
                                                 _ => {
                                                     // Other server settings
-                                                    warn!("LMS server event: Setting {} {} = {} (full command: prefset {})", 
+                                                    warn!("LMS server event: Setting {} {} = {} (full command: prefset {})",
                                                         cmd_parts[1], cmd_parts[2],
-                                                        if cmd_parts.len() > 3 { &cmd_parts[3] } else { "" }, 
+                                                        if cmd_parts.len() > 3 { &cmd_parts[3] } else { "" },
                                                         all_args);
                                                 }
                                             }
                                         } else {
-                                            warn!("LMS server event: Setting {} = {} (full command: prefset {})", 
-                                                cmd_parts[1], 
+                                            warn!("LMS server event: Setting {} = {} (full command: prefset {})",
+                                                cmd_parts[1],
                                                 if cmd_parts.len() > 2 { &cmd_parts[2] } else { "" },
                                                 all_args);
                                         }
                                     } else {
-                                        warn!("LMS server event: prefset {} (full command: {})", 
+                                        warn!("LMS server event: prefset {} (full command: {})",
                                             all_args, line);
                                     }
                                 },
@@ -636,7 +634,7 @@ impl LMSListener {
                                 _ => {
                                     // Default formatting for other events
                                     let all_args = cmd_parts[1..].join(" ");
-                                    warn!("LMS server event: {} {} (full command: {} {})", 
+                                    warn!("LMS server event: {} {} (full command: {} {})",
                                         cmd, args, cmd, all_args);
                                 }
                             }
@@ -651,30 +649,30 @@ impl LMSListener {
                         // This is normal due to the read timeout, just continue
                         continue;
                     }
-                    
+
                     // Real error, report it and exit the loop
                     error!("Error reading from LMS CLI: {}", e);
                     return Err(format!("Connection error: {}", e));
                 }
             }
         }
-        
+
         warn!("LMS CLI connection closed");
         Ok(())
     }
-    
+
     /// Stop the listener thread
     pub fn stop(&mut self) {
         self.running.store(false, Ordering::SeqCst);
         debug!("Stopping LMSListener");
-        
+
         // Wait for the thread to finish
         if let Some(handle) = self.thread_handle.take() {
             if let Err(e) = handle.join() {
                 error!("Error joining LMSListener thread: {:?}", e);
             }
         }
-        
+
         debug!("LMSListener stopped");
     }
 }
@@ -682,5 +680,31 @@ impl LMSListener {
 impl Drop for LMSListener {
     fn drop(&mut self) {
         self.stop();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::LMSListener;
+
+    #[test]
+    fn regression_parse_lms_event_detects_lowercase_encoded_mac() {
+        let event = "00%3a11%3a22%3a33%3a44%3a55 playlist%20newsong Hello%20World";
+        let (mac, parts) = LMSListener::parse_lms_event(event);
+
+        assert_eq!(mac.as_deref(), Some("00:11:22:33:44:55"));
+        assert_eq!(parts.first().map(String::as_str), Some("playlist newsong"));
+        assert_eq!(parts.get(1).map(String::as_str), Some("Hello World"));
+    }
+
+    #[test]
+    fn regression_parse_lms_event_decodes_server_events_without_mac() {
+        let event = "prefset%20server shuffle 1";
+        let (mac, parts) = LMSListener::parse_lms_event(event);
+
+        assert!(mac.is_none());
+        assert_eq!(parts.first().map(String::as_str), Some("prefset server"));
+        assert_eq!(parts.get(1).map(String::as_str), Some("shuffle"));
+        assert_eq!(parts.get(2).map(String::as_str), Some("1"));
     }
 }

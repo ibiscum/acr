@@ -35,11 +35,11 @@ impl CoverartProvider for SpotifyCoverartProvider {
     fn name(&self) -> &str {
         &self.name
     }
-    
+
     fn display_name(&self) -> &str {
         &self.display_name
     }
-    
+
     fn supported_methods(&self) -> HashSet<CoverartMethod> {
         let mut methods = HashSet::new();
         methods.insert(CoverartMethod::Artist);
@@ -47,10 +47,10 @@ impl CoverartProvider for SpotifyCoverartProvider {
         methods.insert(CoverartMethod::Song);
         methods
     }
-    
+
     fn get_artist_coverart_impl(&self, artist: &str) -> Vec<String> {
         debug!("Spotify: Searching for artist cover art: {}", artist);
-        
+
         let spotify_client = match Spotify::get_instance() {
             Ok(client) => client,
             Err(e) => {
@@ -58,7 +58,7 @@ impl CoverartProvider for SpotifyCoverartProvider {
                 return Vec::new();
             }
         };
-        
+
         let search_result = match spotify_client.search(artist, &["artist"], None) {
             Ok(result) => result,
             Err(SpotifyError::TokenNotFound) => {
@@ -70,11 +70,11 @@ impl CoverartProvider for SpotifyCoverartProvider {
                 return Vec::new();
             }
         };
-        
+
         // Extract artist images from search results
         if let Some(artists) = search_result.get("artists")
             .and_then(|a| a.get("items"))
-            .and_then(|i| i.as_array()) 
+            .and_then(|i| i.as_array())
         {
             if let Some(first_artist) = artists.first() {
                 if let Some(images) = first_artist.get("images").and_then(|i| i.as_array()) {
@@ -89,14 +89,14 @@ impl CoverartProvider for SpotifyCoverartProvider {
                 }
             }
         }
-        
+
         debug!("Spotify: No artist images found for '{}'", artist);
         Vec::new()
     }
-    
+
     fn get_album_coverart_impl(&self, title: &str, artist: &str, _year: Option<i32>) -> Vec<String> {
         debug!("Spotify: Searching for album cover art: '{}' by '{}'", title, artist);
-        
+
         let spotify_client = match Spotify::get_instance() {
             Ok(client) => client,
             Err(e) => {
@@ -104,13 +104,13 @@ impl CoverartProvider for SpotifyCoverartProvider {
                 return Vec::new();
             }
         };
-        
+
         // Create search query with artist and album filters
         let filters = serde_json::json!({
             "artist": artist,
             "album": title
         });
-        
+
         let search_result = match spotify_client.search(title, &["album"], Some(&filters)) {
             Ok(result) => result,
             Err(SpotifyError::TokenNotFound) => {
@@ -122,11 +122,11 @@ impl CoverartProvider for SpotifyCoverartProvider {
                 return Vec::new();
             }
         };
-        
+
         // Extract album images from search results
         if let Some(albums) = search_result.get("albums")
             .and_then(|a| a.get("items"))
-            .and_then(|i| i.as_array()) 
+            .and_then(|i| i.as_array())
         {
             if let Some(first_album) = albums.first() {
                 if let Some(images) = first_album.get("images").and_then(|i| i.as_array()) {
@@ -141,14 +141,14 @@ impl CoverartProvider for SpotifyCoverartProvider {
                 }
             }
         }
-        
+
         debug!("Spotify: No album images found for '{}' by '{}'", title, artist);
         Vec::new()
     }
-    
+
     fn get_song_coverart_impl(&self, title: &str, artist: &str) -> Vec<String> {
         debug!("Spotify: Searching for song cover art: '{}' by '{}'", title, artist);
-        
+
         let spotify_client = match Spotify::get_instance() {
             Ok(client) => client,
             Err(e) => {
@@ -156,13 +156,13 @@ impl CoverartProvider for SpotifyCoverartProvider {
                 return Vec::new();
             }
         };
-        
+
         // Create search query with artist and track filters
         let filters = serde_json::json!({
             "artist": artist,
             "track": title
         });
-        
+
         let search_result = match spotify_client.search(title, &["track"], Some(&filters)) {
             Ok(result) => result,
             Err(SpotifyError::TokenNotFound) => {
@@ -174,11 +174,11 @@ impl CoverartProvider for SpotifyCoverartProvider {
                 return Vec::new();
             }
         };
-        
+
         // Extract track album images from search results (songs use album art)
         if let Some(tracks) = search_result.get("tracks")
             .and_then(|t| t.get("items"))
-            .and_then(|i| i.as_array()) 
+            .and_then(|i| i.as_array())
         {
             if let Some(first_track) = tracks.first() {
                 if let Some(album) = first_track.get("album") {
@@ -195,7 +195,7 @@ impl CoverartProvider for SpotifyCoverartProvider {
                 }
             }
         }
-        
+
         debug!("Spotify: No song images found for '{}' by '{}'", title, artist);
         Vec::new()
     }
@@ -227,20 +227,20 @@ impl CoverartProvider for LastfmCoverartProvider {
     fn name(&self) -> &str {
         &self.name
     }
-    
+
     fn display_name(&self) -> &str {
         &self.display_name
     }
-    
+
     fn supported_methods(&self) -> HashSet<CoverartMethod> {
         let mut methods = HashSet::new();
         methods.insert(CoverartMethod::Artist);
         methods
     }
-    
+
     fn get_artist_coverart_impl(&self, artist: &str) -> Vec<String> {
         debug!("LastFM: Searching for artist images: {}", artist);
-        
+
         let lastfm_client = match LastfmClient::get_instance() {
             Ok(client) => client,
             Err(LastfmError::ConfigError(_)) => {
@@ -252,7 +252,7 @@ impl CoverartProvider for LastfmCoverartProvider {
                 return Vec::new();
             }
         };
-        
+
         let artist_info = match lastfm_client.get_artist_info(artist) {
             Ok(info) => info,
             Err(e) => {
@@ -260,7 +260,7 @@ impl CoverartProvider for LastfmCoverartProvider {
                 return Vec::new();
             }
         };
-        
+
         // Extract image URLs from artist info
         let mut urls = Vec::new();
         for image in &artist_info.image {
@@ -269,7 +269,7 @@ impl CoverartProvider for LastfmCoverartProvider {
                 debug!("LastFM: Found {} image for artist '{}': {}", image.size, artist, image.url);
             }
         }
-        
+
         debug!("LastFM: Found {} artist images for '{}'", urls.len(), artist);
         urls
     }
@@ -278,42 +278,112 @@ impl CoverartProvider for LastfmCoverartProvider {
 /// Initialize and register all cover art providers
 pub fn register_all_providers() {
     use crate::helpers::coverart::get_coverart_manager;
-    
+
     info!("Starting provider registration...");
-    
+
     let manager = get_coverart_manager();
     let mut manager_lock = manager.lock();
-    
+
+    let mut existing_provider_names: HashSet<String> = manager_lock
+        .get_providers()
+        .iter()
+        .map(|p| p.name().to_string())
+        .collect();
+
     info!("Manager lock acquired, current provider count: {}", manager_lock.provider_count());
-    
+
     // Register Spotify cover art provider
     info!("Creating Spotify coverart provider...");
     let spotify_coverart = Arc::new(SpotifyCoverartProvider::new());
     info!("Registering Spotify coverart provider: {} ({})", spotify_coverart.name(), spotify_coverart.display_name());
     info!("Spotify coverart supported methods: {:?}", spotify_coverart.supported_methods());
-    manager_lock.register_provider(spotify_coverart);
-    
+    if existing_provider_names.insert(spotify_coverart.name().to_string()) {
+        manager_lock.register_provider(spotify_coverart);
+    } else {
+        info!("Skipping Spotify coverart provider registration (already present)");
+    }
+
     // Register LastFM cover art provider
     info!("Creating LastFM coverart provider...");
     let lastfm_coverart = Arc::new(LastfmCoverartProvider::new());
     info!("Registering LastFM coverart provider: {} ({})", lastfm_coverart.name(), lastfm_coverart.display_name());
     info!("LastFM coverart supported methods: {:?}", lastfm_coverart.supported_methods());
-    manager_lock.register_provider(lastfm_coverart);
-    
+    if existing_provider_names.insert(lastfm_coverart.name().to_string()) {
+        manager_lock.register_provider(lastfm_coverart);
+    } else {
+        info!("Skipping LastFM coverart provider registration (already present)");
+    }
+
     // Register TheAudioDB cover art provider
     info!("Creating TheAudioDB coverart provider...");
     let theaudiodb_coverart = Arc::new(TheAudioDbCoverartProvider::new());
     info!("Registering TheAudioDB coverart provider: {} ({})", theaudiodb_coverart.name(), theaudiodb_coverart.display_name());
     info!("TheAudioDB coverart supported methods: {:?}", theaudiodb_coverart.supported_methods());
-    manager_lock.register_provider(theaudiodb_coverart);
-    
+    if existing_provider_names.insert(theaudiodb_coverart.name().to_string()) {
+        manager_lock.register_provider(theaudiodb_coverart);
+    } else {
+        info!("Skipping TheAudioDB coverart provider registration (already present)");
+    }
+
     // Register FanArt.tv cover art provider
     info!("Creating FanArt.tv coverart provider...");
     let fanarttv_coverart = Arc::new(FanarttvCoverartProvider::new());
     info!("Registering FanArt.tv coverart provider: {} ({})", fanarttv_coverart.name(), fanarttv_coverart.display_name());
     info!("FanArt.tv coverart supported methods: {:?}", fanarttv_coverart.supported_methods());
-    manager_lock.register_provider(fanarttv_coverart);
-    
+    if existing_provider_names.insert(fanarttv_coverart.name().to_string()) {
+        manager_lock.register_provider(fanarttv_coverart);
+    } else {
+        info!("Skipping FanArt.tv coverart provider registration (already present)");
+    }
+
     info!("Final provider count: {}", manager_lock.provider_count());
     info!("Registered all cover art providers");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashSet;
+
+    #[test]
+    #[serial_test::serial]
+    fn register_all_providers_is_idempotent() {
+        use crate::helpers::coverart::get_coverart_manager;
+
+        register_all_providers();
+        let count_after_first = {
+            let manager = get_coverart_manager();
+            let guard = manager.lock();
+            guard.provider_count()
+        };
+
+        register_all_providers();
+        let count_after_second = {
+            let manager = get_coverart_manager();
+            let guard = manager.lock();
+            guard.provider_count()
+        };
+
+        assert_eq!(count_after_second, count_after_first);
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn register_all_providers_does_not_create_duplicate_names() {
+        use crate::helpers::coverart::get_coverart_manager;
+
+        register_all_providers();
+        register_all_providers();
+
+        let manager = get_coverart_manager();
+        let guard = manager.lock();
+        let names: Vec<String> = guard
+            .get_providers()
+            .iter()
+            .map(|p| p.name().to_string())
+            .collect();
+
+        let unique: HashSet<String> = names.iter().cloned().collect();
+        assert_eq!(names.len(), unique.len());
+    }
 }

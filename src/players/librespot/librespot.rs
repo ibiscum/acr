@@ -19,27 +19,40 @@ use std::any::Any;
 pub struct LibrespotPlayerController {
     /// Base controller
     base: BasePlayerController,
-    
+
     /// Path to the librespot executable
     process_name: String,
-    
+
     /// Current song information
     current_song: Arc<RwLock<Option<Song>>>,
 
     /// Current player state
     current_state: Arc<RwLock<PlayerState>>,
-    
+
     /// Current stream details
     stream_details: Arc<RwLock<Option<StreamDetails>>>,
-    
+
     /// Playback progress tracking
     player_progress: Arc<RwLock<PlayerProgress>>,
-    
+
     /// What to do when receiving pause/stop commands: "systemd", "kill", or None
     on_pause_event: Option<String>,
-    
+
     /// Whether we have a valid Spotify access token for API control
     has_valid_token: Arc<RwLock<bool>>,
+}
+
+fn seek_seconds_to_millis(seconds: f64) -> Option<u64> {
+    if !seconds.is_finite() || seconds < 0.0 {
+        return None;
+    }
+
+    let millis = seconds * 1000.0;
+    if millis > u64::MAX as f64 {
+        return None;
+    }
+
+    Some(millis as u64)
 }
 
 // Manually implement Clone for LibrespotPlayerController
@@ -65,15 +78,15 @@ impl LibrespotPlayerController {
     pub fn with_config_and_systemd(process_name: &str, systemd_unit: Option<&str>) -> Self {
         Self::with_full_config(process_name, systemd_unit)
     }
-    
+
     /// Create a new Librespot player controller with full configuration options
     pub fn with_full_config(
         process_name: &str,
         systemd_unit: Option<&str>
     ) -> Self {
-        debug!("Creating new LibrespotPlayerController with process_name: {}, systemd_unit: {:?}", 
+        debug!("Creating new LibrespotPlayerController with process_name: {}, systemd_unit: {:?}",
                process_name, systemd_unit);
-        
+
         // Check systemd unit if specified
         if let Some(unit_name) = systemd_unit {
             if !unit_name.is_empty() {
@@ -90,10 +103,10 @@ impl LibrespotPlayerController {
                 }
             }
         }
-        
+
         // Create a base controller with player name and ID
         let base = BasePlayerController::with_player_info("spotify", "librespot");
-        
+
         let player = Self {
             base,
             process_name: process_name.to_string(),
@@ -104,48 +117,48 @@ impl LibrespotPlayerController {
             on_pause_event: None,
             has_valid_token: Arc::new(RwLock::new(false)),
         };
-        
+
         // Set default capabilities - will be updated in start() based on token availability
         player.set_default_capabilities();
-        
+
         player
     }
-    
+
     /// Set the default capabilities for this player
     fn set_default_capabilities(&self) {
         debug!("Setting default LibrespotPlayerController capabilities");
-        
+
         // Default to limited capabilities - full capabilities will be set in start() if token is available
         self.base.set_capabilities(vec![
             PlayerCapability::Killable,
             PlayerCapability::ReceivesUpdates,
         ], false); // Don't notify on initialization
     }
-    
 
-    
+
+
     /// Set the path to the librespot executable
     pub fn set_process_name(&mut self, process_name: &str) {
         debug!("Setting Librespot process name to: {}", process_name);
         self.process_name = process_name.to_string();
     }
-    
+
     /// Get the path to the librespot executable
     pub fn get_process_name(&self) -> &str {
         &self.process_name
     }
-    
+
     /// Set the on_pause_event action
     pub fn set_on_pause_event(&mut self, on_pause_event: Option<String>) {
         debug!("Setting Librespot on_pause_event to: {:?}", on_pause_event);
         self.on_pause_event = on_pause_event;
     }
-    
+
     /// Get the on_pause_event action
     pub fn get_on_pause_event(&self) -> &Option<String> {
         &self.on_pause_event
     }
-    
+
 }
 
 impl PlayerController for LibrespotPlayerController {
@@ -155,7 +168,7 @@ impl PlayerController for LibrespotPlayerController {
             fn get_last_seen(&self) -> Option<std::time::SystemTime>;
         }
     }
-    
+
     fn get_song(&self) -> Option<Song> {
         debug!("Getting current song from stored value");
         // Return a clone of the stored song with enhanced metadata if needed
@@ -214,7 +227,7 @@ impl PlayerController for LibrespotPlayerController {
             None
         }
     }
-    
+
     fn get_loop_mode(&self) -> LoopMode {
         debug!("Getting current loop mode");
         // Return the actual loop mode from the stored state
@@ -229,7 +242,7 @@ impl PlayerController for LibrespotPlayerController {
             }
         }
     }
-    
+
     fn get_playback_state(&self) -> PlaybackState {
         trace!("Getting current playback state");
         // Try to get the state from the current state with a timeout
@@ -245,7 +258,7 @@ impl PlayerController for LibrespotPlayerController {
             }
         }
     }
-    
+
     fn get_position(&self) -> Option<f64> {
         trace!("Getting current playback position");
         // Get position from PlayerProgress for accurate tracking
@@ -271,7 +284,7 @@ impl PlayerController for LibrespotPlayerController {
             }
         }
     }
-    
+
     fn get_shuffle(&self) -> bool {
         debug!("Getting current shuffle state");
         // Return the actual shuffle state from the stored state
@@ -286,25 +299,25 @@ impl PlayerController for LibrespotPlayerController {
             }
         }
     }
-    
+
     fn get_player_name(&self) -> String {
         "spotify".to_string()
     }
-    
+
     fn get_aliases(&self) -> Vec<String> {
         vec!["spotifyd".to_string(), "librespot".to_string(), "spotify".to_string()]
     }
-    
+
     fn get_player_id(&self) -> String {
         "librespot".to_string()
     }
-    
+
     fn send_command(&self, command: PlayerCommand) -> bool {
         info!("Sending command to Librespot player: {}", command);
-        
+
         // Check if we have a valid token first
         let has_token = *self.has_valid_token.read();
-        
+
         // Handle commands based on token availability
         match command {
             // Playback control commands (require Spotify API token)
@@ -313,7 +326,7 @@ impl PlayerController for LibrespotPlayerController {
                     warn!("Cannot execute Play command: no valid Spotify access token");
                     return false;
                 }
-                
+
                 let spotify = Spotify::new();
                 match spotify.send_command("play", &serde_json::json!({})) {
                     Ok(_) => {
@@ -326,13 +339,13 @@ impl PlayerController for LibrespotPlayerController {
                     }
                 }
             }
-            
+
             PlayerCommand::Pause => {
                 if !has_token {
                     // Fallback to legacy behavior if no token
                     return self.handle_legacy_pause_command();
                 }
-                
+
                 let spotify = Spotify::new();
                 match spotify.send_command("pause", &serde_json::json!({})) {
                     Ok(_) => {
@@ -345,13 +358,13 @@ impl PlayerController for LibrespotPlayerController {
                     }
                 }
             }
-            
+
             PlayerCommand::Stop => {
                 if !has_token {
                     // Fallback to legacy behavior if no token
                     return self.handle_legacy_stop_command();
                 }
-                
+
                 let spotify = Spotify::new();
                 match spotify.send_command("pause", &serde_json::json!({})) {
                     Ok(_) => {
@@ -364,13 +377,13 @@ impl PlayerController for LibrespotPlayerController {
                     }
                 }
             }
-            
+
             PlayerCommand::Next => {
                 if !has_token {
                     warn!("Cannot execute Next command: no valid Spotify access token");
                     return false;
                 }
-                
+
                 let spotify = Spotify::new();
                 match spotify.send_command("next", &serde_json::json!({})) {
                     Ok(_) => {
@@ -383,13 +396,13 @@ impl PlayerController for LibrespotPlayerController {
                     }
                 }
             }
-            
+
             PlayerCommand::Previous => {
                 if !has_token {
                     warn!("Cannot execute Previous command: no valid Spotify access token");
                     return false;
                 }
-                
+
                 let spotify = Spotify::new();
                 match spotify.send_command("previous", &serde_json::json!({})) {
                     Ok(_) => {
@@ -402,14 +415,17 @@ impl PlayerController for LibrespotPlayerController {
                     }
                 }
             }
-            
+
             PlayerCommand::Seek(position) => {
                 if !has_token {
                     warn!("Cannot execute Seek command: no valid Spotify access token");
                     return false;
                 }
-                
-                let position_ms = (position * 1000.0) as u64;
+
+                let Some(position_ms) = seek_seconds_to_millis(position) else {
+                    warn!("Cannot execute Seek command: invalid position value {}", position);
+                    return false;
+                };
                 let spotify = Spotify::new();
                 match spotify.send_command("seek", &serde_json::json!({"position_ms": position_ms})) {
                     Ok(_) => {
@@ -422,13 +438,13 @@ impl PlayerController for LibrespotPlayerController {
                     }
                 }
             }
-            
+
             PlayerCommand::SetRandom(enabled) => {
                 if !has_token {
                     warn!("Cannot execute SetRandom command: no valid Spotify access token");
                     return false;
                 }
-                
+
                 let spotify = Spotify::new();
                 match spotify.send_command("shuffle", &serde_json::json!({"state": enabled})) {
                     Ok(_) => {
@@ -441,19 +457,19 @@ impl PlayerController for LibrespotPlayerController {
                     }
                 }
             }
-            
+
             PlayerCommand::SetLoopMode(mode) => {
                 if !has_token {
                     warn!("Cannot execute SetLoop command: no valid Spotify access token");
                     return false;
                 }
-                
+
                 let repeat_state = match mode {
                     LoopMode::Track => "track",
-                    LoopMode::Playlist => "context", 
+                    LoopMode::Playlist => "context",
                     LoopMode::None => "off",
                 };
-                
+
                 let spotify = Spotify::new();
                 match spotify.send_command("repeat", &serde_json::json!({"state": repeat_state})) {
                     Ok(_) => {
@@ -466,12 +482,12 @@ impl PlayerController for LibrespotPlayerController {
                     }
                 }
             }
-            
+
             // Legacy commands that don't require token
             PlayerCommand::Kill => {
                 self.kill_process()
             }
-            
+
             // Unsupported commands
             _ => {
                 warn!("Command not supported by Librespot: {}", command);
@@ -486,7 +502,7 @@ impl PlayerController for LibrespotPlayerController {
 
     fn start(&self) -> bool {
         info!("Starting Librespot player controller (API mode only, accepting updates via audiocontrol_notify_librespot)");
-        
+
         // Check if we have a valid Spotify access token
         let spotify = Spotify::new();
         let has_valid_token = match spotify.ensure_valid_token() {
@@ -499,13 +515,13 @@ impl PlayerController for LibrespotPlayerController {
                 false
             }
         };
-        
+
         // Store the token validity state
         {
             let mut token_state = self.has_valid_token.write();
             *token_state = has_valid_token;
         }
-        
+
         // Set capabilities based on token availability
         if has_valid_token {
             // Full Spotify Web API capabilities
@@ -536,14 +552,14 @@ impl PlayerController for LibrespotPlayerController {
                 PlayerCapability::ReceivesUpdates,
             ], true); // Notify on capability change
         }
-        
+
         self.base.alive();
         true
     }
-    
+
     fn stop(&self) -> bool {
         info!("Stopping Librespot player controller");
-        
+
         // Nothing to stop in API-only mode
         true
     }
@@ -556,16 +572,16 @@ impl PlayerController for LibrespotPlayerController {
     fn supports_api_events(&self) -> bool {
         true // API events are always enabled
     }
-    
+
     fn process_api_event(&self, event_data: &serde_json::Value) -> bool {
         log::info!("[DEBUG] Librespot process_api_event called with: {}", event_data);
         debug!("Processing API event for Librespot player: {}", event_data);
-        
+
         // Check if this is a generic API event format (with "type" field)
         if let Some(event_type) = event_data.get("type").and_then(|t| t.as_str()) {
             return self.process_generic_api_event(event_type, event_data);
         }
-        
+
         log::warn!("[DEBUG] Librespot process_api_event: unknown event format - only 'type' field events are supported");
         false
     }
@@ -575,7 +591,7 @@ impl LibrespotPlayerController {
     /// Process generic API events directly without conversion
     fn process_generic_api_event(&self, event_type: &str, event_data: &serde_json::Value) -> bool {
         log::info!("[DEBUG] Processing generic API event: type={}", event_type);
-        
+
         match event_type {
             "ping" => {
                 // Mark player as alive
@@ -592,7 +608,7 @@ impl LibrespotPlayerController {
                         "disconnected" => PlaybackState::Disconnected,
                         _ => PlaybackState::Unknown,
                     };
-                    
+
                     // Update PlayerProgress playing state
                     {
                         let progress = self.player_progress.write();
@@ -628,7 +644,7 @@ impl LibrespotPlayerController {
                             log::info!("[API DEBUG] PlayerProgress position updated to: {}", position);
                         }
                     }
-                    
+
                     self.base.alive();
                     true
                 } else {
@@ -638,7 +654,7 @@ impl LibrespotPlayerController {
             "song_changed" => {
                 if let Some(song_data) = event_data.get("song") {
                     let mut song = Song::default();
-                    
+
                     if let Some(title) = song_data.get("title").and_then(|t| t.as_str()) {
                         song.title = Some(title.to_string());
                     }
@@ -657,14 +673,14 @@ impl LibrespotPlayerController {
                     if let Some(cover) = song_data.get("cover_art_url").and_then(|c| c.as_str()) {
                         song.cover_art_url = Some(cover.to_string());
                     }
-                    
+
                     // Store metadata if present
                     if let Some(metadata) = song_data.get("metadata").and_then(|m| m.as_object()) {
                         for (key, value) in metadata {
                             song.metadata.insert(key.clone(), value.clone());
                         }
                     }
-                    
+
                     // Update internal song
                     {
                         let mut current_song = self.current_song.write();
@@ -687,7 +703,7 @@ impl LibrespotPlayerController {
                             self.base.notify_song_changed(Some(&song));
                         }
                     }
-                    
+
                     self.base.alive();
                     true
                 } else {
@@ -721,7 +737,7 @@ impl LibrespotPlayerController {
                 let mode_str = event_data.get("mode")
                     .or_else(|| event_data.get("loop_mode"))
                     .and_then(|m| m.as_str());
-                    
+
                 if let Some(mode_str) = mode_str {
                     let loop_mode = match mode_str {
                         "song" | "track" => LoopMode::Track,
@@ -729,7 +745,7 @@ impl LibrespotPlayerController {
                         "none" => LoopMode::None,
                         _ => return false,
                     };
-                    
+
                     {
                         let mut current_state = self.current_state.write();
                         let mode_changed = current_state.loop_mode != loop_mode;
@@ -808,7 +824,7 @@ impl LibrespotPlayerController {
             true
         }
     }
-    
+
     /// Handle legacy stop command when no token is available
     fn handle_legacy_stop_command(&self) -> bool {
         if let Some(ref action) = self.on_pause_event {
@@ -848,7 +864,7 @@ impl LibrespotPlayerController {
     /// Kill the librespot process
     fn kill_process(&self) -> bool {
         info!("Attempting to kill Librespot process: {}", self.process_name);
-        
+
         // Use the process helper functions
         match crate::helpers::process_helper::pkill(&self.process_name, false) {
             Ok(true) => {
@@ -866,5 +882,26 @@ impl LibrespotPlayerController {
                 false
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::seek_seconds_to_millis;
+
+    #[test]
+    fn regression_seek_seconds_to_millis_converts_valid_values() {
+        assert_eq!(seek_seconds_to_millis(0.0), Some(0));
+        assert_eq!(seek_seconds_to_millis(1.25), Some(1250));
+        assert_eq!(seek_seconds_to_millis(42.999), Some(42999));
+    }
+
+    #[test]
+    fn regression_seek_seconds_to_millis_rejects_invalid_values() {
+        assert_eq!(seek_seconds_to_millis(-1.0), None);
+        assert_eq!(seek_seconds_to_millis(f64::NAN), None);
+        assert_eq!(seek_seconds_to_millis(f64::INFINITY), None);
+        assert_eq!(seek_seconds_to_millis(f64::NEG_INFINITY), None);
+        assert_eq!(seek_seconds_to_millis((u64::MAX as f64 / 1000.0) * 2.0), None);
     }
 }

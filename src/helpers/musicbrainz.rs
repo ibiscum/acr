@@ -106,25 +106,25 @@ struct MusicBrainzArtistRef {
 }
 
 /// Initialize the MusicBrainz module from configuration
-pub fn initialize_from_config(config: &serde_json::Value) {    
+pub fn initialize_from_config(config: &serde_json::Value) {
     if let Some(mb_config) = get_service_config(config, "musicbrainz") {
         if let Some(enabled) = mb_config.get("enable").and_then(|v| v.as_bool()) {
             MUSICBRAINZ_ENABLED.store(enabled, Ordering::SeqCst);
             info!("MusicBrainz lookup {}", if enabled { "enabled" } else { "disabled" });
         }
-        
+
         // Register rate limit - default to 1000ms (2 requests per second)
         let rate_limit_ms = mb_config.get("rate_limit_ms")
             .and_then(|v| v.as_u64())
             .unwrap_or(500);
-            
+
         rate_limit::register_service("musicbrainz", rate_limit_ms);
         info!("MusicBrainz rate limit set to {} ms", rate_limit_ms);
     } else {
         // Default to disabled if not in config
         MUSICBRAINZ_ENABLED.store(false, Ordering::SeqCst);
         debug!("MusicBrainz configuration not found, lookups disabled");
-        
+
         // Register default rate limit even if disabled
         rate_limit::register_service("musicbrainz", 500);
     }
@@ -154,7 +154,7 @@ pub enum MusicBrainzSearchResult {
 
 /// Normalize an artist name for comparison by removing all special characters
 /// and common words like "the", "and", etc.
-/// 
+///
 /// This function:
 /// - Converts to ASCII (removing accents, etc.)
 /// - Removes ALL special characters (keeping only letters, numbers, and spaces)
@@ -162,16 +162,16 @@ pub enum MusicBrainzSearchResult {
 /// - Removes common words like "the", "and" (only complete words, not substrings)
 /// - Removes ALL spaces in the final result
 /// - Trims whitespace and collapses multiple spaces to single space
-/// 
+///
 /// # Arguments
 /// * `artist_name` - The artist name to normalize
-/// 
+///
 /// # Returns
 /// A normalized string suitable for comparison
 fn normalize_artist_name_for_comparison(artist_name: &str) -> String {
     // Step 1: Convert to ASCII
     let ascii_name = deunicode(artist_name);
-    
+
     // Step 2: Remove all special characters and convert to lowercase
     let mut normalized = String::new();
     for c in ascii_name.chars() {
@@ -179,11 +179,11 @@ fn normalize_artist_name_for_comparison(artist_name: &str) -> String {
             normalized.push(c.to_ascii_lowercase());
         }
     }
-    
+
     // Step 3: Collapse multiple spaces to single space and trim
     let mut result = String::new();
     let mut last_was_space = true; // Start with true to trim leading spaces
-    
+
     for c in normalized.chars() {
         if c.is_whitespace() {
             if !last_was_space {
@@ -195,46 +195,46 @@ fn normalize_artist_name_for_comparison(artist_name: &str) -> String {
             last_was_space = false;
         }
     }
-    
+
     // Remove trailing space if it exists
     if result.ends_with(' ') {
         result.pop();
     }
-    
+
     // Step 4: Remove common words (as complete words only, not substrings)
     let common_words = ["the", "and"];
-    
+
     // Split into words, filter out common words, and rejoin
     let filtered_words: Vec<&str> = result
         .split(' ')
         .filter(|word| !common_words.contains(word))
         .collect();
-    
+
     // If all words were filtered out, return the original normalized result
     if filtered_words.is_empty() {
         return result;
     }
-    
+
     // Join the filtered words back together
     let result = filtered_words.join(" ");
-    
+
     // Step 5: Remove ALL spaces in the final result
     result.replace(" ", "")
 }
 
 /// Sanitize an artist name for MusicBrainz API queries by replacing problematic characters
-/// 
+///
 /// # Arguments
 /// * `artist_name` - The artist name to sanitize
-/// 
+///
 /// # Returns
 /// * `String` - Sanitized artist name
 fn sanitize_artist_name_for_search(artist_name: &str) -> String {
     // Replace ampersands with "and" as they can cause search issues
     let sanitized = artist_name.replace("&", "and");
-    
+
     debug!("Sanitized artist name '{}' to '{}' for MusicBrainz search", artist_name, sanitized);
-    
+
     sanitized
 }
 
@@ -254,51 +254,51 @@ pub fn split_artist(artist_name: &str) -> Vec<String> {
 
 /// Compare two artist names to see if they match, using both exact normalized comparison
 /// and fuzzy matching when needed
-/// 
+///
 /// # Arguments
 /// * `query_name` - The artist name we're searching for
 /// * `response_name` - The artist name returned from MusicBrainz
 /// * `response_aliases` - Optional vector of artist aliases/alternative names
-/// 
+///
 /// # Returns
 /// * `bool` - True if names are considered a match, false otherwise
 fn artist_names_match(query_name: &str, response_name: &str, response_aliases: Option<&Vec<String>>) -> bool {
     // Use normalized comparison that removes all special characters
     let normalized_query = normalize_artist_name_for_comparison(query_name);
     let normalized_response = normalize_artist_name_for_comparison(response_name);
-    
+
     debug!("Comparing normalized names: '{}' vs '{}'", normalized_query, normalized_response);
-    
+
     // Check for exact match first
     if normalized_query == normalized_response {
         debug!("Found exactly matching artist: '{}' vs '{}'", query_name, response_name);
         return true;
     }
-    
+
     // For cases where the names don't exactly match, implement a fuzzy comparison
     // Check if the names are similar enough to be considered a match
     let similarity_threshold = 0.9; // Adjust this threshold as needed
     let similarity = strsim::jaro_winkler(normalized_query.as_str(), normalized_response.as_str());
-    
+
     if similarity >= similarity_threshold {
-        debug!("Found similar artist: '{}' vs '{}' (similarity: {})", 
+        debug!("Found similar artist: '{}' vs '{}' (similarity: {})",
               query_name, response_name, similarity);
         return true;
     }
-    
+
     // Check aliases if provided and main name didn't match
     if let Some(aliases) = response_aliases {
         debug!("Checking {} aliases for artist '{}'", aliases.len(), response_name);
-        
+
         for alias in aliases {
             let normalized_alias = normalize_artist_name_for_comparison(alias);
-            
+
             // Try exact match with alias
             if normalized_query == normalized_alias {
                 debug!("Found exactly matching alias: '{}' vs '{}'", query_name, alias);
                 return true;
             }
-            
+
             // Try fuzzy match with alias
             let alias_similarity = strsim::jaro_winkler(normalized_query.as_str(), normalized_alias.as_str());
             if alias_similarity >= similarity_threshold {
@@ -307,29 +307,29 @@ fn artist_names_match(query_name: &str, response_name: &str, response_aliases: O
                 return true;
             }
         }
-        
+
         debug!("No matching aliases found for '{}'", query_name);
     }
-    
+
     // Names don't match and aren't similar enough
-    debug!("Artist name mismatch! Searched for: '{}', but found: '{}'", 
+    debug!("Artist name mismatch! Searched for: '{}', but found: '{}'",
           query_name, response_name);
     debug!("Normalized names: '{}' vs '{}'", normalized_query, normalized_response);
     debug!("Rejecting due to name mismatch");
-    
+
     false
 }
 
 /// Make a GET request to the MusicBrainz API with proper headers and rate limiting
-/// 
+///
 /// # Arguments
 /// * `url` - The URL to request
-/// 
+///
 /// # Returns
 /// * `Result<String, String>` - API response or error message
 fn musicbrainz_api_get(url: &str) -> Result<String, String> {
     debug!("Making MusicBrainz API request: {}", url);
-    
+
     // Add proper User-Agent header and timeout using ureq's raw API
     // Use a longer timeout (10s) for MusicBrainz API as it can be slow
     let response = match ureq::get(url)
@@ -343,13 +343,13 @@ fn musicbrainz_api_get(url: &str) -> Result<String, String> {
             return Err(format!("Request error: {}", e));
         }
     };
-    
+
     // Log response status and content-length if available
     debug!("MusicBrainz API response status: {}", response.status());
     if let Some(content_length) = response.header("Content-Length") {
         debug!("MusicBrainz API response content length: {}", content_length);
     }
-    
+
     // Get response body
     match response.into_string() {
         Ok(body) => {
@@ -369,22 +369,22 @@ fn musicbrainz_api_get(url: &str) -> Result<String, String> {
 }
 
 /// Search MusicBrainz API for an artist and return their MBID if found
-/// 
+///
 /// # Arguments
 /// * `artist_name` - The name of the artist to search for
 /// * `cache_only` - If true, only check the cache and don't make API calls
-/// 
+///
 /// # Returns
 /// * `MusicBrainzSearchResult` - Found with vector of MBIDs, or error/not found status
 fn search_musicbrainz_for_artist(artist_name: &str, cache_only: bool) -> MusicBrainzSearchResult {
     debug!("Searching MusicBrainz for artist: '{}' (cache_only: {})", artist_name, cache_only);
-    
+
     // Check if MusicBrainz lookups are enabled
     if !is_enabled() {
         debug!("MusicBrainz lookups are disabled, skipping search for '{}'", artist_name);
         return MusicBrainzSearchResult::NotFound;
     }
-    
+
     // Try to get MBID from cache first
     let cache_key = format!("{}{}", ARTIST_MBID_CACHE_PREFIX, artist_name);
     match attribute_cache::get::<String>(&cache_key) {
@@ -401,7 +401,7 @@ fn search_musicbrainz_for_artist(artist_name: &str, cache_only: bool) -> MusicBr
             // Otherwise continue with API search if not found in cache
         }
     }
-    
+
     // Check negative cache for failed lookups using attribute_cache
     let not_found_cache_key = format!("{}{}", ARTIST_NOT_FOUND_CACHE_PREFIX, artist_name);
     match attribute_cache::get::<bool>(&not_found_cache_key) {
@@ -413,7 +413,7 @@ fn search_musicbrainz_for_artist(artist_name: &str, cache_only: bool) -> MusicBr
             // Continue with search if not in negative cache
         }
     }
-    
+
     // If cache_only is true, we shouldn't reach this point (should have returned earlier)
     if cache_only {
         debug!("Artist '{}' not found in cache and cache_only=true", artist_name);
@@ -421,16 +421,16 @@ fn search_musicbrainz_for_artist(artist_name: &str, cache_only: bool) -> MusicBr
     }
       // Apply rate limiting before making the API request
     rate_limit::rate_limit("musicbrainz");
-    
+
     // Sanitize artist name for the API query
     let sanitized_artist_name = sanitize_artist_name_for_search(artist_name);
     debug!("Searching MusicBrainz for artist: '{}' (sanitized from '{}')", sanitized_artist_name, artist_name);
-    
+
     // Construct the API URL
     let encoded_name = encode(&sanitized_artist_name);
     let url = format!(
         "{}/artist?query=artist:{}&fmt=json&limit={}",
-        MUSICBRAINZ_API_BASE, 
+        MUSICBRAINZ_API_BASE,
         encoded_name,
         MUSICBRAINZ_SEARCH_LIMIT
     );
@@ -454,7 +454,7 @@ fn search_musicbrainz_for_artist(artist_name: &str, cache_only: bool) -> MusicBr
     debug!("Received MusicBrainz API response: {} chars", response.len());
     // Print the first 200 chars of the response for debugging (UTF-8 safe)
     debug!("Response starts with: {}", sanitize::safe_truncate(&response, 200));
-    
+
     let search_result: Result<MusicBrainzArtistSearchResponse, _> = serde_json::from_str(&response);
     match search_result {
         Ok(results) => {
@@ -464,21 +464,21 @@ fn search_musicbrainz_for_artist(artist_name: &str, cache_only: bool) -> MusicBr
                 let artist = &results.artists[0];
                 let mbid = artist.id.clone();
                 let response_name = &artist.name;
-                
+
                 // Extract aliases if available
                 let aliases: Vec<String> = artist.aliases
                     .iter()
                     .map(|alias| alias.name.clone())
                     .collect();
-                
+
                 // Use our dedicated function to compare artist names
                 if artist_names_match(artist_name, response_name, if aliases.is_empty() { None } else { Some(&aliases) }) {
                     debug!("Found matching artist: '{}' with MBID: {}", response_name, mbid);
-                    
+
                     // Store the MBID in the attribute cache
                     let cache_key = format!("{}{}", ARTIST_MBID_CACHE_PREFIX, artist_name);
                     debug!("Attempting to store MBID in cache with key: {}", cache_key);
-                    
+
                     match attribute_cache::set(&cache_key, &mbid) {
                         Ok(_) => {
                             debug!("Successfully stored MusicBrainz ID for '{}' in cache", artist_name);
@@ -487,7 +487,7 @@ fn search_musicbrainz_for_artist(artist_name: &str, cache_only: bool) -> MusicBr
                             error!("Failed to cache MusicBrainz ID for '{}': {}", artist_name, e);
                         }
                     }
-                    
+
                     // Return the MBID
                     return MusicBrainzSearchResult::Found(vec![mbid], false);
                 } else {
@@ -510,7 +510,7 @@ fn search_musicbrainz_for_artist(artist_name: &str, cache_only: bool) -> MusicBr
                     debug!("Cached no results for '{}' with 48-hour expiry", artist_name);
                 }
             }
-            
+
             debug!("No matching MusicBrainz ID found for artist '{}'", artist_name);
             MusicBrainzSearchResult::NotFound
         },        Err(e) => {
@@ -525,41 +525,41 @@ fn search_musicbrainz_for_artist(artist_name: &str, cache_only: bool) -> MusicBr
             } else {
                 debug!("Cached parse error for '{}' with 48-hour expiry", artist_name);
             }
-            MusicBrainzSearchResult::Error(format!("Response parse error: {} ({})", e, 
+            MusicBrainzSearchResult::Error(format!("Response parse error: {} ({})", e,
                                                  if response.len() < 50 { "possibly truncated response" } else { "check response format" }))
         }
     }
 }
 
 /// Search for MusicBrainz IDs for an artist, handling multiple artists if needed
-/// 
+///
 /// This function first tries to lookup the artist using search_musicbrainz_for_artist.
-/// If that fails and allow_multiple is true, it checks if the artist name might contain 
+/// If that fails and allow_multiple is true, it checks if the artist name might contain
 /// multiple artists (separated by commas or &) and looks up each of them individually.
-/// 
+///
 /// # Arguments
 /// * `artist_name` - The name of the artist to search for
 /// * `allow_multiple` - If true, handle potential multiple artists in the name
 /// * `cache_only` - If true, only check the cache and don't make API calls
 /// * `cache_failures` - If true, cache artists that are not found to avoid repeated lookups
-/// 
+///
 /// # Returns
 /// * `MusicBrainzSearchResult` - Found with vector of MBIDs, or error/not found status
-pub fn search_mbids_for_artist(artist_name: &str, allow_multiple: bool, 
+pub fn search_mbids_for_artist(artist_name: &str, allow_multiple: bool,
                                cache_only: bool, cache_failures: bool) -> MusicBrainzSearchResult {
-    debug!("Searching MBIDs for artist: '{}' (allow_multiple: {}, cache_only: {}, cache_failures: {})", 
+    debug!("Searching MBIDs for artist: '{}' (allow_multiple: {}, cache_only: {}, cache_failures: {})",
            artist_name, allow_multiple, cache_only, cache_failures);
-    
+
     // Check if MusicBrainz lookups are enabled
     if !is_enabled() {
         debug!("MusicBrainz lookups are disabled, skipping search for '{}'", artist_name);
         return MusicBrainzSearchResult::NotFound;
     }
-    
+
     // Try to get MBID from cache first for the full combined name
     let cache_key = format!("{}{}", ARTIST_MBID_CACHE_PREFIX, artist_name);
     let cache_partial_key = format!("{}{}", ARTIST_MBID_PARTIAL_CACHE_PREFIX, artist_name);
-    
+
     // Check if we have already determined this artist doesn't exist
     if cache_failures {
         let not_found_cache_key = format!("{}{}", ARTIST_NOT_FOUND_CACHE_PREFIX, artist_name);
@@ -573,12 +573,12 @@ pub fn search_mbids_for_artist(artist_name: &str, allow_multiple: bool,
             }
         }
     }
-    
+
     // Try to get MBIDs and partial status from cache first
     match attribute_cache::get::<Vec<String>>(&cache_key) {
         Ok(Some(mbids)) => {
             debug!("Found MusicBrainz IDs for '{}' in cache: {:?}", artist_name, mbids);
-            
+
             // Check if this was a partial result
             match attribute_cache::get::<bool>(&cache_partial_key) {
                 Ok(Some(true)) => {
@@ -596,10 +596,10 @@ pub fn search_mbids_for_artist(artist_name: &str, allow_multiple: bool,
             debug!("No cached MusicBrainz IDs found for '{}'", artist_name);
         }
     }
-    
+
     // First try to lookup the artist as a single entity
     let result = search_musicbrainz_for_artist(artist_name, cache_only);
-    
+
     match result {
         MusicBrainzSearchResult::Found(_, _) => {
             // If we found results, return them
@@ -609,16 +609,16 @@ pub fn search_mbids_for_artist(artist_name: &str, allow_multiple: bool,
             // If no results and allow_multiple is true, try splitting
             if allow_multiple {
                 let split_artists = split_artist(artist_name);
-                
+
                 // If we have multiple artists, try to look up each one
                 if split_artists.len() > 1 {
-                    debug!("No result for '{}' as a single artist, trying split artists: {:?}", 
+                    debug!("No result for '{}' as a single artist, trying split artists: {:?}",
                            artist_name, split_artists);
-                    
+
                     let mut all_mbids = Vec::new();
                     let mut any_found = false;
                     let mut all_found = true;  // New flag to track if all split artists were found
-                    
+
                     // Search for each artist individually
                     for artist in &split_artists {
                         match search_musicbrainz_for_artist(artist, cache_only) {
@@ -633,16 +633,16 @@ pub fn search_mbids_for_artist(artist_name: &str, allow_multiple: bool,
                             }
                         }
                     }
-                    
+
                     // If we found any MBIDs, return them and store in cache
                     if any_found {
                         debug!("Found {} MusicBrainz ID(s) for split artists in '{}'", all_mbids.len(), artist_name);
-                        
+
                         // Store the combined result in the cache with the full artist name
                         match attribute_cache::set(&cache_key, &all_mbids) {
                             Ok(_) => {
                                 debug!("Successfully stored multiple MusicBrainz IDs for '{}' in cache", artist_name);
-                                
+
                                 // Only store partial status if we didn't find all the artists
                                 if !all_found {
                                     debug!("Not all artists in '{}' were found, marking as partial result", artist_name);
@@ -654,7 +654,7 @@ pub fn search_mbids_for_artist(artist_name: &str, allow_multiple: bool,
                                             error!("Failed to cache partial status for '{}': {}", artist_name, e);
                                         }
                                     }
-                                    
+
                                     return MusicBrainzSearchResult::FoundPartial(all_mbids, false);
                                 } else {
                                     debug!("All split artists in '{}' were found, returning as full match", artist_name);
@@ -663,7 +663,7 @@ pub fn search_mbids_for_artist(artist_name: &str, allow_multiple: bool,
                             },
                             Err(e) => {
                                 error!("Failed to cache multiple MusicBrainz IDs for '{}': {}", artist_name, e);
-                                
+
                                 // Even if caching failed, return the appropriate result type
                                 if !all_found {
                                     return MusicBrainzSearchResult::FoundPartial(all_mbids, false);
@@ -673,11 +673,11 @@ pub fn search_mbids_for_artist(artist_name: &str, allow_multiple: bool,
                             }
                         }
                     }
-                    
+
                     // Otherwise, fall through to return the original NotFound result
                 }
             }
-            
+
             // If we reached here, the artist was not found. Cache this result if requested.
             if cache_failures {
                 let not_found_cache_key = format!("{}{}", ARTIST_NOT_FOUND_CACHE_PREFIX, artist_name);
@@ -688,7 +688,7 @@ pub fn search_mbids_for_artist(artist_name: &str, allow_multiple: bool,
                     Err(e) => error!("Failed to cache not_found status for '{}': {}", artist_name, e)
                 }
             }
-            
+
             // Return the original result
             result
         },
@@ -717,48 +717,48 @@ pub fn split_artist_names(artist_name: &str, cache_only: bool, custom_separators
 }
 
 /// Search for recordings (songs) by artist and title
-/// 
+///
 /// Performs an exact match search for recordings in MusicBrainz.
-/// 
+///
 /// # Arguments
 /// * `artist` - The artist name to search for
 /// * `title` - The recording title to search for
-/// 
+///
 /// # Returns
 /// A result containing the search response or an error
 pub fn search_recording(artist: &str, title: &str) -> Result<MusicBrainzRecordingSearchResponse, String> {
     debug!("Searching MusicBrainz for recording: artist='{}', title='{}'", artist, title);
-    
+
     // Check if MusicBrainz lookups are enabled
     if !is_enabled() {
         debug!("MusicBrainz lookups are disabled, skipping recording search");
-        return Ok(MusicBrainzRecordingSearchResponse { 
-            recordings: Vec::new(), 
+        return Ok(MusicBrainzRecordingSearchResponse {
+            recordings: Vec::new(),
             count: 0,
             offset: 0,
         });
     }
-    
+
     // Apply rate limiting before making the API request
     rate_limit::rate_limit("musicbrainz");
-    
+
     // Build query for exact match
     let query = format!("artist:\"{}\" AND recording:\"{}\"", artist, title);
     let url = format!("{}/recording/?query={}&fmt=json&limit=5", MUSICBRAINZ_API_BASE, urlencoding::encode(&query));
-    
+
     // Execute the HTTP GET request
     let response_text = match musicbrainz_api_get(&url) {
         Ok(response_text) => response_text,
         Err(e) => {
             warn!("Failed to search MusicBrainz for recording: {}", e);
-            return Ok(MusicBrainzRecordingSearchResponse { 
-                recordings: Vec::new(), 
+            return Ok(MusicBrainzRecordingSearchResponse {
+                recordings: Vec::new(),
                 count: 0,
                 offset: 0,
             });
         }
     };
-    
+
     // Parse the JSON response
     match serde_json::from_str::<MusicBrainzRecordingSearchResponse>(&response_text) {
         Ok(data) => {
@@ -767,8 +767,8 @@ pub fn search_recording(artist: &str, title: &str) -> Result<MusicBrainzRecordin
         },
         Err(e) => {
             warn!("Failed to parse MusicBrainz recording search response: {}", e);
-            Ok(MusicBrainzRecordingSearchResponse { 
-                recordings: Vec::new(), 
+            Ok(MusicBrainzRecordingSearchResponse {
+                recordings: Vec::new(),
                 count: 0,
                 offset: 0,
             })
@@ -777,20 +777,32 @@ pub fn search_recording(artist: &str, title: &str) -> Result<MusicBrainzRecordin
 }
 
 /// Check if a string appears to be a valid MusicBrainz ID (MBID)
-/// 
+///
 /// MusicBrainz IDs are formatted as UUIDs: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-/// 
+///
 /// # Arguments
 /// * `input` - The string to check
-/// 
+///
 /// # Returns
 /// true if the string looks like a valid MBID, false otherwise
 pub fn is_mbid(input: &str) -> bool {
     // MusicBrainz IDs are in UUID format:
-    // 8 chars, dash, 4 chars, dash, 4 chars, dash, 4 chars, dash, 12 chars
-    input.len() == 36
-        && input.chars().all(|c| c.is_ascii_hexdigit() || c == '-')
-        && input.matches('-').count() == 4
+    // xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+    let mut parts = input.split('-');
+
+    let expected_lengths = [8, 4, 4, 4, 12];
+    for expected_len in expected_lengths {
+        let Some(part) = parts.next() else {
+            return false;
+        };
+
+        if part.len() != expected_len || !part.chars().all(|c| c.is_ascii_hexdigit()) {
+            return false;
+        }
+    }
+
+    // Must contain exactly 5 parts and no extras.
+    parts.next().is_none()
 }
 
 /// Search MusicBrainz for a release group by artist and album name and return genres.
@@ -872,5 +884,27 @@ pub fn search_release_group_genres(artist: &str, album: &str) -> Vec<String> {
     genres.sort();
     genres.dedup();
     genres
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_mbid;
+
+    #[test]
+    fn test_is_mbid_accepts_valid_uuid_shape() {
+        assert!(is_mbid("12345678-1234-1234-1234-123456789abc"));
+        assert!(is_mbid("A74B1B7F-71A5-4011-9441-D0B5E4122711"));
+    }
+
+    #[test]
+    fn regression_is_mbid_rejects_wrong_dash_positions() {
+        // Same total length and dash count as UUID, but invalid segment lengths.
+        assert!(!is_mbid("1234567-81234-1234-1234-123456789abc"));
+    }
+
+    #[test]
+    fn regression_is_mbid_rejects_non_hex_characters() {
+        assert!(!is_mbid("12345678-1234-1234-1234-123456789abz"));
+    }
 }
 

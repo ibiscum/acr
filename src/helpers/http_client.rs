@@ -26,30 +26,30 @@ pub enum HttpClientError {
 pub trait HttpClient: Send + Sync + std::fmt::Debug {
     /// Send a POST request with a JSON payload
     fn post_json_value(&self, url: &str, payload: Value) -> Result<Value, HttpClientError>;
-    
+
     /// Send a GET request and return text response
     fn get_text(&self, url: &str) -> Result<String, HttpClientError>;
-    
+
     /// Send a GET request and return binary data with mimetype
     fn get_binary(&self, url: &str) -> Result<(Vec<u8>, String), HttpClientError>;
-    
+
     /// Send a GET request with headers and return JSON value
     fn get_json_with_headers(&self, url: &str, headers: &[(&str, &str)]) -> Result<Value, HttpClientError>;
-    
+
     /// Send a POST request with a JSON payload and custom headers
     fn post_json_value_with_headers(&self, url: &str, payload: Value, headers: &[(&str, &str)]) -> Result<Value, HttpClientError>;
-    
+
     /// Send a PUT request with a JSON payload and custom headers
     fn put_json_value_with_headers(&self, url: &str, payload: Value, headers: &[(&str, &str)]) -> Result<Value, HttpClientError>;
-    
+
     /// Clone the client as a boxed trait object
     fn clone_box(&self) -> Box<dyn HttpClient>;
 }
 
 // Non-generic helper function to serialize and post JSON
 pub fn post_json<T: Serialize>(
-    client: &dyn HttpClient, 
-    url: &str, 
+    client: &dyn HttpClient,
+    url: &str,
     payload: &T
 ) -> Result<Value, HttpClientError> {
     match serde_json::to_value(payload) {
@@ -89,7 +89,7 @@ impl HttpClient for UreqHttpClient {
     fn post_json_value(&self, url: &str, payload: Value) -> Result<Value, HttpClientError> {
         debug!("POST request to {}", url);
         debug!("POST payload: {}", payload);
-        
+
         // First serialize the JSON value to a string
         let json_string = match serde_json::to_string(&payload) {
             Ok(str) => str,
@@ -98,7 +98,7 @@ impl HttpClient for UreqHttpClient {
                 return Err(HttpClientError::ParseError(format!("Failed to serialize JSON payload: {}", e)));
             }
         };
-        
+
         // Use the ureq API correctly
         let response = match ureq::post(url)
             .timeout(self.timeout)
@@ -112,7 +112,7 @@ impl HttpClient for UreqHttpClient {
                 return Err(HttpClientError::RequestError(e.to_string()));
             }
         };
-        
+
         let response_text = match response.into_string() {
             Ok(text) => text,
             Err(e) => {
@@ -120,24 +120,13 @@ impl HttpClient for UreqHttpClient {
                 return Err(HttpClientError::ParseError(format!("Failed to read response body: {}", e)));
             }
         };
-        
-        if response_text.is_empty() {
-            return Err(HttpClientError::EmptyResponse);
-        }
-        
-        match serde_json::from_str::<Value>(&response_text) {
-            Ok(json_value) => Ok(json_value),
-            Err(e) => {
-                debug!("Failed to parse JSON response: {}", e);
-                debug!("Response text: {}", response_text);
-                Err(HttpClientError::ParseError(e.to_string()))
-            }
-        }
+
+        parse_json_response(&response_text)
     }
-    
+
     fn get_text(&self, url: &str) -> Result<String, HttpClientError> {
         debug!("GET text request to {}", url);
-        
+
         let response = match ureq::get(url).timeout(self.timeout).call() {
             Ok(resp) => resp,
             Err(e) => {
@@ -145,7 +134,7 @@ impl HttpClient for UreqHttpClient {
                 return Err(HttpClientError::RequestError(e.to_string()));
             }
         };
-        
+
         match response.into_string() {
             Ok(text) => Ok(text),
             Err(e) => {
@@ -154,10 +143,10 @@ impl HttpClient for UreqHttpClient {
             }
         }
     }
-    
+
     fn get_binary(&self, url: &str) -> Result<(Vec<u8>, String), HttpClientError> {
         debug!("GET binary request to {}", url);
-        
+
         let response = match ureq::get(url).timeout(self.timeout).call() {
             Ok(resp) => resp,
             Err(e) => {
@@ -165,13 +154,13 @@ impl HttpClient for UreqHttpClient {
                 return Err(HttpClientError::RequestError(e.to_string()));
             }
         };
-        
+
         // Get the content-type header or default to "application/octet-stream"
         let content_type = response
             .header("content-type")
             .unwrap_or("application/octet-stream")
             .to_string();
-            
+
         // Get the response body as bytes
         let mut bytes: Vec<u8> = Vec::new();
         match response.into_reader().read_to_end(&mut bytes) {
@@ -182,31 +171,31 @@ impl HttpClient for UreqHttpClient {
             }
         }
     }
-    
+
     fn clone_box(&self) -> Box<dyn HttpClient> {
         Box::new(self.clone())
     }
-    
+
     fn get_json_with_headers(&self, url: &str, headers: &[(&str, &str)]) -> Result<Value, HttpClientError> {
         debug!("GET JSON request with headers to {}", url);
-        
+
         let mut request = ureq::get(url).timeout(self.timeout);
-        
+
         // Add all headers to the request
         for &(name, value) in headers {
-            debug!("Adding header '{}': '{}'", name, if name == "Authorization" { 
+            debug!("Adding header '{}': '{}'", name, if name == "Authorization" {
                 // Don't log full auth token but show the first few characters
                 if value.len() > 15 {
                     format!("{}...", &value[0..15])
                 } else {
                     "[hidden]".to_string()
                 }
-            } else { 
-                value.to_string() 
+            } else {
+                value.to_string()
             });
             request = request.set(name, value);
         }
-        
+
         // Send the request
         let response = match request.call() {
             Ok(resp) => {
@@ -218,13 +207,13 @@ impl HttpClient for UreqHttpClient {
                 match e {
                     ureq::Error::Status(code, response) => {
                         let error_body = response.into_string().unwrap_or_else(|_| "<failed to read response body>".to_string());
-                        
+
                         // Provide more specific error info for authentication issues
                         if code == 401 {
                             error!("HTTP 401 Unauthorized error - check if the X-Proxy-Secret header is correct");
                             error!("HTTP 401 error body: {}", error_body);
                             return Err(HttpClientError::ServerError(format!(
-                                "HTTP 401 Unauthorized: Authentication failed. Check that the proxy_secret is correct in secrets.txt and matches what the OAuth service expects. Error: {}", 
+                                "HTTP 401 Unauthorized: Authentication failed. Check that the proxy_secret is correct in secrets.txt and matches what the OAuth service expects. Error: {}",
                                 error_body
                             )));
                         } else {
@@ -239,7 +228,7 @@ impl HttpClient for UreqHttpClient {
                 }
             }
         };
-        
+
         // Get the response as text
         let response_text = match response.into_string() {
             Ok(text) => text,
@@ -248,33 +237,10 @@ impl HttpClient for UreqHttpClient {
                 return Err(HttpClientError::ParseError(format!("Failed to read response body: {}", e)));
             }
         };
-        
-        if response_text.is_empty() {
-            return Err(HttpClientError::EmptyResponse);
-        }
-        
-        // Parse the response as JSON
-        match serde_json::from_str::<Value>(&response_text) {
-            Ok(json_value) => Ok(json_value),
-            Err(e) => {
-                // Log the actual response content (truncated if too large)
-                let truncated_response = if response_text.len() > 500 {
-                    format!("{}... (truncated, total length: {} bytes)", &response_text[0..500], response_text.len())
-                } else {
-                    response_text.clone()
-                };
-                error!("Failed to parse JSON response: {}", e);
-                error!("Response content: {}", truncated_response);
-                // Try to determine if it might be HTML instead of JSON
-                if response_text.contains("<html") || response_text.contains("<!DOCTYPE") {
-                    error!("Response appears to be HTML instead of JSON - check if the OAuth URL is correct");
-                    return Err(HttpClientError::ParseError("Response is HTML instead of expected JSON. The OAuth service might be returning an error page.".to_string()));
-                }
-                Err(HttpClientError::ParseError(format!("Failed to parse response: {}", e)))
-            }
-        }
+
+        parse_json_response(&response_text)
     }
-    
+
     fn post_json_value_with_headers(&self, url: &str, payload: Value, headers: &[(&str, &str)]) -> Result<Value, HttpClientError> {
         debug!("POST request with headers to {}", url);
         debug!("POST payload: {}", payload);
@@ -313,20 +279,9 @@ impl HttpClient for UreqHttpClient {
             }
         };
 
-        if response_text.is_empty() {
-            return Err(HttpClientError::EmptyResponse);
-        }
-
-        match serde_json::from_str::<Value>(&response_text) {
-            Ok(json_value) => Ok(json_value),
-            Err(e) => {
-                debug!("Failed to parse JSON response: {}", e);
-                debug!("Response text: {}", response_text);
-                Err(HttpClientError::ParseError(e.to_string()))
-            }
-        }
+        parse_json_response(&response_text)
     }
-    
+
     fn put_json_value_with_headers(&self, url: &str, payload: Value, headers: &[(&str, &str)]) -> Result<Value, HttpClientError> {
         debug!("PUT request with headers to {}", url);
         debug!("PUT payload: {}", payload);
@@ -365,17 +320,35 @@ impl HttpClient for UreqHttpClient {
             }
         };
 
-        if response_text.is_empty() {
-            return Err(HttpClientError::EmptyResponse);
-        }
+        parse_json_response(&response_text)
+    }
+}
 
-        match serde_json::from_str::<Value>(&response_text) {
-            Ok(json_value) => Ok(json_value),
-            Err(e) => {
-                debug!("Failed to parse JSON response: {}", e);
-                debug!("Response text: {}", response_text);
-                Err(HttpClientError::ParseError(e.to_string()))
+fn parse_json_response(response_text: &str) -> Result<Value, HttpClientError> {
+    if response_text.is_empty() {
+        return Err(HttpClientError::EmptyResponse);
+    }
+
+    match serde_json::from_str::<Value>(response_text) {
+        Ok(json_value) => Ok(json_value),
+        Err(e) => {
+            let truncated_response = if response_text.len() > 500 {
+                format!("{}... (truncated, total length: {} bytes)", &response_text[0..500], response_text.len())
+            } else {
+                response_text.to_string()
+            };
+            error!("Failed to parse JSON response: {}", e);
+            error!("Response content: {}", truncated_response);
+
+            if response_text.contains("<html") || response_text.contains("<!DOCTYPE") {
+                error!("Response appears to be HTML instead of JSON");
+                return Err(HttpClientError::ParseError(
+                    "Response is HTML instead of expected JSON. The OAuth service might be returning an error page."
+                        .to_string(),
+                ));
             }
+
+            Err(HttpClientError::ParseError(format!("Failed to parse response: {}", e)))
         }
     }
 }
@@ -383,4 +356,35 @@ impl HttpClient for UreqHttpClient {
 /// Create a new HTTP client using the default implementation
 pub fn new_http_client(timeout_secs: u64) -> Box<dyn HttpClient> {
     Box::new(UreqHttpClient::new(timeout_secs))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_json_response_handles_empty_response() {
+        let result = parse_json_response("");
+        assert!(matches!(result, Err(HttpClientError::EmptyResponse)));
+    }
+
+    #[test]
+    fn parse_json_response_handles_valid_json() {
+        let result = parse_json_response(r#"{"ok":true,"count":2}"#).unwrap();
+        assert_eq!(result["ok"], true);
+        assert_eq!(result["count"], 2);
+    }
+
+    #[test]
+    fn parse_json_response_detects_html_payload() {
+        let html = "<!DOCTYPE html><html><body>Error page</body></html>";
+        let result = parse_json_response(html);
+
+        match result {
+            Err(HttpClientError::ParseError(msg)) => {
+                assert!(msg.contains("Response is HTML instead of expected JSON"));
+            }
+            _ => panic!("Expected ParseError for HTML payload"),
+        }
+    }
 }

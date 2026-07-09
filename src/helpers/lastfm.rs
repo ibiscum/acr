@@ -1045,8 +1045,10 @@ pub fn apply_lastfm_data_to_artist(
         if let Some(bio) = &artist_info.bio {
             if !bio.content.is_empty() {
                 let cleaned_biography = cleanup_biography(&bio.content);
-                meta.biography = Some(cleaned_biography);
-                meta.biography_source = Some("LastFM".to_string());
+                if !cleaned_biography.is_empty() {
+                    meta.biography = Some(cleaned_biography);
+                    meta.biography_source = Some("LastFM".to_string());
+                }
             }
         }
 
@@ -1444,6 +1446,37 @@ mod tests {
         let result = apply_lastfm_data_to_artist(artist, artist_info);
         let meta = result.metadata.unwrap();
         assert_eq!(meta.biography, None);
+    }
+
+    #[test]
+    fn test_apply_lastfm_data_skips_biography_when_cleanup_results_empty() {
+        let artist = Artist {
+            id: crate::data::Identifier::String("test-id".to_string()),
+            name: "TestArtist".to_string(),
+            is_multi: false,
+            metadata: Some(ArtistMeta::new()),
+        };
+
+        let artist_info = LastfmArtistDetails {
+            name: "TestArtist".to_string(),
+            mbid: None,
+            url: "http://test".to_string(),
+            image: vec![],
+            streamable: "1".to_string(),
+            stats: None,
+            similar: None,
+            tags: None,
+            bio: Some(LastfmWiki {
+                published: "2020-01-01".to_string(),
+                summary: "Short bio.".to_string(),
+                content: r#"<a href="https://www.last.fm/music/TestArtist">Read more on Last.fm</a>"#.to_string(),
+            }),
+        };
+
+        let result = apply_lastfm_data_to_artist(artist, artist_info);
+        let meta = result.metadata.unwrap();
+        assert_eq!(meta.biography, None);
+        assert_eq!(meta.biography_source, None);
     }
 
     #[test]

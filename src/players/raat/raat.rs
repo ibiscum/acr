@@ -453,6 +453,10 @@ impl PlayerController for RAATPlayerController {
                 // that logic could be added here.
             }
         }
+
+        // Updates received through the generic update path also indicate activity.
+        self.base.alive();
+
         true // Indicate that the update was processed
     }
 
@@ -634,7 +638,7 @@ impl PlayerController for RAATPlayerController {
 #[cfg(test)]
 mod tests {
     use super::RAATPlayerController;
-    use crate::data::PlayerUpdate;
+    use crate::data::{PlaybackState, PlayerUpdate};
     use crate::players::player_controller::PlayerController;
 
     #[test]
@@ -651,5 +655,33 @@ mod tests {
 
         assert!(controller.receive_update(PlayerUpdate::PositionChanged(None)));
         assert_eq!(controller.get_position(), None);
+    }
+
+    #[test]
+    fn regression_receive_update_marks_player_alive() {
+        let controller = RAATPlayerController::with_pipes_and_reopen_and_systemd(
+            "/tmp/raat-metadata-test",
+            "/tmp/raat-control-test",
+            false,
+            None,
+        );
+
+        assert_eq!(controller.get_last_seen(), None);
+        assert!(controller.receive_update(PlayerUpdate::StateChanged(PlaybackState::Playing)));
+        assert!(controller.get_last_seen().is_some());
+    }
+
+    #[test]
+    fn regression_receive_update_state_change_updates_cached_state() {
+        let controller = RAATPlayerController::with_pipes_and_reopen_and_systemd(
+            "/tmp/raat-metadata-test",
+            "/tmp/raat-control-test",
+            false,
+            None,
+        );
+
+        assert_eq!(controller.get_playback_state(), PlaybackState::Unknown);
+        assert!(controller.receive_update(PlayerUpdate::StateChanged(PlaybackState::Paused)));
+        assert_eq!(controller.get_playback_state(), PlaybackState::Paused);
     }
 }

@@ -71,6 +71,24 @@ pub struct SystemdHelper {
 }
 
 impl SystemdHelper {
+    fn parse_is_active_output(unit_name: &str, success: bool, stdout: &str, stderr: &str) -> Result<UnitStatus> {
+        let status_text = stdout.trim();
+        if !status_text.is_empty() {
+            return Ok(UnitStatus::from(status_text));
+        }
+
+        if !success {
+            let err = stderr.to_ascii_lowercase();
+            if err.contains("could not be found") || err.contains("not found") {
+                return Err(SystemdError::UnitNotFound {
+                    unit: unit_name.to_string(),
+                });
+            }
+        }
+
+        Err(SystemdError::ParseError)
+    }
+
     /// Create a new SystemdHelper for system-wide units
     pub fn new() -> Self {
         Self {
@@ -114,7 +132,7 @@ impl SystemdHelper {
         cmd.args(["list-unit-files", unit_name, "--no-legend", "--no-pager"]);
 
         debug!("Checking if unit exists: {}", unit_name);
-        
+
         match cmd.output() {
             Ok(output) => {
                 if output.status.success() {
@@ -152,7 +170,13 @@ impl SystemdHelper {
         match cmd.output() {
             Ok(output) => {
                 let output_str = String::from_utf8_lossy(&output.stdout);
-                let status = UnitStatus::from(output_str.as_ref());
+                let stderr_str = String::from_utf8_lossy(&output.stderr);
+                let status = Self::parse_is_active_output(
+                    unit_name,
+                    output.status.success(),
+                    output_str.as_ref(),
+                    stderr_str.as_ref(),
+                )?;
                 debug!("Unit {} status: {}", unit_name, status);
                 Ok(status)
             }
@@ -201,7 +225,7 @@ impl SystemdHelper {
     /// Get comprehensive information about a unit
     pub fn get_unit_info(&self, unit_name: &str) -> Result<UnitInfo> {
         let exists = self.unit_exists(unit_name)?;
-        
+
         if !exists {
             return Ok(UnitInfo {
                 name: unit_name.to_string(),
@@ -458,5 +482,43 @@ mod tests {
     fn test_default_systemd_helper() {
         let helper = SystemdHelper::default();
         assert!(!helper.use_user_mode);
+    }
+
+    #[test]
+    fn regression_parse_is_active_output_accepts_inactive_on_nonzero_exit() {
+        let status = SystemdHelper::parse_is_active_output(
+            "demo.service",
+            false,
+            "inactive\n",
+            "",
+        )
+        .expect("inactive status should still parse");
+
+        assert_eq!(status, UnitStatus::Inactive);
+    }
+
+    #[test]
+    fn regression_parse_is_active_output_maps_not_found_error() {
+        let result = SystemdHelper::parse_is_active_output(
+            "missing.service",
+            false,
+            "",
+            "Unit missing.service could not be found.",
+        );
+
+        match result {
+            Err(SystemdError::UnitNotFound { unit }) => assert_eq!(unit, "missing.service"),
+            other => panic!("expected UnitNotFound, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn regression_parse_is_active_output_rejects_empty_success_output() {
+        let result = SystemdHelper::parse_is_active_output("demo.service", true, "   ", "");
+
+        match result {
+            Err(SystemdError::ParseError) => {}
+            other => panic!("expected ParseError, got {:?}", other),
+        }
     }
 }

@@ -32,55 +32,55 @@ pub fn mpd_image_url() -> String {
 pub struct MPDPlayerController {
     /// Base controller for managing state listeners
     base: BasePlayerController,
-    
+
     /// MPD server hostname
     hostname: String,
-    
+
     /// MPD server port
     port: u16,
-    
+
     /// Current song information
     current_song: Arc<Mutex<Option<Song>>>,
 
     // current player state
     current_state: Arc<Mutex<PlayerState>>,
-    
+
     /// Whether to load the MPD library into memory
     load_mpd_library: bool,
-    
+
     /// Flag to control metadata enhancement
     enhance_metadata: bool,
-    
+
     /// Flag to control cover art extraction from music files
     extract_coverart: bool,
-    
+
     /// Custom artist separators for splitting artist names
     artist_separators: Option<Vec<String>>,
-    
+
     /// MPD music directory path (if empty, will attempt to read from /etc/mpd.conf)
     music_directory: String,
 
     /// If true, the library is read-only and deletion is not supported
     library_read_only: bool,
-    
+
     /// Cached effective music directory (to avoid parsing /etc/mpd.conf repeatedly)
     effective_music_directory: Arc<Mutex<Option<String>>>,
-    
+
     /// MPD library instance wrapped in Arc and Mutex for thread-safe access
     library: Arc<Mutex<Option<crate::players::mpd::library::MPDLibrary>>>,
-    
+
     /// Maximum number of reconnection attempts before giving up
     max_reconnect_attempts: u32,
-    
+
     /// Current reconnection attempt counter
     reconnect_attempts: Arc<Mutex<u32>>,
-    
+
     /// Flag indicating if connection has been permanently disabled due to max attempts
     connection_disabled: Arc<AtomicBool>,
-    
+
     /// Song title splitter manager for radio stations that combine artist and song in title
     song_split_manager: SongSplitManager,
-    
+
     /// Current MPD database update job ID (if any)
     current_update_job_id: Arc<Mutex<Option<String>>>,
 }
@@ -124,10 +124,10 @@ impl MPDPlayerController {
         debug!("Creating new MPDPlayerController with default settings");
         let host = "localhost";
         let port = 6600;
-        
+
         // Create a base controller with player name and ID
         let base = BasePlayerController::with_player_info("mpd", &format!("{}:{}", host, port));
-        
+
         let player = Self {
             base,
             hostname: host.to_string(),
@@ -148,20 +148,20 @@ impl MPDPlayerController {
             song_split_manager: SongSplitManager::new(),
             current_update_job_id: Arc::new(Mutex::new(None)),
         };
-        
+
         // Set default capabilities
         player.set_default_capabilities();
-        
+
         player
     }
-    
+
     /// Create a new MPD player controller with custom settings
     pub fn with_connection(hostname: &str, port: u16) -> Self {
         debug!("Creating new MPDPlayerController with connection {}:{}", hostname, port);
-        
+
         // Create a base controller with player name and ID
         let base = BasePlayerController::with_player_info("mpd", &format!("{}:{}", hostname, port));
-        
+
         let player = Self {
             base,
             hostname: hostname.to_string(),
@@ -182,13 +182,13 @@ impl MPDPlayerController {
             song_split_manager: SongSplitManager::new(),
             current_update_job_id: Arc::new(Mutex::new(None)),
         };
-        
+
         // Set default capabilities
         player.set_default_capabilities();
-        
+
         player
     }
-    
+
     /// Set the default capabilities for this player
     fn set_default_capabilities(&self) {
         debug!("Setting default MPDPlayerController capabilities");
@@ -206,12 +206,12 @@ impl MPDPlayerController {
             PlayerCapability::Queue,
         ], false); // Don't notify on initialization
     }
-    
+
     /// Attempt to reconnect to the MPD server
     pub fn reconnect(&self) -> Result<(), MpdError> {
         let addr = format!("{}:{}", self.hostname, self.port);
         debug!("Attempting to reconnect to MPD at {}", addr);
-        
+
         match Client::connect(&addr) {
             Ok(_) => {
                 info!("Successfully reconnected to MPD at {}", addr);
@@ -224,7 +224,7 @@ impl MPDPlayerController {
             }
         }
     }
-    
+
     /// Check if connected to MPD server
     pub fn is_connected(&self) -> bool {
         // Create a fresh connection to check connectivity
@@ -243,35 +243,38 @@ impl MPDPlayerController {
         }
         false
     }
-    
+
     /// Get the current MPD server hostname
     pub fn hostname(&self) -> &str {
         &self.hostname
     }
-    
+
     /// Get the current MPD server port
     pub fn port(&self) -> u16 {
         self.port
     }
-    
+
     /// Update the connection settings and reconnect
     pub fn set_connection(&mut self, hostname: &str, port: u16) {
         debug!("Updating MPD connection to {}:{}", hostname, port);
         self.hostname = hostname.to_string();
         self.port = port;
         self.base.set_player_id(&format!("{}:{}", hostname, port));
+
+        // A new endpoint should start with a clean reconnect state.
+        self.reset_reconnect_attempts();
     }
-    
+
     /// Get whether to load MPD library into memory
     pub fn load_mpd_library(&self) -> bool {
         self.load_mpd_library
     }
-    
+
     /// Set whether to load MPD library into memory
     pub fn set_load_mpd_library(&mut self, load: bool) {
         self.load_mpd_library = load;
     }
-    
+
     /// Get whether to enhance metadata
     pub fn get_enhance_metadata(&self) -> Option<bool> {
         Some(self.enhance_metadata)
@@ -281,7 +284,7 @@ impl MPDPlayerController {
     pub fn set_enhance_metadata(&mut self, enhance: bool) {
         self.enhance_metadata = enhance;
     }
-    
+
     /// Get whether to extract cover art from music files
     pub fn get_extract_coverart(&self) -> Option<bool> {
         Some(self.extract_coverart)
@@ -291,12 +294,12 @@ impl MPDPlayerController {
     pub fn set_extract_coverart(&mut self, extract: bool) {
         self.extract_coverart = extract;
     }
-    
+
     /// Get the configured music directory path
     pub fn get_music_directory(&self) -> &str {
         &self.music_directory
     }
-    
+
     /// Set the music directory path
     pub fn set_music_directory(&mut self, directory: String) {
         debug!("Setting music directory to: {}", directory);
@@ -317,7 +320,7 @@ impl MPDPlayerController {
     pub fn set_library_read_only(&mut self, read_only: bool) {
         self.library_read_only = read_only;
     }
-    
+
     /// Get the effective music directory path
     /// If configured music_directory is empty, attempts to parse it from /etc/mpd.conf
     pub fn get_effective_music_directory(&self) -> Option<String> {
@@ -361,7 +364,7 @@ impl MPDPlayerController {
 
         effective_dir
     }
-    
+
     /// Parse the music directory from mpd.conf, trying multiple candidate paths.
     ///
     /// Search order:
@@ -472,13 +475,13 @@ impl MPDPlayerController {
     pub fn get_max_reconnect_attempts(&self) -> u32 {
         self.max_reconnect_attempts
     }
-    
+
     /// Set the maximum number of reconnection attempts before giving up
     pub fn set_max_reconnect_attempts(&mut self, attempts: u32) {
         debug!("Setting maximum reconnection attempts to {}", attempts);
         self.max_reconnect_attempts = attempts;
     }
-    
+
     /// Reset the reconnection attempt counter
     fn reset_reconnect_attempts(&self) {
         {
@@ -488,42 +491,42 @@ impl MPDPlayerController {
         // Re-enable connections when we successfully connect
         self.connection_disabled.store(false, Ordering::Relaxed);
     }
-    
+
     /// Increment the reconnection attempt counter and return the new value
     fn increment_reconnect_attempts(&self) -> u32 {
         let mut counter = self.reconnect_attempts.lock();
         *counter += 1;
         *counter
     }
-    
+
     /// Disable further connection attempts after max attempts reached
     fn disable_connections(&self) {
         self.connection_disabled.store(true, Ordering::Relaxed);
     }
-    
+
     /// Check if connections are disabled
     fn are_connections_disabled(&self) -> bool {
         self.connection_disabled.load(Ordering::Relaxed)
     }
-    
+
     /// Get a reference to the MPD library, if available
     pub fn get_library(&self) -> Option<crate::players::mpd::library::MPDLibrary> {
         // Lock the mutex and clone the library if it exists
         let library_guard = self.library.lock();
         library_guard.clone()
     }
-    
+
     /// Force a refresh of the MPD library
     pub fn refresh_library(&self) -> Result<(), crate::data::library::LibraryError> {
         debug!("Requesting MPD library refresh");
-        
+
         // Get the library instance if available
         if let Some(mut library) = self.get_library() {
             // Pass the artist separators to the library before refreshing
             if let Some(separators) = &self.artist_separators {
                 library.set_artist_separators(separators.clone());
             }
-            
+
             // Run the refresh in a separate thread
             let library_clone = library;
             thread::spawn(move || {
@@ -532,72 +535,72 @@ impl MPDPlayerController {
                     Err(e) => warn!("Failed to refresh MPD library: {}", e),
                 }
             });
-            
+
             return Ok(());
         }
-        
+
         Err(crate::data::library::LibraryError::InternalError("Library not initialized".to_string()))
     }
-    
+
     /// Set the custom artist separators for splitting artist names
     pub fn set_artist_separators(&mut self, separators: Vec<String>) {
         debug!("Setting custom artist separators: {:?}", separators);
         self.artist_separators = Some(separators);
     }
-    
+
     /// Get the current custom artist separators if set
     pub fn get_artist_separators(&self) -> Option<&[String]> {
         self.artist_separators.as_deref()
     }
-    
+
     /// Clear all title splitters (useful for cleanup or configuration changes)
     pub fn clear_title_splitters(&self) {
         self.song_split_manager.clear_all_splitters();
     }
-    
+
     /// Get the number of active title splitters
     pub fn get_title_splitter_count(&self) -> usize {
         self.song_split_manager.get_splitter_count()
     }
-    
+
     /// Get statistics for a specific URL's title splitter
     pub fn get_title_splitter_stats(&self, url: &str) -> Option<(u32, u32, u32, u32, bool)> {
         self.song_split_manager.get_splitter_stats(url)
     }
-    
+
     /// Get all splitter IDs currently being managed
     pub fn get_all_splitter_ids(&self) -> Vec<String> {
         self.song_split_manager.get_splitter_ids()
     }
-    
+
     /// Get statistics for all active splitters
     pub fn get_all_splitter_stats(&self) -> HashMap<String, (u32, u32, u32, u32, bool)> {
         self.song_split_manager.get_all_splitter_stats()
     }
-    
+
     /// Remove a specific splitter (useful for cleanup)
     pub fn remove_title_splitter(&self, url: &str) -> bool {
         self.song_split_manager.remove_splitter(url)
     }
       /// Notify all registered listeners that the database is being updated
-    pub fn notify_database_update(&self, artist: Option<String>, album: Option<String>, 
+    pub fn notify_database_update(&self, artist: Option<String>, album: Option<String>,
                                  song: Option<String>, percentage: Option<f32>) {
         // The source parameter is redundant since BasePlayerController creates its own source
         // Just pass the remaining parameters to the base method
         self.base.notify_database_update(artist, album, song, percentage);
     }
-    
+
     /// Initialize the MPD library with retry logic
-    /// 
+    ///
     /// This method attempts to initialize the library and will retry with exponential backoff
     /// if the initial connection fails. The retry intervals are: 1s, 2s, 4s, 8s, 15s, 30s, 60s
-    /// 
+    ///
     /// # Arguments
     /// * `player_arc` - Arc reference to the player controller
     /// * `running` - Atomic boolean to check if the player is still running
     fn initialize_library_with_retry(player_arc: Arc<Self>, running: Arc<AtomicBool>) {
         info!("Starting MPD library initialization with retry logic");
-        
+
         // Run in a separate thread to avoid blocking the main startup
         thread::spawn(move || {
             let mut retry_handler = RetryHandler::connection_retry();
@@ -608,30 +611,30 @@ impl MPDPlayerController {
                         debug!("Library initialization interrupted by shutdown signal");
                         return None;
                     }
-                    
+
                     debug!("Attempting to initialize MPD library");
-                    
+
                     // Try to connect to MPD to test connectivity
                     if let Some(_client) = player_arc.get_fresh_client() {
                         info!("Successfully connected to MPD, initializing library");
-                        
+
                         // Import MPDLibrary here to ensure it's available
                         use crate::players::mpd::library::MPDLibrary;
-                        
+
                         // Create a library with the same connection parameters
                         let library = MPDLibrary::with_connection(
-                            &player_arc.hostname, 
-                            player_arc.port, 
+                            &player_arc.hostname,
+                            player_arc.port,
                             player_arc.clone()
                         );
-                        
+
                         // Store the library in the controller
                         {
                             let mut library_guard = player_arc.library.lock();
                             *library_guard = Some(library.clone());
                             debug!("Library instance stored in controller");
                         }
-                        
+
                         // Start the library refresh in the current thread
                         info!("Starting MPD library refresh...");
                         match library.refresh_library() {
@@ -652,21 +655,21 @@ impl MPDPlayerController {
                 Some(&running),
                 "MPD library initialization"
             );
-            
+
             if library_initialized.is_none() {
                 warn!("MPD library initialization failed after all retry attempts");
             }
         });
     }
-    
+
     /// Starts a background thread that listens for MPD events
     /// The thread will run until the running flag is set to false
     fn start_event_listener(&self, running: Arc<AtomicBool>, self_arc: Arc<Self>) -> thread::JoinHandle<()> {
         let hostname = self.hostname.clone();
         let port = self.port;
-        
+
         info!("Starting MPD event listener thread");
-        
+
         // Spawn a new thread for event listening
         thread::spawn(move || {
             info!("MPD event listener thread started");
@@ -688,46 +691,46 @@ impl MPDPlayerController {
                 },
                 Err(e) => {
                     warn!("Failed to connect to MPD for idle mode: {}", e);
-                    
+
                     // Increment attempt counter and check if we should give up
                     let attempts = player_arc.increment_reconnect_attempts();
                     let max_attempts = player_arc.get_max_reconnect_attempts();
-                    
+
                     if attempts >= max_attempts {
                         error!("Failed to connect to MPD after {} attempts, giving up", attempts);
                         player_arc.disable_connections(); // Mark connections as disabled
                         break; // Exit the loop and stop trying
                     }
-                    
+
                     info!("Will attempt to reconnect in 5 seconds (attempt {}/{})", attempts, max_attempts);
                     Self::wait_for_reconnect(&running);
                     continue;
                 }
             };
-            
+
             // Process events until connection fails or shutdown requested
             Self::process_events(idle_client, &running, &player_arc);
-            
+
             // If we get here, either there was a connection error or the connection was lost
             if running.load(Ordering::SeqCst) {
                 // Only wait for reconnect if we haven't exceeded the limit yet
                 let attempts = player_arc.increment_reconnect_attempts();
                 let max_attempts = player_arc.get_max_reconnect_attempts();
-                
+
                 if attempts >= max_attempts {
                     error!("Connection lost and maximum reconnection attempts ({}) reached, giving up", max_attempts);
                     player_arc.disable_connections(); // Mark connections as disabled
                     break;
                 }
-                
+
                 info!("Connection lost, will attempt to reconnect in 5 seconds (attempt {}/{})", attempts, max_attempts);
                 Self::wait_for_reconnect(&running);
             }
         }
     }
-    
+
     /// Process MPD events until connection fails or shutdown requested
-    fn process_events(mut idle_client: Client<TcpStream>, 
+    fn process_events(mut idle_client: Client<TcpStream>,
                      running: &Arc<AtomicBool>, player: &Arc<Self>) {
         while running.load(Ordering::SeqCst) {
             let subsystems = match idle_client.idle(&[
@@ -745,7 +748,7 @@ impl MPDPlayerController {
                     break;
                 }
             };
-            
+
             // Get the subsystems that changed
             let events = match subsystems.get() {
                 Ok(events) => events,
@@ -754,18 +757,18 @@ impl MPDPlayerController {
                     continue;
                 }
             };
-            
+
             if events.is_empty() {
                 continue;
             }
-            
+
             // Convert to a format we can log
             let events_str: Vec<String> = events.iter()
                 .map(|s| format!("{:?}", s))
                 .collect();
-            
+
             info!("Received MPD events: {}", events_str.join(", "));
-            
+
             // Create a fresh command connection for handling events
             if let Some(mut cmd_client) = player.get_fresh_client() {
                 // Process each subsystem event with our fresh connection
@@ -777,7 +780,7 @@ impl MPDPlayerController {
             }
         }
     }
-    
+
     /// Handle a specific MPD subsystem event
     fn handle_subsystem_event(subsystem: Subsystem, client: &mut Client<TcpStream>, player: Arc<Self>) {
         // mark player as alive
@@ -835,26 +838,26 @@ impl MPDPlayerController {
             }
         }
     }
-    
+
     /// Handle player events and log song information
     fn handle_player_event(client: &mut Client<TcpStream>, player: Arc<Self>) {
 
         // Update the song information and capabilities
         Self::update_song_from_mpd(client, player.clone());
-        
+
         // Get and update the player state
         match client.status() {
             Ok(status) => {
-                info!("Player status: {:?}, volume: {}%", 
+                info!("Player status: {:?}, volume: {}%",
                     status.state, status.volume);
-                
+
                 // Convert MPD state to our PlaybackState
                 let player_state = match status.state {
                     mpd::State::Play => PlaybackState::Playing,
                     mpd::State::Pause => PlaybackState::Paused,
                     mpd::State::Stop => PlaybackState::Stopped,
                 };
-                
+
                 // Notify listeners about the state change
                 debug!("MPDPlayerController forwarding state change notification: {}", player_state);
                 player.base.notify_state_changed(player_state);
@@ -866,7 +869,7 @@ impl MPDPlayerController {
             }
         }
     }
-    
+
     /// Wait for a short period before attempting to reconnect
     fn wait_for_reconnect(running: &Arc<AtomicBool>) {
         for _ in 0..50 {
@@ -876,17 +879,17 @@ impl MPDPlayerController {
             thread::sleep(Duration::from_millis(100));
         }
     }
-    
+
     /// Enhance a song with cached metadata if available
     fn enhance_song_with_cache(&self, mut song: Song) -> Song {
         // Check if the song has a stream URL that might be in our cache
         if let Some(ref stream_url) = song.stream_url {
             let cache_key = format!("mpd.urlmeta.{}", stream_url);
-            
+
             match attribute_cache::get::<HashMap<String, serde_json::Value>>(&cache_key) {
                 Ok(Some(cached_metadata)) => {
                     debug!("Found cached metadata for URL: {}", stream_url);
-                    
+
                     // Add all cached metadata to the song's metadata
                     for (key, value) in &cached_metadata {
                         song.metadata.insert(key.clone(), value.clone());
@@ -901,15 +904,15 @@ impl MPDPlayerController {
                 }
             }
         }
-        
+
         song
     }
-    
+
     /// Update the current song and notify listeners
     fn update_current_song(&self, song: Option<Song>) {
         // Enhance the song with cached metadata if available
         let enhanced_song = song.map(|s| self.enhance_song_with_cache(s));
-        
+
         // Store the new song
         let mut current_song = self.current_song.lock();
         let song_changed = match (&*current_song, &enhanced_song) {
@@ -918,12 +921,12 @@ impl MPDPlayerController {
             (Some(_), None) => true,
             (None, None) => false,
         };
-        
+
         if song_changed {
             debug!("Updating current song");
             // Update the stored song
             *current_song = enhanced_song.clone();
-            
+
             // Notify listeners of the song change
             drop(current_song); // Release the lock before notifying
             self.base.notify_song_changed(enhanced_song.as_ref());
@@ -938,10 +941,10 @@ impl MPDPlayerController {
             debug!("MPD connections are disabled due to max reconnection attempts reached");
             return None;
         }
-        
+
         debug!("Creating fresh MPD command connection");
         let addr = format!("{}:{}", self.hostname, self.port);
-        
+
         match Client::connect(&addr) {
             Ok(client) => {
                 debug!("Successfully created new MPD command connection");
@@ -955,9 +958,9 @@ impl MPDPlayerController {
             }
         }
     }
-    
+
     /// Update player state and capabilities based on the current MPD status
-    /// 
+    ///
     /// Updates the PlayerState object with current information from MPD including:
     /// - Playback state (playing/paused/stopped)
     /// - Volume
@@ -965,13 +968,13 @@ impl MPDPlayerController {
     /// - Shuffle status
     /// - Current position
     /// - Available capabilities (Next/Previous/Seek)
-    /// 
+    ///
     /// Returns an updated song with lyrics metadata if applicable
     fn update_state_and_capabilities_from_mpd(client: &mut Client<TcpStream>, player: Arc<Self>, song: Option<Song>) -> Option<Song> {
         debug!("Updating player state and capabilities based on MPD status");
-        
+
         let updated_song = song;
-        
+
         // Try to get current status to determine playlist position and other state info
         match client.status() {
             Ok(status) => {
@@ -985,13 +988,13 @@ impl MPDPlayerController {
                         mpd::State::Stop => PlaybackState::Stopped,
                     };
                     debug!("Updated player state: {:?}", current_state.state);
-                    
+
                     // Update volume if available (MPD returns -1 for no volume control)
                     if status.volume >= 0 {
                         current_state.volume = Some(status.volume as i32);
                         debug!("Updated volume: {}%", status.volume);
                     }
-                    
+
                     // Update loop mode based on MPD repeat and single flags
                     current_state.loop_mode = if status.repeat {
                         if status.single {
@@ -1003,84 +1006,84 @@ impl MPDPlayerController {
                         LoopMode::None
                     };
                     debug!("Updated loop mode: {:?}", current_state.loop_mode);
-                    
+
                     // Update shuffle status
                     current_state.shuffle = status.random;
                     debug!("Updated shuffle: {}", status.random);
-                    
+
                     // Update playback position if available
                     if let Some(elapsed) = status.elapsed {
                         current_state.position = Some(elapsed.as_secs_f64());
                         debug!("Updated position: {:.1}s", elapsed.as_secs_f64());
                     }
-                    
+
                     // Store current song information in player metadata if available
                     if let Some(sng) = &updated_song {
                         let mut metadata = HashMap::new();
-                        
+
                         if let Some(duration) = sng.duration {
                             if let Some(num) = serde_json::Number::from_f64(duration) {
                                 metadata.insert("duration".to_string(), serde_json::Value::Number(num));
                             }
                         }
-                        
+
                         if let Some(track) = sng.track_number {
                             metadata.insert("track".to_string(), serde_json::Value::Number(serde_json::Number::from(track)));
                         }
-                        
+
                         // Queue status info
                         metadata.insert("queue_length".to_string(), serde_json::Value::Number(serde_json::Number::from(status.queue_len)));
-                        
+
                         if let Some(song_id) = status.song.map(|s| s.id) {
                             // Convert the mpd::Id to a number that can be stored in metadata
                             let id_value = song_id.0; // Access the inner numeric value directly
                             metadata.insert("song_id".to_string(), serde_json::Value::Number(serde_json::Number::from(id_value)));
                         }
-                        
+
                         if let Some(song_pos) = status.song.map(|s| s.pos) {
                             metadata.insert("queue_position".to_string(), serde_json::Value::Number(serde_json::Number::from(song_pos)));
                         }
-                        
+
                         // Update metadata in state
                         current_state.metadata = metadata;
                     }
                 }
-                
+
                 // Total songs in playlist
                 let queue_len = status.queue_len;
-                
+
                 // Current song position (0-indexed)
                 let current_pos = status.song.map(|s| s.pos).unwrap_or(0);
-                
+
                 // Check if we have a next song
                 let has_next = current_pos + 1 < queue_len;
-                
+
                 // Check if we have a previous song
                 let has_previous = current_pos > 0;
-                
+
                 // Check if player is stopped - if so, disable stop/next/previous buttons
                 let is_stopped = status.state == mpd::State::Stop;
-                
-                debug!("Playlist status: position {}/{}, has_next={}, has_previous={}, is_stopped={}", 
+
+                debug!("Playlist status: position {}/{}, has_next={}, has_previous={}, is_stopped={}",
                        current_pos, queue_len, has_next, has_previous, is_stopped);
-                
+
                 // Update capabilities without sending notifications yet
                 let mut capabilities_changed = false;
-                
+
                 // Update Next capability if needed - disable when stopped
                 capabilities_changed |= player.base.set_capability(
-                    PlayerCapability::Next, 
-                    has_next && !is_stopped, 
+                    PlayerCapability::Next,
+                    has_next && !is_stopped,
                     false // Don't notify yet
                 );
-                
+
                 // Update Previous capability if needed - disable when stopped
                 capabilities_changed |= player.base.set_capability(
-                    PlayerCapability::Previous, 
-                    has_previous && !is_stopped, 
+                    PlayerCapability::Previous,
+                    has_previous && !is_stopped,
                     false // Don't notify yet
                 );
-                
+
                 // Update Stop capability - disable when already stopped
                 capabilities_changed |= player.base.set_capability(
                     PlayerCapability::Stop,
@@ -1099,10 +1102,10 @@ impl MPDPlayerController {
                             let is_stream = file_path.starts_with("http://") ||
                                            file_path.starts_with("https://") ||
                                            file_path.contains("://") ;
-                            
+
                             // Seekable if it has duration and is not a stream
                             let seekable = duration > 0.0 && !is_stream;
-                            debug!("Song seekability check: duration={:?}s, is_stream={}, seekable={}", 
+                            debug!("Song seekability check: duration={:?}s, is_stream={}, seekable={}",
                                   duration, is_stream, seekable);
                             seekable
                         } else {
@@ -1115,40 +1118,40 @@ impl MPDPlayerController {
                         false
                     }
                 };
-                
+
                 // Update Seek capability based on our assessment
                 capabilities_changed |= player.base.set_capability(
                     PlayerCapability::Seek,
                     is_seekable,
                     false // Don't notify yet
                 );
-                
+
                 // Update capabilities with a single notification
                 if capabilities_changed {
                     let current_caps = player.base.get_capabilities();
                     player.base.notify_capabilities_changed(&current_caps);
-                    debug!("Player capabilities updated: Next={}, Previous={}, Stop={}, Seek={}", 
+                    debug!("Player capabilities updated: Next={}, Previous={}, Stop={}, Seek={}",
                           has_next && !is_stopped, has_previous && !is_stopped, !is_stopped, is_seekable);
                 }
             },
             Err(e) => {
                 warn!("Failed to get MPD status for player state and capability update: {}", e);
-                
+
                 // If we can't get status, disable navigation capabilities
                 let mut capabilities_changed = false;
-                
+
                 capabilities_changed |= player.base.set_capability(
-                    PlayerCapability::Next, 
-                    false, 
+                    PlayerCapability::Next,
+                    false,
                     false // Don't notify yet
                 );
-                
+
                 capabilities_changed |= player.base.set_capability(
-                    PlayerCapability::Previous, 
-                    false, 
+                    PlayerCapability::Previous,
+                    false,
                     false // Don't notify yet
                 );
-                
+
                 capabilities_changed |= player.base.set_capability(
                     PlayerCapability::Stop,
                     false,
@@ -1161,13 +1164,13 @@ impl MPDPlayerController {
                     false,
                     false // Don't notify yet
                 );
-                
+
                 if capabilities_changed {
                     let current_caps = player.base.get_capabilities();
                     player.base.notify_capabilities_changed(&current_caps);
                     debug!("Player capabilities updated: disabled Next/Previous/Stop/Seek due to error");
                 }
-                
+
                 // Update state to reflect error condition
                 {
                     let mut current_state = player.current_state.lock();
@@ -1175,10 +1178,10 @@ impl MPDPlayerController {
                 }
             }
         }
-        
+
         updated_song
     }
-    
+
     /// Convert an MPD song to our Song format
     fn convert_mpd_song(mpd_song: mpd::Song, player_arc: Option<Arc<Self>>) -> Song {
         // Generate cover art URL using the file path/URI from MPD song
@@ -1200,40 +1203,40 @@ impl MPDPlayerController {
         } else {
             None
         };
-        
+
         // Extract album from tags
         let album = mpd_song.tags.iter()
             .find(|(tag, _)| tag == "Album")
             .map(|(_, value)| value.clone());
-            
+
         // Extract album artist from tags
         let album_artist = mpd_song.tags.iter()
             .find(|(tag, _)| tag == "AlbumArtist")
             .map(|(_, value)| value.clone());
-            
+
         // Extract genre from tags
         let genre = mpd_song.tags.iter()
             .find(|(tag, _)| tag == "Genre")
             .map(|(_, value)| value.clone());
-        
+
         // Handle title splitting for radio stations
         let (final_title, final_artist) = if mpd_song.artist.is_none() && mpd_song.title.is_some() {
             // No artist but has title - try to split it (common for web radio)
             let title_str = mpd_song.title.as_ref().unwrap();
-            
+
             if let Some(player) = &player_arc {
                 // Use the song URL as the splitter ID for radio stations
                 let splitter_id = &mpd_song.file;
-                
+
                 // Try to split the title using the manager
                 if let Some((artist, song)) = player.song_split_manager.split_song(splitter_id, title_str) {
                     debug!("Split title '{}' into artist='{}', song='{}'", title_str, artist, song);
-                    
+
                     // Save the splitter state after successful split
                     if let Err(e) = player.song_split_manager.save(splitter_id) {
                         debug!("Failed to save splitter state for '{}': {}", splitter_id, e);
                     }
-                    
+
                     (Some(song), Some(artist))
                 } else {
                     debug!("Could not split title '{}', keeping as-is", title_str);
@@ -1247,7 +1250,7 @@ impl MPDPlayerController {
             // Artist exists or no title, use as-is
             (mpd_song.title.clone(), mpd_song.artist.clone())
         };
-            
+
         Song {
             title: final_title,
             artist: final_artist,
@@ -1267,25 +1270,25 @@ impl MPDPlayerController {
             metadata: HashMap::new(),
         }
     }
-    
+
     /// Update the player's current song from MPD
     fn update_song_from_mpd(client: &mut Client<TcpStream>, player: Arc<Self>) {
         // Variable to store the obtained song for later use in updating capabilities
         let mut obtained_song: Option<Song> = None;
-        
+
         // Use the provided client connection
         match client.currentsong() {
             Ok(song_opt) => {
                 if let Some(mpd_song) = song_opt {
                     // Convert MPD song to our Song format
                     let mut song = Self::convert_mpd_song(mpd_song, Some(player.clone()));
-                    
+
                     // Check for lyrics and add to song metadata
                     if let Some(library) = player.get_library() {
                         if let Some(music_dir) = library.get_music_directory() {
                             use crate::helpers::lyrics::{MPDLyricsProvider, LyricsProvider};
                             let lyrics_provider = MPDLyricsProvider::new(music_dir.clone());
-                            
+
                             // Try to find lyrics by URL (file path) from stream_url
                             let has_lyrics = if let Some(file_path) = &song.stream_url {
                                 debug!("Checking for lyrics for file: {}", file_path);
@@ -1303,11 +1306,11 @@ impl MPDPlayerController {
                                 debug!("No stream_url available for lyrics check");
                                 false
                             };
-                            
+
                             if has_lyrics {
                                 song.metadata.insert("lyrics_available".to_string(), serde_json::Value::Bool(true));
                                 debug!("Added lyrics_available=true to song metadata");
-                                
+
                                 // Add API endpoint for lyrics by song ID
                                 if let (Some(artist), Some(title), Some(file_path)) = (&song.artist, &song.title, &song.stream_url) {
                                     // Use the encoded file path as the song ID for the lyrics API
@@ -1315,20 +1318,20 @@ impl MPDPlayerController {
                                     let lyrics_url = format!("{}/lyrics/mpd/{}", crate::constants::API_PREFIX, encoded_file_path);
                                     song.metadata.insert("lyrics_url".to_string(), serde_json::Value::String(lyrics_url));
                                     debug!("Added lyrics_url with song ID to metadata: {}", encoded_file_path);
-                                    
+
                                     // Also add the metadata that can be used for the POST request
                                     let mut lyrics_metadata = serde_json::Map::new();
                                     lyrics_metadata.insert("artist".to_string(), serde_json::Value::String(artist.clone()));
                                     lyrics_metadata.insert("title".to_string(), serde_json::Value::String(title.clone()));
-                                    
+
                                     if let Some(duration) = song.duration {
                                         lyrics_metadata.insert("duration".to_string(), serde_json::Value::Number(serde_json::Number::from_f64(duration).unwrap_or(serde_json::Number::from(0))));
                                     }
-                                    
+
                                     if let Some(album) = &song.album {
                                         lyrics_metadata.insert("album".to_string(), serde_json::Value::String(album.clone()));
                                     }
-                                    
+
                                     song.metadata.insert("lyrics_metadata".to_string(), serde_json::Value::Object(lyrics_metadata));
                                     debug!("Added lyrics_metadata object to song metadata");
                                 }
@@ -1338,13 +1341,13 @@ impl MPDPlayerController {
                             }
                         }
                     }
-                    
-                    info!("Now playing: {} - {}", 
+
+                    info!("Now playing: {} - {}",
                         song.title.as_deref().unwrap_or("Unknown"),
                         song.artist.as_deref().unwrap_or("Unknown"));
-                    
+
                     debug!("Song metadata contains {} entries: {:?}", song.metadata.len(), song.metadata.keys().collect::<Vec<_>>());
-                    
+
                     // Log additional song details if available
                     if let Some(duration) = song.duration {
                         debug!("Duration: {:.1} seconds", duration);
@@ -1352,7 +1355,7 @@ impl MPDPlayerController {
                     if let Some(track) = song.track_number {
                         debug!("Position: {} in queue", track);
                     }
-                    
+
                     // Store the song for capability update (with lyrics metadata already added)
                     obtained_song = Some(song.clone());
                 } else {
@@ -1361,25 +1364,25 @@ impl MPDPlayerController {
             },
             Err(e) => warn!("Failed to get current song information: {}", e),
         }
-        
+
         // Update player capabilities based on the current playlist state and the song we just got
         let final_song = Self::update_state_and_capabilities_from_mpd(client, player.clone(), obtained_song);
-        
+
         // Update stored song and notify listeners with the final version
         player.update_current_song(final_song);
     }
 
     /// Add a song URL to the MPD queue
-    /// 
+    ///
     /// # Arguments
     /// * `url` - The URL/path of the song to add
     /// * `at_beginning` - If Some(true), insert at the beginning of the queue, otherwise append to the end
-    /// 
+    ///
     /// # Returns
     /// * `bool` - true if the operation was successful, false otherwise
     pub fn queue_url(&self, url: &str, at_beginning: Option<bool>) -> bool {
         debug!("Adding URL to queue: {}, at_beginning: {:?}", url, at_beginning);
-        
+
         if let Some(mut client) = self.get_fresh_client() {
             // Use the appropriate method based on whether to add at beginning or end
             let result = if at_beginning.unwrap_or(false) {
@@ -1401,7 +1404,7 @@ impl MPDPlayerController {
                 };
                 client.push(&song_path).map(|_id| 0) // Convert Result<Id, Error> to Result<usize, Error>
             };
-            
+
             match result {
                 Ok(_) => {
                     debug!("Successfully added URL to queue: {}", url);
@@ -1433,10 +1436,10 @@ impl MPDPlayerController {
     /// Check MPD database update status and manage background job
     fn check_database_update_status(&self, status: &mpd::Status) {
         let job_id = "mpd_database_update";
-        
+
         // Check if MPD is currently updating the database
         let is_updating = status.updating_db.is_some();
-        
+
         {
             let mut current_job_guard = self.current_update_job_id.lock();
             let has_active_job = current_job_guard.is_some();
@@ -1484,7 +1487,7 @@ impl PlayerController for MPDPlayerController {
             fn get_last_seen(&self) -> Option<std::time::SystemTime>;
         }
     }
-    
+
     fn get_song(&self) -> Option<Song> {
         debug!("Getting current song from stored value");
         // Return a clone of the stored song with any fresh cache enhancements
@@ -1492,8 +1495,8 @@ impl PlayerController for MPDPlayerController {
         if let Some(song) = song_clone {
             // Apply fresh cache enhancements in case cache was updated after the song was stored
             let enhanced_song = self.enhance_song_with_cache(song);
-            debug!("Returning song with {} metadata entries: {:?}", 
-                   enhanced_song.metadata.len(), 
+            debug!("Returning song with {} metadata entries: {:?}",
+                   enhanced_song.metadata.len(),
                    enhanced_song.metadata.keys().collect::<Vec<_>>());
             Some(enhanced_song)
         } else {
@@ -1501,7 +1504,7 @@ impl PlayerController for MPDPlayerController {
             None
         }
     }
-    
+
     fn get_loop_mode(&self) -> LoopMode {
         trace!("MPDController: get_loop_mode called");
         if let Some(mut mpd_client) = self.get_fresh_client() {
@@ -1516,7 +1519,7 @@ impl PlayerController for MPDPlayerController {
         debug!("Failed to get loop mode from MPD");
         LoopMode::None
     }
-    
+
     fn get_playback_state(&self) -> PlaybackState {
         trace!("MPDController: get_playback_state called");
         if let Some(mut mpd_client) = self.get_fresh_client() {
@@ -1531,7 +1534,7 @@ impl PlayerController for MPDPlayerController {
         debug!("Failed to get state from MPD");
         PlaybackState::Unknown
     }
-    
+
     fn get_position(&self) -> Option<f64> {
         trace!("MPDController: get_position called");
         if let Some(mut mpd_client) = self.get_fresh_client() {
@@ -1545,7 +1548,7 @@ impl PlayerController for MPDPlayerController {
         debug!("Failed to get position from MPD");
         None
     }
-    
+
     fn get_shuffle(&self) -> bool {
         trace!("MPDController: get_shuffle called");
         if let Some(mut mpd_client) = self.get_fresh_client() {
@@ -1556,24 +1559,24 @@ impl PlayerController for MPDPlayerController {
         debug!("Failed to get shuffle status from MPD");
         false
     }
-    
+
     fn get_player_name(&self) -> String {
         "mpd".to_string()
     }
-    
+
     fn get_aliases(&self) -> Vec<String> {
         vec!["mpd".to_string()]
     }
-    
+
     fn get_player_id(&self) -> String {
         format!("{}:{}", self.hostname, self.port)
     }
-    
+
     fn send_command(&self, command: PlayerCommand) -> bool {
         info!("Sending command to MPD: {}", command);
-        
+
         let mut success = false;
-        
+
         // Create a fresh connection for each command
         if let Some(mut client) = self.get_fresh_client() {
             // Process the command based on its type
@@ -1585,7 +1588,7 @@ impl PlayerController for MPDPlayerController {
                         debug!("MPD playback started");
                     }
                 },
-                
+
                 PlayerCommand::Pause => {
                     // Pause playback
                     success = client.pause(true).is_ok();
@@ -1593,7 +1596,7 @@ impl PlayerController for MPDPlayerController {
                         debug!("MPD playback paused");
                     }
                 },
-                
+
                 PlayerCommand::PlayPause => {
                     // Toggle between play and pause
                     match client.status() {
@@ -1618,7 +1621,7 @@ impl PlayerController for MPDPlayerController {
                         }
                     }
                 },
-                
+
                 PlayerCommand::Stop => {
                     // Stop playback
                     success = client.stop().is_ok();
@@ -1628,7 +1631,7 @@ impl PlayerController for MPDPlayerController {
                         warn!("Failed to stop MPD playback");
                     }
                 },
-                
+
                 PlayerCommand::Next => {
                     // Skip to next track
                     success = client.next().is_ok();
@@ -1636,7 +1639,7 @@ impl PlayerController for MPDPlayerController {
                         debug!("Skipped to next track in MPD");
                     }
                 },
-                
+
                 PlayerCommand::Previous => {
                     // Go back to previous track
                     success = client.prev().is_ok();
@@ -1644,7 +1647,7 @@ impl PlayerController for MPDPlayerController {
                         debug!("Went back to previous track in MPD");
                     }
                 },
-                
+
                 PlayerCommand::SetLoopMode(mode) => {
                     // Map our loop mode to MPD repeat/single settings
                     match mode {
@@ -1677,7 +1680,7 @@ impl PlayerController for MPDPlayerController {
                         },
                     }
                 },
-                
+
                 PlayerCommand::Seek(position) => {
                     // Seek to a position in seconds
                     match client.currentsong() {
@@ -1686,7 +1689,7 @@ impl PlayerController for MPDPlayerController {
                                 if let Some(place) = song.place {
                                     // Use the song's position in the queue
                                     // Position needs to be f64 to satisfy ToSeconds trait
-                                    let position_seconds: f64 = position; 
+                                    let position_seconds: f64 = position;
                                     success = client.seek(place.pos, position_seconds).is_ok();
                                     if success {
                                         debug!("Sought to position {}s in current track", position);
@@ -1703,7 +1706,7 @@ impl PlayerController for MPDPlayerController {
                         }
                     }
                 },
-                
+
                 PlayerCommand::SetRandom(enabled) => {
                     // Set shuffle/random mode
                     success = client.random(enabled).is_ok();
@@ -1711,43 +1714,43 @@ impl PlayerController for MPDPlayerController {
                         debug!("MPD random mode set to: {}", enabled);
                     }
                 },
-                
+
                 PlayerCommand::Kill => {
                     // Kill the MPD process via the kill command
                     // Note: this requires the MPD server to have proper permissions configured
                     success = client.kill().is_ok();
                     if success {
                         debug!("MPD kill command sent successfully");
-                        
+
                         // Stop the player controller since MPD process is now killed
                         self.stop();
                     } else {
                         warn!("Failed to kill MPD process, might not have permission");
                     }
                 },
-                
+
                 PlayerCommand::QueueTracks { uris, insert_at_beginning, metadata } => {
-                    debug!("Adding {} tracks to MPD queue at {}", uris.len(), 
+                    debug!("Adding {} tracks to MPD queue at {}", uris.len(),
                           if insert_at_beginning { "beginning" } else { "end" });
-                    
+
                     if uris.is_empty() {
                         debug!("No URIs provided to queue");
                         success = true; // Nothing to do, but not an error
                     } else {
                         let mut all_success = true;
-                        
+
                         // Process each URI with its metadata using our new queue_url function
                         for (i, uri) in uris.iter().enumerate() {
                             // Get metadata for this URI if available
                             let track_metadata = metadata.get(i).and_then(|m| m.as_ref());
-                            
+
                             // Store metadata in cache if provided
                             if let Some(meta) = track_metadata {
                                 if !meta.metadata.is_empty() {
-                                    debug!("Caching metadata for URI {}: {:?}", 
+                                    debug!("Caching metadata for URI {}: {:?}",
                                            uri, meta.metadata);
                                     let cache_key = format!("mpd.urlmeta.{}", uri);
-                                    
+
                                     match attribute_cache::set(&cache_key, &meta.metadata) {
                                         Ok(_) => {
                                             debug!("Successfully cached metadata for URI: {}", uri);
@@ -1758,47 +1761,47 @@ impl PlayerController for MPDPlayerController {
                                     }
                                 }
                             }
-                            
+
                             let result = self.queue_url(uri, Some(insert_at_beginning));
                             if !result {
                                 all_success = false;
                             }
                         }
-                        
+
                         success = all_success;
                     }
-                    
+
                     if success {
                         debug!("Successfully added all tracks to MPD queue");
                     } else {
                         warn!("Failed to add some or all tracks to MPD queue");
                     }
                 },
-                    
+
                 PlayerCommand::RemoveTrack(position) => {
                     debug!("Removing track at position {} from MPD queue", position);
-                    
+
                     // Remove the track at the specified position
                     let result = client.delete(position as u32);
-                    
+
                     if let Err(e) = result {
                         warn!("Failed to remove track at position {}: {}", position, e);
                         success = false;
                     } else {
                         debug!("Successfully removed track at position {}", position);
                         success = true;
-                        
+
                         // Notify listeners that the queue has been modified
                         self.base.notify_queue_changed();
                     }
                 },
                   PlayerCommand::ClearQueue => {
                     debug!("Clearing MPD queue");
-                    
+
                     success = client.clear().is_ok();
                     if success {
                         debug!("Successfully cleared MPD queue");
-                        
+
                         // Notify listeners that the queue has been cleared
                         self.base.notify_queue_changed();
                     } else {
@@ -1806,7 +1809,7 @@ impl PlayerController for MPDPlayerController {
                     }
                 },                  PlayerCommand::PlayQueueIndex(index) => {
                     debug!("Playing track at index {} in MPD queue", index);
-                    
+
                     // Use MPD's switch function to start playback from a specific position
                     // This plays the song at the specified position in the playlist (0-based)
                     success = client.switch(index as u32).is_ok();
@@ -1817,7 +1820,7 @@ impl PlayerController for MPDPlayerController {
                     }
                 },
             }
-            
+
             // If the command was successful, we may want to update our stored state
             if success {
                 // We'll update our state asynchronously via the MPD idle events
@@ -1825,10 +1828,10 @@ impl PlayerController for MPDPlayerController {
         } else {
             warn!("Cannot send command to MPD: failed to create a fresh connection");
         }
-        
+
         success
     }
-    
+
     fn as_any(&self) -> &dyn Any {
         self
     }
@@ -1849,10 +1852,10 @@ impl PlayerController for MPDPlayerController {
                 let _ = handle.join();
             }
         }
-        
+
         // Create a new Arc<Self> for thread-safe sharing of player instance
         let player_arc = Arc::new(self.clone());
-        
+
         // Create a new running flag
         let running = Arc::new(AtomicBool::new(true));
           // Try to get the current song from MPD first
@@ -1860,11 +1863,11 @@ impl PlayerController for MPDPlayerController {
             // Initialize song state and capabilities
             info!("Fetching initial song state from MPD");
             Self::update_song_from_mpd(&mut client, player_arc.clone());
-            
+
             // Load MPD library if configured to do so
             if self.load_mpd_library {
                 info!("Starting MPD library initialization with retry mechanism");
-                
+
                 // Use the new retry mechanism for library initialization
                 Self::initialize_library_with_retry(player_arc.clone(), running.clone());
             } else {
@@ -1872,7 +1875,7 @@ impl PlayerController for MPDPlayerController {
             }
         } else {
             warn!("Could not connect to MPD to fetch initial song state");
-            
+
             // Even if we can't connect initially, still try to initialize the library with retry
             // if library loading is enabled
             if self.load_mpd_library {
@@ -1880,7 +1883,7 @@ impl PlayerController for MPDPlayerController {
                 Self::initialize_library_with_retry(player_arc.clone(), running.clone());
             }
         }
-        
+
         // Store the running flag in the MPD player instance
         {
             let mut state = PLAYER_STATE.lock();
@@ -1897,7 +1900,7 @@ impl PlayerController for MPDPlayerController {
             true
         }
     }
-    
+
     fn stop(&self) -> bool {
         info!("Stopping MPD player controller");
 
@@ -1920,7 +1923,7 @@ impl PlayerController for MPDPlayerController {
         debug!("No active event listener thread found");
         true
     }
-    
+
     // Implement the get_library method for MPDPlayerController
     fn get_library(&self) -> Option<Box<dyn LibraryInterface>> {
         if let Some(library) = self.get_library() {
@@ -1932,38 +1935,38 @@ impl PlayerController for MPDPlayerController {
 
     fn get_queue(&self) -> Vec<Track> {
         debug!("MPDController: get_queue called - fetching playlist");
-        
+
         // Get a fresh client connection
         if let Some(mut client) = self.get_fresh_client() {
             // Use the queue method to get all songs in the current queue
             match client.queue() {
                 Ok(songs) => {
                     debug!("Retrieved {} songs from MPD queue", songs.len());
-                    
+
                     // Convert MPD songs to our Track format
                     let tracks: Vec<Track> = songs.into_iter()
                         .map(|mpd_song| {
                             // Extract useful information from the song
                             let title = mpd_song.title.unwrap_or_else(|| "Unknown Title".to_string());
                             let artist = mpd_song.artist;
-                            
+
                             // Create a Track with just the name
                             let mut track = Track::with_name(title);
-                            
+
                             // Set artist if available
                             if let Some(artist_name) = artist {
                                 track.artist = Some(artist_name);
                             }
-                            
+
                             // Set URI if available
                             if !mpd_song.file.is_empty() {
                                 track.uri = Some(mpd_song.file);
                             }
-                            
+
                             track
                         })
                         .collect();
-                    
+
                     return tracks;
                 },
                 Err(e) => {
@@ -1973,7 +1976,7 @@ impl PlayerController for MPDPlayerController {
         } else {
             warn!("Failed to create MPD client connection for get_queue");
         }
-        
+
         // Return empty vector if anything fails
         Vec::new()
     }
@@ -2102,20 +2105,20 @@ mod tests {
     fn test_mpd_no_cached_metadata() {
         // Create a temporary directory for the test cache
         let temp_dir = TempDir::new().expect("Failed to create temp directory");
-        
+
         // Initialize AttributeCache with the temporary directory
         attribute_cache::AttributeCache::initialize_global(temp_dir.path()).expect("Failed to configure cache");
-        
+
         let mut song = Song::default();
         song.stream_url = Some("http://example.com/not-cached.mp3".to_string());
         song.metadata.insert("existing".to_string(), Value::String("data".to_string()));
-        
+
         // Create an MPD player controller
         let player = MPDPlayerController::with_connection("localhost", 6600);
-        
+
         // Enhance the song (should not find any cached metadata)
         let enhanced_song = player.enhance_song_with_cache(song);
-        
+
         // Verify that no cached metadata was added, but existing metadata is preserved
         assert_eq!(enhanced_song.metadata.len(), 1);
         assert_eq!(enhanced_song.metadata.get("existing"), Some(&Value::String("data".to_string())));
@@ -2145,6 +2148,28 @@ mod tests {
         assert_eq!(player.port(), 7700);
         assert_eq!(player.get_player_id(), "mpd.local:7700");
         assert_eq!(player.base.get_player_id(), "mpd.local:7700");
+    }
+
+    #[test]
+    fn regression_set_connection_reenables_disabled_connections() {
+        let mut player = MPDPlayerController::with_connection("localhost", 6600);
+
+        player.disable_connections();
+        assert!(player.are_connections_disabled());
+
+        player.set_connection("mpd.local", 7700);
+        assert!(!player.are_connections_disabled());
+    }
+
+    #[test]
+    fn regression_set_connection_resets_reconnect_counter() {
+        let mut player = MPDPlayerController::with_connection("localhost", 6600);
+
+        assert_eq!(player.increment_reconnect_attempts(), 1);
+        assert_eq!(player.increment_reconnect_attempts(), 2);
+
+        player.set_connection("mpd.local", 7700);
+        assert_eq!(*player.reconnect_attempts.lock(), 0);
     }
 
     #[test]

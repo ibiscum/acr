@@ -2,6 +2,14 @@ use log::{debug, info, warn};
 use std::process::Command;
 use std::io;
 
+#[cfg(unix)]
+fn is_command_available(command: &str, args: &[&str]) -> bool {
+    match Command::new(command).args(args).output() {
+        Ok(output) => output.status.success(),
+        Err(_) => false,
+    }
+}
+
 /// Systemd actions
 #[derive(Debug, Clone, PartialEq)]
 pub enum SystemdAction {
@@ -21,11 +29,11 @@ impl std::fmt::Display for SystemdAction {
 }
 
 /// Kill processes by name using platform-appropriate commands
-/// 
+///
 /// # Arguments
 /// * `process_name` - The name of the process to kill
 /// * `force` - If true, sends SIGKILL (TERM on Unix) or force kill on Windows
-/// 
+///
 /// # Returns
 /// * `Ok(true)` if the kill command was executed successfully
 /// * `Ok(false)` if no processes were found or killed
@@ -36,9 +44,9 @@ pub fn pkill(process_name: &str, force: bool) -> Result<bool, io::Error> {
     #[cfg(unix)]
     {
         let signal = if force { "-KILL" } else { "-TERM" };
-        
+
         debug!("Using pkill with signal {} for process: {}", signal, process_name);
-        
+
         let output = Command::new("pkill")
             .arg(signal)
             .arg("-f")  // Match against full command line
@@ -55,7 +63,7 @@ pub fn pkill(process_name: &str, force: bool) -> Result<bool, io::Error> {
                 info!("No processes found matching: {}", process_name);
                 Ok(false)
             } else {
-                warn!("pkill command failed with exit code: {:?}, stderr: {}", 
+                warn!("pkill command failed with exit code: {:?}, stderr: {}",
                       output.status.code(), stderr);
                 Ok(false)
             }
@@ -65,15 +73,15 @@ pub fn pkill(process_name: &str, force: bool) -> Result<bool, io::Error> {
     #[cfg(windows)]
     {
         let force_flag = if force { "/F" } else { "" };
-        
+
         debug!("Using taskkill {} for process: {}", force_flag, process_name);
-        
+
         // Build command args
         let mut args = vec!["/IM", process_name];
         if force {
             args.push("/F");
         }
-        
+
         let output = Command::new("taskkill")
             .args(&args)
             .output()?;
@@ -84,13 +92,13 @@ pub fn pkill(process_name: &str, force: bool) -> Result<bool, io::Error> {
         } else {
             let stderr = String::from_utf8_lossy(&output.stderr);
             let stdout = String::from_utf8_lossy(&output.stdout);
-            
+
             // Check if it's a "process not found" error
             if stderr.contains("not found") || stdout.contains("not found") {
                 info!("No processes found matching: {}", process_name);
                 return Ok(false);
             } else {
-                warn!("taskkill command failed with exit code: {:?}, stderr: {}, stdout: {}", 
+                warn!("taskkill command failed with exit code: {:?}, stderr: {}, stdout: {}",
                       output.status.code(), stderr, stdout);
                 return Ok(false);
             }
@@ -99,11 +107,11 @@ pub fn pkill(process_name: &str, force: bool) -> Result<bool, io::Error> {
 }
 
 /// Manage systemd units (Linux only)
-/// 
+///
 /// # Arguments
 /// * `unit_name` - The name of the systemd unit
 /// * `action` - The action to perform (start, stop, restart)
-/// 
+///
 /// # Returns
 /// * `Ok(true)` if the systemd command was executed successfully
 /// * `Ok(false)` if the command failed but executed
@@ -114,7 +122,7 @@ pub fn systemd(unit_name: &str, action: SystemdAction) -> Result<bool, io::Error
     #[cfg(unix)]
     {
         debug!("Using systemctl {} for unit: {}", action, unit_name);
-        
+
         let output = Command::new("systemctl")
             .arg(action.to_string())
             .arg(unit_name)
@@ -126,8 +134,8 @@ pub fn systemd(unit_name: &str, action: SystemdAction) -> Result<bool, io::Error
         } else {
             let stderr = String::from_utf8_lossy(&output.stderr);
             let stdout = String::from_utf8_lossy(&output.stdout);
-            
-            warn!("systemctl {} failed for unit: {}, exit code: {:?}, stderr: {}, stdout: {}", 
+
+            warn!("systemctl {} failed for unit: {}, exit code: {:?}, stderr: {}, stdout: {}",
                   action, unit_name, output.status.code(), stderr, stdout);
             Ok(false)
         }
@@ -136,16 +144,16 @@ pub fn systemd(unit_name: &str, action: SystemdAction) -> Result<bool, io::Error
     #[cfg(not(unix))]
     {
         error!("Systemd is only available on Unix-like systems");
-        Err(io::Error::new(io::ErrorKind::Unsupported, 
+        Err(io::Error::new(io::ErrorKind::Unsupported,
                           "Systemd is only available on Unix-like systems"))
     }
 }
 
 /// Check if a systemd unit is active (Linux only)
-/// 
+///
 /// # Arguments
 /// * `unit_name` - The name of the systemd unit
-/// 
+///
 /// # Returns
 /// * `Ok(true)` if the unit is active
 /// * `Ok(false)` if the unit is not active
@@ -170,32 +178,22 @@ pub fn is_systemd_unit_active(unit_name: &str) -> Result<bool, io::Error> {
     #[cfg(not(unix))]
     {
         error!("Systemd is only available on Unix-like systems");
-        Err(io::Error::new(io::ErrorKind::Unsupported, 
+        Err(io::Error::new(io::ErrorKind::Unsupported,
                           "Systemd is only available on Unix-like systems"))
     }
 }
 
 /// Check if systemctl command is available on the system
-/// 
+///
 /// # Returns
 /// * `true` if systemctl is available
 /// * `false` if systemctl is not available
 pub fn is_systemd_available() -> bool {
     #[cfg(unix)]
     {
-        match Command::new("which")
-            .arg("systemctl")
-            .output() {
-        Ok(output) => {
-            let available = output.status.success();
-            debug!("Systemd available: {}", available);
-            available
-        }
-        Err(_) => {
-            debug!("Cannot check systemd availability");
-            false
-        }
-        }
+        let available = is_command_available("systemctl", &["--version"]);
+        debug!("Systemd available: {}", available);
+        available
     }
 
     #[cfg(not(unix))]
@@ -205,10 +203,10 @@ pub fn is_systemd_available() -> bool {
 }
 
 /// Get the status of a systemd unit (Linux only)
-/// 
+///
 /// # Arguments
 /// * `unit_name` - The name of the systemd unit
-/// 
+///
 /// # Returns
 /// * `Ok(String)` containing the status output
 /// * `Err(io::Error)` if the command failed to execute or systemd is not available
@@ -230,7 +228,7 @@ pub fn get_systemd_unit_status(unit_name: &str) -> Result<String, io::Error> {
     #[cfg(not(unix))]
     {
         error!("Systemd is only available on Unix-like systems");
-        Err(io::Error::new(io::ErrorKind::Unsupported, 
+        Err(io::Error::new(io::ErrorKind::Unsupported,
                           "Systemd is only available on Unix-like systems"))
     }
 }
@@ -250,6 +248,18 @@ mod tests {
     fn test_systemd_available() {
         // Just test that the function doesn't panic
         let _available = is_systemd_available();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn regression_is_command_available_detects_existing_command() {
+        assert!(is_command_available("true", &[]));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn regression_is_command_available_detects_missing_command() {
+        assert!(!is_command_available("__definitely_missing_command__", &[]));
     }
 
     #[cfg(unix)]

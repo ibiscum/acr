@@ -113,10 +113,10 @@ pub trait PlayerController: Send + Sync {
     ///
     /// `true` if the update was successfully processed, `false` otherwise
     fn receive_update(&self, update: PlayerUpdate) -> bool {
-        // Default implementation does nothing and returns true
+        // Default implementation does nothing and returns false.
         // Player implementations should override this if they support receiving updates
         debug!("Player {} received update {:?}, but does not implement receive_update", self.get_player_name(), update);
-        true
+        false
     }
 
     /// Get the library interface for this player, if available
@@ -562,5 +562,64 @@ impl BasePlayerController {
     /// Implementation for the PlayerController trait
     pub fn get_position(&self) -> Option<f64> {
         self.player_state.read().position
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct DefaultUpdatePlayer;
+
+    impl PlayerController for DefaultUpdatePlayer {
+        fn get_capabilities(&self) -> PlayerCapabilitySet { PlayerCapabilitySet::empty() }
+        fn get_song(&self) -> Option<Song> { None }
+        fn get_queue(&self) -> Vec<Track> { Vec::new() }
+        fn get_loop_mode(&self) -> LoopMode { LoopMode::None }
+        fn get_playback_state(&self) -> PlaybackState { PlaybackState::Stopped }
+        fn get_position(&self) -> Option<f64> { None }
+        fn get_shuffle(&self) -> bool { false }
+        fn get_player_name(&self) -> String { "default-update-player".to_string() }
+        fn get_player_id(&self) -> String { "default-update-player-id".to_string() }
+        fn get_last_seen(&self) -> Option<SystemTime> { None }
+        fn send_command(&self, _command: PlayerCommand) -> bool { false }
+        fn as_any(&self) -> &dyn Any { self }
+        fn start(&self) -> bool { true }
+        fn stop(&self) -> bool { true }
+    }
+
+    struct OverriddenUpdatePlayer;
+
+    impl PlayerController for OverriddenUpdatePlayer {
+        fn get_capabilities(&self) -> PlayerCapabilitySet { PlayerCapabilitySet::empty() }
+        fn get_song(&self) -> Option<Song> { None }
+        fn get_queue(&self) -> Vec<Track> { Vec::new() }
+        fn get_loop_mode(&self) -> LoopMode { LoopMode::None }
+        fn get_playback_state(&self) -> PlaybackState { PlaybackState::Stopped }
+        fn get_position(&self) -> Option<f64> { Some(0.0) }
+        fn get_shuffle(&self) -> bool { false }
+        fn get_player_name(&self) -> String { "overridden-update-player".to_string() }
+        fn get_player_id(&self) -> String { "overridden-update-player-id".to_string() }
+        fn get_last_seen(&self) -> Option<SystemTime> { None }
+        fn send_command(&self, _command: PlayerCommand) -> bool { true }
+        fn as_any(&self) -> &dyn Any { self }
+        fn start(&self) -> bool { true }
+        fn stop(&self) -> bool { true }
+
+        fn receive_update(&self, _update: PlayerUpdate) -> bool { true }
+    }
+
+    #[test]
+    fn regression_default_receive_update_returns_false_when_unimplemented() {
+        let player = DefaultUpdatePlayer;
+        let ok = player.receive_update(PlayerUpdate::ShuffleChanged(true));
+        assert!(!ok);
+    }
+
+    #[test]
+    fn regression_receive_update_override_can_report_success() {
+        let player = OverriddenUpdatePlayer;
+        let ok = player.receive_update(PlayerUpdate::ShuffleChanged(true));
+        assert!(ok);
     }
 }

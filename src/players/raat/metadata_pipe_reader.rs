@@ -215,7 +215,8 @@ impl MetadataPipeReader {
 
                 // Set player state from the JSON data
                 if let Some(state_str) = json.get("state").and_then(|v| v.as_str()) {
-                    player.state = match state_str {
+                    let normalized_state = state_str.trim().to_ascii_lowercase();
+                    player.state = match normalized_state.as_str() {
                         "playing" => PlaybackState::Playing,
                         "paused" => PlaybackState::Paused,
                         "stopped" => PlaybackState::Stopped,
@@ -224,10 +225,9 @@ impl MetadataPipeReader {
                 }
 
                 // Set player position from seek value
-                if let Some(seek) = json.get("seek").and_then(|v| v.as_i64()) {
-                    let position = seek as f64;
+                if let Some(seek) = json.get("seek").and_then(|v| v.as_f64().or_else(|| v.as_i64().map(|n| n as f64))) {
                     // Convert to seconds if in milliseconds (RAAT sometimes provides milliseconds)
-                    let position = if position > 10000.0 { position / 1000.0 } else { position };
+                    let position = if seek.abs() > 10000.0 { seek / 1000.0 } else { seek };
                     player.position = Some(position);
                 }
 
@@ -390,4 +390,46 @@ impl MetadataPipeReader {
         }
     }
 
+}
+
+#[cfg(test)]
+mod tests {
+    use super::MetadataPipeReader;
+    use crate::data::PlaybackState;
+
+    #[test]
+    fn regression_parse_line_normalizes_state_casing_and_whitespace() {
+        let line = r#"{
+            "state": "  PlAyInG ",
+            "seek": 42,
+            "now_playing": {"title": "Track"}
+        }"#;
+
+        let (_, player, _, _) = MetadataPipeReader::parse_line(line).expect("metadata line should parse");
+        assert_eq!(player.state, PlaybackState::Playing);
+    }
+
+    #[test]
+    fn regression_parse_line_accepts_float_seek_values() {
+        let line = r#"{
+            "state": "paused",
+            "seek": 12.5,
+            "now_playing": {"title": "Track"}
+        }"#;
+
+        let (_, player, _, _) = MetadataPipeReader::parse_line(line).expect("metadata line should parse");
+        assert_eq!(player.position, Some(12.5));
+    }
+
+    #[test]
+    fn regression_parse_line_converts_large_seek_values_from_milliseconds() {
+        let line = r#"{
+            "state": "paused",
+            "seek": 12500,
+            "now_playing": {"title": "Track"}
+        }"#;
+
+        let (_, player, _, _) = MetadataPipeReader::parse_line(line).expect("metadata line should parse");
+        assert_eq!(player.position, Some(12.5));
+    }
 }

@@ -50,15 +50,15 @@ fn is_placeholder_api_key(api_key: &str) -> bool {
 }
 
 /// Initialize TheAudioDB module from configuration
-pub fn initialize_from_config(config: &serde_json::Value) {    
+pub fn initialize_from_config(config: &serde_json::Value) {
     if let Some(audiodb_config) = get_service_config(config, "theaudiodb") {
         // Check if enabled flag exists and is set to true
         let enabled = audiodb_config.get("enable")
             .and_then(|v| v.as_bool())
             .unwrap_or(true); // Default to enabled if not specified
-        
+
         THEAUDIODB_ENABLED.store(enabled, Ordering::SeqCst);
-        
+
         // Get API key if provided
         if let Some(api_key) = audiodb_config.get("api_key").and_then(|v| v.as_str()) {
             {
@@ -92,22 +92,26 @@ pub fn initialize_from_config(config: &serde_json::Value) {
             }
         } else {
             warn!("No API key found for TheAudioDB in configuration");
+            let mut config = THEAUDIODB_CONFIG.lock();
+            config.api_key.clear();
         }
           // Register rate limit - default to 2 requests per second (500ms)
         let rate_limit_ms = audiodb_config.get("rate_limit_ms")
             .and_then(|v| v.as_u64())
             .unwrap_or(500);
-            
+
         rate_limit::register_service("theaudiodb", rate_limit_ms);
         info!("TheAudioDB rate limit set to {} ms", rate_limit_ms);
-        
+
         let status = if enabled { "enabled" } else { "disabled" };
         info!("TheAudioDB lookup {}", status);
     } else {
         // Default to disabled if not in config
         THEAUDIODB_ENABLED.store(false, Ordering::SeqCst);
+        let mut config = THEAUDIODB_CONFIG.lock();
+        config.api_key.clear();
         debug!("TheAudioDB configuration not found, lookups disabled");
-        
+
         // Register default rate limit even if disabled
         rate_limit::register_service("theaudiodb", 500);
     }
@@ -136,21 +140,21 @@ pub fn get_api_key() -> Option<String> {
 }
 
 /// Look up artist information from TheAudioDB by MusicBrainz ID
-/// 
+///
 /// # Arguments
 /// * `mbid` - MusicBrainz ID of the artist to look up
-/// 
+///
 /// # Returns
 /// * `Result<serde_json::Value, String>` - Artist information or error message
 pub fn lookup_theaudiodb_by_mbid(mbid: &str) -> Result<serde_json::Value, String> {
     if !is_enabled() {
         return Err("TheAudioDB lookups are disabled".to_string());
     }
-    
+
     // Create cache keys for both positive and negative results
     let cache_key = format!("theaudiodb::mbid::{}", mbid);
     let not_found_cache_key = format!("theaudiodb::not_found::{}", mbid);
-    
+
     // Check if we have a positive result cached
     match attribute_cache::get::<Value>(&cache_key) {
         Ok(Some(artist_data)) => {
@@ -164,7 +168,7 @@ pub fn lookup_theaudiodb_by_mbid(mbid: &str) -> Result<serde_json::Value, String
             debug!("Error reading from cache for MBID {}: {}", mbid, e);
         }
     }
-    
+
     // Check if we have a negative result cached
     match attribute_cache::get::<bool>(&not_found_cache_key) {
         Ok(Some(true)) => {
@@ -175,7 +179,7 @@ pub fn lookup_theaudiodb_by_mbid(mbid: &str) -> Result<serde_json::Value, String
             // Continue with lookup if not marked as not found or error reading cache
         }
     }
-    
+
     let api_key = match get_api_key() {
         Some(key) => {
             if key.is_empty() {
@@ -185,20 +189,20 @@ pub fn lookup_theaudiodb_by_mbid(mbid: &str) -> Result<serde_json::Value, String
         },
         None => return Err("No API key configured for TheAudioDB".to_string()),
     };    debug!("Looking up artist with MBID {}", mbid);
-    
+
     // Apply rate limiting before making the request
     rate_limit::rate_limit("theaudiodb");
-    
+
     // Construct the API URL
     let url = format!(
-        "https://www.theaudiodb.com/api/v1/json/{}/artist-mb.php?i={}", 
-        api_key, 
+        "https://www.theaudiodb.com/api/v1/json/{}/artist-mb.php?i={}",
+        api_key,
         mbid
     );
-    
+
     // Create a client with our http_client
     let client = new_client();
-    
+
     // Make the request
     debug!("Making request to TheAudioDB API for MBID {}", mbid);
     let response_text = match client.get_text(&url) {
@@ -221,7 +225,7 @@ pub fn lookup_theaudiodb_by_mbid(mbid: &str) -> Result<serde_json::Value, String
                     }
                     return Err(format!("No artist found with MBID {}", mbid));
                 }
-                
+
                 if let Some(artists_array) = artists.as_array() {
                     match artists_array.len() {
                         0 => {
@@ -238,7 +242,7 @@ pub fn lookup_theaudiodb_by_mbid(mbid: &str) -> Result<serde_json::Value, String
                         1 => {
                             debug!("Successfully retrieved artist data for MBID {}", mbid);
                             let artist_data = artists_array[0].clone();
-                            
+
                             // Cache the positive result
                             let cache_key = format!("theaudiodb::mbid::{}", mbid);
                             if let Err(e) = attribute_cache::set(&cache_key, &artist_data) {
@@ -246,7 +250,7 @@ pub fn lookup_theaudiodb_by_mbid(mbid: &str) -> Result<serde_json::Value, String
                             } else {
                                 debug!("Cached positive result for MBID {}", mbid);
                             }
-                            
+
                             // Return just the artist object, not the whole array
                             Ok(artist_data)
                         },
@@ -269,21 +273,21 @@ pub fn lookup_theaudiodb_by_mbid(mbid: &str) -> Result<serde_json::Value, String
 }
 
 /// Look up artist information from TheAudioDB by artist name
-/// 
+///
 /// # Arguments
 /// * `artist_name` - Name of the artist to look up
-/// 
+///
 /// # Returns
 /// * `Result<serde_json::Value, String>` - Artist information or error message
 pub fn lookup_theaudiodb_by_artist_name(artist_name: &str) -> Result<serde_json::Value, String> {
     if !is_enabled() {
         return Err("TheAudioDB lookups are disabled".to_string());
     }
-    
+
     // Create cache keys for both positive and negative results
     let cache_key = format!("theaudiodb::artist_name::{}", artist_name);
     let not_found_cache_key = format!("theaudiodb::artist_not_found::{}", artist_name);
-    
+
     // Check if we have a positive result cached
     match attribute_cache::get::<Value>(&cache_key) {
         Ok(Some(artist_data)) => {
@@ -297,7 +301,7 @@ pub fn lookup_theaudiodb_by_artist_name(artist_name: &str) -> Result<serde_json:
             debug!("Error reading from cache for artist '{}': {}", artist_name, e);
         }
     }
-    
+
     // Check if we have a negative result cached
     match attribute_cache::get::<bool>(&not_found_cache_key) {
         Ok(Some(true)) => {
@@ -308,7 +312,7 @@ pub fn lookup_theaudiodb_by_artist_name(artist_name: &str) -> Result<serde_json:
             // Continue with lookup if not marked as not found or error reading cache
         }
     }
-    
+
     let api_key = match get_api_key() {
         Some(key) => {
             if key.is_empty() {
@@ -318,29 +322,29 @@ pub fn lookup_theaudiodb_by_artist_name(artist_name: &str) -> Result<serde_json:
         },
         None => return Err("No API key configured for TheAudioDB".to_string()),
     };
-    
+
     debug!("Looking up artist by name '{}'", artist_name);
-    
+
     // Apply rate limiting before making the request
     rate_limit::rate_limit("theaudiodb");
-    
+
     // Construct the API URL
     let url = format!(
-        "https://www.theaudiodb.com/api/v1/json/{}/search.php?s={}", 
-        api_key, 
+        "https://www.theaudiodb.com/api/v1/json/{}/search.php?s={}",
+        api_key,
         urlencoding::encode(artist_name)
     );
-    
+
     // Create a client with our http_client
     let client = new_client();
-    
+
     // Make the request
     debug!("Making request to TheAudioDB API for artist '{}'", artist_name);
     let response_text = match client.get_text(&url) {
         Ok(text) => text,
         Err(e) => return Err(format!("Failed to send request to TheAudioDB: {}", e)),
     };
-    
+
     // Parse the response as JSON
     match serde_json::from_str::<Value>(&response_text) {
         Ok(json_data) => {
@@ -356,7 +360,7 @@ pub fn lookup_theaudiodb_by_artist_name(artist_name: &str) -> Result<serde_json:
                     }
                     return Err(format!("No artist found with name '{}'", artist_name));
                 }
-                
+
                 if let Some(artists_array) = artists.as_array() {
                     if artists_array.is_empty() {
                         debug!("Empty artists array for name '{}'", artist_name);
@@ -370,14 +374,14 @@ pub fn lookup_theaudiodb_by_artist_name(artist_name: &str) -> Result<serde_json:
                     } else {
                         debug!("Successfully retrieved artist data for name '{}'", artist_name);
                         let search_result = json_data.clone();
-                        
+
                         // Cache the positive result
                         if let Err(e) = attribute_cache::set(&cache_key, &search_result) {
                             debug!("Failed to cache artist data for name '{}': {}", artist_name, e);
                         } else {
                             debug!("Cached positive result for artist '{}'", artist_name);
                         }
-                        
+
                         Ok(search_result)
                     }
                 } else {
@@ -394,21 +398,21 @@ pub fn lookup_theaudiodb_by_artist_name(artist_name: &str) -> Result<serde_json:
 }
 
 /// Look up albums by artist name from TheAudioDB
-/// 
+///
 /// # Arguments
 /// * `artist_name` - Name of the artist to look up albums for
-/// 
+///
 /// # Returns
 /// * `Result<serde_json::Value, String>` - Album information or error message
 pub fn lookup_theaudiodb_albums_by_artist(artist_name: &str) -> Result<serde_json::Value, String> {
     if !is_enabled() {
         return Err("TheAudioDB lookups are disabled".to_string());
     }
-    
+
     // Create cache keys for both positive and negative results
     let cache_key = format!("theaudiodb::albums_by_artist::{}", artist_name);
     let not_found_cache_key = format!("theaudiodb::albums_not_found::{}", artist_name);
-    
+
     // Check if we have a positive result cached
     match attribute_cache::get::<Value>(&cache_key) {
         Ok(Some(album_data)) => {
@@ -422,7 +426,7 @@ pub fn lookup_theaudiodb_albums_by_artist(artist_name: &str) -> Result<serde_jso
             debug!("Error reading from cache for artist albums '{}': {}", artist_name, e);
         }
     }
-    
+
     // Check if we have a negative result cached
     match attribute_cache::get::<bool>(&not_found_cache_key) {
         Ok(Some(true)) => {
@@ -433,7 +437,7 @@ pub fn lookup_theaudiodb_albums_by_artist(artist_name: &str) -> Result<serde_jso
             // Continue with lookup if not marked as not found or error reading cache
         }
     }
-    
+
     let api_key = match get_api_key() {
         Some(key) => {
             if key.is_empty() {
@@ -443,29 +447,29 @@ pub fn lookup_theaudiodb_albums_by_artist(artist_name: &str) -> Result<serde_jso
         },
         None => return Err("No API key configured for TheAudioDB".to_string()),
     };
-    
+
     debug!("Looking up albums for artist '{}'", artist_name);
-    
+
     // Apply rate limiting before making the request
     rate_limit::rate_limit("theaudiodb");
-    
+
     // Construct the API URL
     let url = format!(
-        "https://www.theaudiodb.com/api/v1/json/{}/searchalbum.php?s={}", 
-        api_key, 
+        "https://www.theaudiodb.com/api/v1/json/{}/searchalbum.php?s={}",
+        api_key,
         urlencoding::encode(artist_name)
     );
-    
+
     // Create a client with our http_client
     let client = new_client();
-    
+
     // Make the request
     debug!("Making request to TheAudioDB API for albums by artist '{}'", artist_name);
     let response_text = match client.get_text(&url) {
         Ok(text) => text,
         Err(e) => return Err(format!("Failed to send request to TheAudioDB: {}", e)),
     };
-    
+
     // Parse the response as JSON
     match serde_json::from_str::<Value>(&response_text) {
         Ok(json_data) => {
@@ -481,7 +485,7 @@ pub fn lookup_theaudiodb_albums_by_artist(artist_name: &str) -> Result<serde_jso
                     }
                     return Err(format!("No albums found for artist '{}'", artist_name));
                 }
-                
+
                 if let Some(albums_array) = albums.as_array() {
                     if albums_array.is_empty() {
                         debug!("Empty albums array for artist '{}'", artist_name);
@@ -495,14 +499,14 @@ pub fn lookup_theaudiodb_albums_by_artist(artist_name: &str) -> Result<serde_jso
                     } else {
                         debug!("Successfully retrieved album data for artist '{}'", artist_name);
                         let search_result = json_data.clone();
-                        
+
                         // Cache the positive result
                         if let Err(e) = attribute_cache::set(&cache_key, &search_result) {
                             debug!("Failed to cache album data for artist '{}': {}", artist_name, e);
                         } else {
                             debug!("Cached positive result for artist albums '{}'", artist_name);
                         }
-                        
+
                         Ok(search_result)
                     }
                 } else {
@@ -519,22 +523,22 @@ pub fn lookup_theaudiodb_albums_by_artist(artist_name: &str) -> Result<serde_jso
 }
 
 /// Look up a specific album by artist and album name from TheAudioDB
-/// 
+///
 /// # Arguments
 /// * `artist_name` - Name of the artist
 /// * `album_name` - Name of the album
-/// 
+///
 /// # Returns
 /// * `Result<serde_json::Value, String>` - Album information or error message
 pub fn lookup_theaudiodb_album_by_name(artist_name: &str, album_name: &str) -> Result<serde_json::Value, String> {
     if !is_enabled() {
         return Err("TheAudioDB lookups are disabled".to_string());
     }
-    
+
     // Create cache keys for both positive and negative results
     let cache_key = format!("theaudiodb::album::{}::{}", artist_name, album_name);
     let not_found_cache_key = format!("theaudiodb::album_not_found::{}::{}", artist_name, album_name);
-    
+
     // Check if we have a positive result cached
     match attribute_cache::get::<Value>(&cache_key) {
         Ok(Some(album_data)) => {
@@ -548,7 +552,7 @@ pub fn lookup_theaudiodb_album_by_name(artist_name: &str, album_name: &str) -> R
             debug!("Error reading from cache for album '{}' by '{}': {}", album_name, artist_name, e);
         }
     }
-    
+
     // Check if we have a negative result cached
     match attribute_cache::get::<bool>(&not_found_cache_key) {
         Ok(Some(true)) => {
@@ -559,7 +563,7 @@ pub fn lookup_theaudiodb_album_by_name(artist_name: &str, album_name: &str) -> R
             // Continue with lookup if not marked as not found or error reading cache
         }
     }
-    
+
     let api_key = match get_api_key() {
         Some(key) => {
             if key.is_empty() {
@@ -569,30 +573,30 @@ pub fn lookup_theaudiodb_album_by_name(artist_name: &str, album_name: &str) -> R
         },
         None => return Err("No API key configured for TheAudioDB".to_string()),
     };
-    
+
     debug!("Looking up album '{}' by artist '{}'", album_name, artist_name);
-    
+
     // Apply rate limiting before making the request
     rate_limit::rate_limit("theaudiodb");
-    
+
     // Construct the API URL
     let url = format!(
-        "https://www.theaudiodb.com/api/v1/json/{}/searchalbum.php?s={}&a={}", 
-        api_key, 
+        "https://www.theaudiodb.com/api/v1/json/{}/searchalbum.php?s={}&a={}",
+        api_key,
         urlencoding::encode(artist_name),
         urlencoding::encode(album_name)
     );
-    
+
     // Create a client with our http_client
     let client = new_client();
-    
+
     // Make the request
     debug!("Making request to TheAudioDB API for album '{}' by '{}'", album_name, artist_name);
     let response_text = match client.get_text(&url) {
         Ok(text) => text,
         Err(e) => return Err(format!("Failed to send request to TheAudioDB: {}", e)),
     };
-    
+
     // Parse the response as JSON
     match serde_json::from_str::<Value>(&response_text) {
         Ok(json_data) => {
@@ -608,7 +612,7 @@ pub fn lookup_theaudiodb_album_by_name(artist_name: &str, album_name: &str) -> R
                     }
                     return Err(format!("No album '{}' found for artist '{}'", album_name, artist_name));
                 }
-                
+
                 if let Some(albums_array) = albums.as_array() {
                     if albums_array.is_empty() {
                         debug!("Empty albums array for '{}' by '{}'", album_name, artist_name);
@@ -622,14 +626,14 @@ pub fn lookup_theaudiodb_album_by_name(artist_name: &str, album_name: &str) -> R
                     } else {
                         debug!("Successfully retrieved album data for '{}' by '{}'", album_name, artist_name);
                         let search_result = json_data.clone();
-                        
+
                         // Cache the positive result
                         if let Err(e) = attribute_cache::set(&cache_key, &search_result) {
                             debug!("Failed to cache album data for '{}' by '{}': {}", album_name, artist_name, e);
                         } else {
                             debug!("Cached positive result for album '{}' by '{}'", album_name, artist_name);
                         }
-                        
+
                         Ok(search_result)
                     }
                 } else {
@@ -646,59 +650,59 @@ pub fn lookup_theaudiodb_album_by_name(artist_name: &str, album_name: &str) -> R
 }
 
 /// Get artist cover art URLs from TheAudioDB
-/// 
+///
 /// # Arguments
 /// * `artist_name` - Name of the artist
-/// 
+///
 /// # Returns
 /// * `Vec<String>` - URLs to artist cover art images
 pub fn get_artist_coverart(artist_name: &str) -> Vec<String> {
     debug!("TheAudioDB: Searching for artist cover art: {}", artist_name);
-    
+
     match lookup_theaudiodb_by_artist_name(artist_name) {
         Ok(search_result) => {
             // Extract artist images from search results
             if let Some(artists) = search_result.get("artists")
-                .and_then(|a| a.as_array()) 
+                .and_then(|a| a.as_array())
             {
                 let mut urls = Vec::new();
-                
+
                 for artist_data in artists {
                     // Get the main artist thumbnail
                     if let Some(thumb_url) = artist_data.get("strArtistThumb")
-                        .and_then(|u| u.as_str()) 
+                        .and_then(|u| u.as_str())
                     {
                         if !thumb_url.is_empty() {
                             urls.push(thumb_url.to_string());
                         }
                     }
-                    
+
                     // Get additional artist images if available
                     if let Some(banner_url) = artist_data.get("strArtistBanner")
-                        .and_then(|u| u.as_str()) 
+                        .and_then(|u| u.as_str())
                     {
                         if !banner_url.is_empty() {
                             urls.push(banner_url.to_string());
                         }
                     }
-                    
+
                     if let Some(fanart_url) = artist_data.get("strArtistFanart")
-                        .and_then(|u| u.as_str()) 
+                        .and_then(|u| u.as_str())
                     {
                         if !fanart_url.is_empty() {
                             urls.push(fanart_url.to_string());
                         }
                     }
-                    
+
                     if let Some(logo_url) = artist_data.get("strArtistLogo")
-                        .and_then(|u| u.as_str()) 
+                        .and_then(|u| u.as_str())
                     {
                         if !logo_url.is_empty() {
                             urls.push(logo_url.to_string());
                         }
                     }
                 }
-                
+
                 debug!("TheAudioDB: Found {} artist images for '{}'", urls.len(), artist_name);
                 urls
             } else {
@@ -714,61 +718,61 @@ pub fn get_artist_coverart(artist_name: &str) -> Vec<String> {
 }
 
 /// Get album cover art URLs from TheAudioDB
-/// 
+///
 /// # Arguments
 /// * `album_name` - Name of the album
 /// * `artist_name` - Name of the artist
 /// * `_year` - Optional release year (not used by TheAudioDB)
-/// 
+///
 /// # Returns
 /// * `Vec<String>` - URLs to album cover art images
 pub fn get_album_coverart(album_name: &str, artist_name: &str, _year: Option<i32>) -> Vec<String> {
     debug!("TheAudioDB: Searching for album cover art: '{}' by '{}'", album_name, artist_name);
-    
+
     // First try specific album search
     match lookup_theaudiodb_album_by_name(artist_name, album_name) {
         Ok(search_result) => {
             if let Some(albums) = search_result.get("album")
-                .and_then(|a| a.as_array()) 
+                .and_then(|a| a.as_array())
             {
                 let mut urls = Vec::new();
-                
+
                 for album_data in albums {
                     // Get the main album thumbnail
                     if let Some(thumb_url) = album_data.get("strAlbumThumb")
-                        .and_then(|u| u.as_str()) 
+                        .and_then(|u| u.as_str())
                     {
                         if !thumb_url.is_empty() {
                             urls.push(thumb_url.to_string());
                         }
                     }
-                    
+
                     // Get additional album images if available
                     if let Some(thumb_3d_url) = album_data.get("strAlbumThumb3D")
-                        .and_then(|u| u.as_str()) 
+                        .and_then(|u| u.as_str())
                     {
                         if !thumb_3d_url.is_empty() {
                             urls.push(thumb_3d_url.to_string());
                         }
                     }
-                    
+
                     if let Some(spine_url) = album_data.get("strAlbumSpine")
-                        .and_then(|u| u.as_str()) 
+                        .and_then(|u| u.as_str())
                     {
                         if !spine_url.is_empty() {
                             urls.push(spine_url.to_string());
                         }
                     }
-                    
+
                     if let Some(cd_art_url) = album_data.get("strAlbumCDart")
-                        .and_then(|u| u.as_str()) 
+                        .and_then(|u| u.as_str())
                     {
                         if !cd_art_url.is_empty() {
                             urls.push(cd_art_url.to_string());
                         }
                     }
                 }
-                
+
                 if !urls.is_empty() {
                     debug!("TheAudioDB: Found {} album images for '{}' by '{}' (specific search)", urls.len(), album_name, artist_name);
                     return urls;
@@ -779,47 +783,47 @@ pub fn get_album_coverart(album_name: &str, artist_name: &str, _year: Option<i32
             debug!("TheAudioDB: Specific album search failed for '{}' by '{}': {}", album_name, artist_name, e);
         }
     }
-    
+
     // Fallback: search all albums by artist and find matching album name
     match lookup_theaudiodb_albums_by_artist(artist_name) {
         Ok(search_result) => {
             if let Some(albums) = search_result.get("album")
-                .and_then(|a| a.as_array()) 
+                .and_then(|a| a.as_array())
             {
                 let mut urls = Vec::new();
                 let album_name_lower = album_name.to_lowercase();
-                
+
                 for album_data in albums {
                     // Check if album name matches (case-insensitive)
                     if let Some(album_title) = album_data.get("strAlbum")
-                        .and_then(|n| n.as_str()) 
+                        .and_then(|n| n.as_str())
                     {
-                        if album_title.to_lowercase().contains(&album_name_lower) || 
+                        if album_title.to_lowercase().contains(&album_name_lower) ||
                            album_name_lower.contains(&album_title.to_lowercase()) {
-                            
+
                             // Get the main album thumbnail
                             if let Some(thumb_url) = album_data.get("strAlbumThumb")
-                                .and_then(|u| u.as_str()) 
+                                .and_then(|u| u.as_str())
                             {
                                 if !thumb_url.is_empty() {
                                     urls.push(thumb_url.to_string());
                                 }
                             }
-                            
+
                             // Get additional album images if available
                             if let Some(thumb_3d_url) = album_data.get("strAlbumThumb3D")
-                                .and_then(|u| u.as_str()) 
+                                .and_then(|u| u.as_str())
                             {
                                 if !thumb_3d_url.is_empty() {
                                     urls.push(thumb_3d_url.to_string());
                                 }
                             }
-                            
+
                             break; // Found matching album, use first match
                         }
                     }
                 }
-                
+
                 debug!("TheAudioDB: Found {} album images for '{}' by '{}' (fallback search)", urls.len(), album_name, artist_name);
                 urls
             } else {
@@ -851,14 +855,14 @@ impl TheAudioDbUpdater {
 
 impl ArtistUpdater for TheAudioDbUpdater {
     /// Updates artist information using TheAudioDB service
-    /// 
+    ///
     /// This function fetches artist information from TheAudioDB using the MusicBrainz ID
     /// from the artist's metadata and updates the artist with thumbnail URLs and other
     /// available metadata.
-    /// 
+    ///
     /// # Arguments
     /// * `artist` - The artist to update
-    /// 
+    ///
     /// # Returns
     /// The updated artist with information from TheAudioDB
     fn update_artist(&self, mut artist: Artist) -> Artist {
@@ -867,25 +871,25 @@ impl ArtistUpdater for TheAudioDbUpdater {
             debug!("TheAudioDB lookups are disabled, skipping artist {}", artist.name);
             return artist;
         }
-        
+
         // Extract and clone the MusicBrainz ID to avoid borrowing issues
         let mbid_opt = artist.metadata.as_ref()
             .and_then(|meta| meta.mbid.first())
             .cloned();
-        
+
         // Proceed only if a MusicBrainz ID is available
         if let Some(mbid) = mbid_opt {
             debug!("Looking up artist information in TheAudioDB for {} with MBID {}", artist.name, mbid);
-            
+
             // Lookup artist by MBID
             match lookup_theaudiodb_by_mbid(&mbid) {
                 Ok(artist_data) => {
                     debug!("Successfully retrieved artist data from TheAudioDB for {}", artist.name);
-                    
-                    let mut updated_data = Vec::new();
-                    
 
-                    
+                    let mut updated_data = Vec::new();
+
+
+
                     // Extract additional artist metadata that could be useful
                     if let Some(biography) = artist_data.get("strBiographyEN").and_then(|v| v.as_str()) {
                         if !biography.is_empty() {
@@ -897,7 +901,7 @@ impl ArtistUpdater for TheAudioDbUpdater {
                             }
                         }
                     }
-                    
+
                     // Extract genre information
                     if let Some(genre) = artist_data.get("strGenre").and_then(|v| v.as_str()) {
                         if !genre.is_empty() {
@@ -916,7 +920,7 @@ impl ArtistUpdater for TheAudioDbUpdater {
                             }
                         }
                     }
-                    
+
                     // Log successful update with summary of what was added
                     if !updated_data.is_empty() {
                         info!("Updated artist '{}' with TheAudioDB data: {}", artist.name, updated_data.join(", "));
@@ -930,7 +934,7 @@ impl ArtistUpdater for TheAudioDbUpdater {
         } else {
             debug!("No MusicBrainz ID available for artist {}, skipping TheAudioDB lookup", artist.name);
         }
-        
+
         artist
     }
 }
@@ -979,12 +983,12 @@ impl crate::helpers::coverart::CoverartProvider for TheAudioDbCoverartProvider {
 #[cfg(test)]
 mod tests {
     //! Unit tests for TheAudioDB functionality
-    //! 
+    //!
     //! These tests will skip if no real API key is available.
     //! When compiled with secrets.txt containing a real TheAudioDB API key,
     //! all tests will run. Otherwise, tests requiring API access will be skipped
     //! and only local functionality (like configuration and caching) will be tested.
-    
+
     use super::*;
     use std::sync::Once;
     use serial_test::serial;
@@ -1044,7 +1048,7 @@ mod tests {
                 "rate_limit_ms": 250
             }
         });
-        
+
         initialize_from_config(&config);
         assert!(is_enabled());
     }
@@ -1058,7 +1062,7 @@ mod tests {
                 "api_key": "test_key_123"
             }
         });
-        
+
         initialize_from_config(&config);
         assert!(!is_enabled());
     }
@@ -1072,7 +1076,7 @@ mod tests {
                 "api_key": "configured_key_123"
             }
         });
-        
+
         initialize_from_config(&config);
         let api_key = get_api_key();
         assert!(api_key.is_some());
@@ -1088,10 +1092,10 @@ mod tests {
                 "api_key": ""
             }
         });
-        
+
         initialize_from_config(&config);
         let api_key = get_api_key();
-        
+
         if has_real_api_key() {
             assert!(api_key.is_some());
             assert_ne!(api_key.unwrap(), "YOUR_API_KEY_HERE");
@@ -1103,9 +1107,57 @@ mod tests {
 
     #[test]
     #[serial]
+    fn regression_initialize_from_config_clears_stale_key_when_api_key_missing() {
+        let initial_config = serde_json::json!({
+            "theaudiodb": {
+                "enable": true,
+                "api_key": "configured_key_abc"
+            }
+        });
+        initialize_from_config(&initial_config);
+        assert_eq!(get_api_key(), Some("configured_key_abc".to_string()));
+
+        // Reinitialize with service block but without api_key.
+        let missing_key_config = serde_json::json!({
+            "theaudiodb": {
+                "enable": true
+            }
+        });
+        initialize_from_config(&missing_key_config);
+
+        // In test builds, default key is placeholder and therefore returns None.
+        assert!(get_api_key().is_none());
+    }
+
+    #[test]
+    #[serial]
+    fn regression_initialize_from_config_clears_stale_key_when_service_missing() {
+        let initial_config = serde_json::json!({
+            "theaudiodb": {
+                "enable": true,
+                "api_key": "configured_key_abc"
+            }
+        });
+        initialize_from_config(&initial_config);
+        assert_eq!(get_api_key(), Some("configured_key_abc".to_string()));
+
+        // Reinitialize with no TheAudioDB section.
+        let missing_service_config = serde_json::json!({
+            "some_other_service": {
+                "enable": true
+            }
+        });
+        initialize_from_config(&missing_service_config);
+
+        assert!(!is_enabled());
+        assert!(get_api_key().is_none());
+    }
+
+    #[test]
+    #[serial]
     fn test_lookup_theaudiodb_by_mbid_disabled() {
         THEAUDIODB_ENABLED.store(false, Ordering::SeqCst);
-        
+
         let result = lookup_theaudiodb_by_mbid("5b11f4ce-a62d-471e-81fc-a69a8278c7da");
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("disabled"));
@@ -1115,7 +1167,7 @@ mod tests {
     #[serial]
     fn test_lookup_theaudiodb_by_mbid_no_api_key() {
         setup_test_config();
-        
+
         // Override the config to have empty API key
         let config = serde_json::json!({
             "theaudiodb": {
@@ -1124,7 +1176,7 @@ mod tests {
             }
         });
         initialize_from_config(&config);
-        
+
         if !has_real_api_key() {
             let result = lookup_theaudiodb_by_mbid("5b11f4ce-a62d-471e-81fc-a69a8278c7da");
             // In test environment, this should either fail with no API key or with network error
@@ -1144,12 +1196,12 @@ mod tests {
             skip_if_no_api_key();
             return;
         }
-        
+
         setup_test_config();
-        
+
         // Use Radiohead's MBID as a test case
         let result = lookup_theaudiodb_by_mbid("a74b1b7f-71a5-4011-9441-d0b5e4122711");
-        
+
         match result {
             Ok(artist_data) => {
                 // Verify we got valid artist data
@@ -1174,19 +1226,19 @@ mod tests {
             skip_if_no_api_key();
             return;
         }
-        
+
         setup_test_config();
-        
+
         // Use an invalid MBID
         let result = lookup_theaudiodb_by_mbid("invalid-mbid-12345");
         assert!(result.is_err());
     }
 
     #[test]
-    #[serial] 
+    #[serial]
     fn test_lookup_theaudiodb_by_artist_name_disabled() {
         THEAUDIODB_ENABLED.store(false, Ordering::SeqCst);
-        
+
         let result = lookup_theaudiodb_by_artist_name("Radiohead");
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("disabled"));
@@ -1199,11 +1251,11 @@ mod tests {
             skip_if_no_api_key();
             return;
         }
-        
+
         setup_test_config();
-        
+
         let result = lookup_theaudiodb_by_artist_name("Radiohead");
-        
+
         match result {
             Ok(search_result) => {
                 // Verify we got valid search result
@@ -1228,9 +1280,9 @@ mod tests {
             skip_if_no_api_key();
             return;
         }
-        
+
         setup_test_config();
-        
+
         let result = lookup_theaudiodb_by_artist_name("ThisArtistDoesNotExist12345XYZ");
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("No artist found"));
@@ -1240,7 +1292,7 @@ mod tests {
     #[serial]
     fn test_lookup_theaudiodb_albums_by_artist_disabled() {
         THEAUDIODB_ENABLED.store(false, Ordering::SeqCst);
-        
+
         let result = lookup_theaudiodb_albums_by_artist("Radiohead");
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("disabled"));
@@ -1253,11 +1305,11 @@ mod tests {
             skip_if_no_api_key();
             return;
         }
-        
+
         setup_test_config();
-        
+
         let result = lookup_theaudiodb_albums_by_artist("Radiohead");
-        
+
         match result {
             Ok(search_result) => {
                 // Verify we got valid search result
@@ -1279,7 +1331,7 @@ mod tests {
     #[serial]
     fn test_lookup_theaudiodb_album_by_name_disabled() {
         THEAUDIODB_ENABLED.store(false, Ordering::SeqCst);
-        
+
         let result = lookup_theaudiodb_album_by_name("Radiohead", "OK Computer");
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("disabled"));
@@ -1292,11 +1344,11 @@ mod tests {
             skip_if_no_api_key();
             return;
         }
-        
+
         setup_test_config();
-        
+
         let result = lookup_theaudiodb_album_by_name("Radiohead", "OK Computer");
-        
+
         match result {
             Ok(search_result) => {
                 // Verify we got valid search result
@@ -1318,7 +1370,7 @@ mod tests {
     #[serial]
     fn test_get_artist_coverart_disabled() {
         THEAUDIODB_ENABLED.store(false, Ordering::SeqCst);
-        
+
         let urls = get_artist_coverart("Radiohead");
         assert!(urls.is_empty());
     }
@@ -1330,11 +1382,11 @@ mod tests {
             skip_if_no_api_key();
             return;
         }
-        
+
         setup_test_config();
-        
+
         let urls = get_artist_coverart("Radiohead");
-        
+
         if !urls.is_empty() {
             println!("Found {} artist images", urls.len());
             for (i, url) in urls.iter().enumerate() {
@@ -1350,7 +1402,7 @@ mod tests {
     #[serial]
     fn test_get_album_coverart_disabled() {
         THEAUDIODB_ENABLED.store(false, Ordering::SeqCst);
-        
+
         let urls = get_album_coverart("OK Computer", "Radiohead", Some(1997));
         assert!(urls.is_empty());
     }
@@ -1362,11 +1414,11 @@ mod tests {
             skip_if_no_api_key();
             return;
         }
-        
+
         setup_test_config();
-        
+
         let urls = get_album_coverart("OK Computer", "Radiohead", Some(1997));
-        
+
         if !urls.is_empty() {
             println!("Found {} album images", urls.len());
             for (i, url) in urls.iter().enumerate() {
@@ -1385,9 +1437,9 @@ mod tests {
             skip_if_no_api_key();
             return;
         }
-        
+
         setup_test_config();
-        
+
         let urls = get_album_coverart("ThisAlbumDoesNotExist12345", "NonExistentArtist", None);
         assert!(urls.is_empty());
     }
@@ -1396,7 +1448,7 @@ mod tests {
     #[serial]
     fn test_theaudiodb_updater_disabled() {
         THEAUDIODB_ENABLED.store(false, Ordering::SeqCst);
-        
+
         let updater = TheAudioDbUpdater::new();
         let mut artist = Artist {
             id: crate::data::Identifier::String("test_artist".to_string()),
@@ -1405,14 +1457,14 @@ mod tests {
             metadata: None,
         };
         artist.ensure_metadata();
-        
+
         if let Some(metadata) = &mut artist.metadata {
             metadata.mbid.push("a74b1b7f-71a5-4011-9441-d0b5e4122711".to_string());
         }
-        
+
         let original_name = artist.name.clone();
         let updated_artist = updater.update_artist(artist);
-        
+
         // Should return unchanged artist when disabled
         assert_eq!(updated_artist.name, original_name);
     }
@@ -1424,9 +1476,9 @@ mod tests {
             skip_if_no_api_key();
             return;
         }
-        
+
         setup_test_config();
-        
+
         let updater = TheAudioDbUpdater::new();
         let artist = Artist {
             id: crate::data::Identifier::String("test_artist".to_string()),
@@ -1434,10 +1486,10 @@ mod tests {
             is_multi: false,
             metadata: None,
         };
-        
+
         let original_name = artist.name.clone();
         let updated_artist = updater.update_artist(artist);
-        
+
         // Should return unchanged artist when no MBID
         assert_eq!(updated_artist.name, original_name);
     }
@@ -1449,22 +1501,22 @@ mod tests {
             skip_if_no_api_key();
             return;
         }
-        
+
         setup_test_config();
-        
+
         // Test caching by making the same request twice
         let artist_name = "Radiohead";
-        
+
         // First request - should hit the API
         let start = std::time::Instant::now();
         let result1 = lookup_theaudiodb_by_artist_name(artist_name);
         let duration1 = start.elapsed();
-        
+
         // Second request - should hit the cache
         let start = std::time::Instant::now();
         let result2 = lookup_theaudiodb_by_artist_name(artist_name);
         let duration2 = start.elapsed();
-        
+
         // Both should return the same result
         match (result1, result2) {
             (Ok(data1), Ok(data2)) => {
@@ -1490,20 +1542,20 @@ mod tests {
             skip_if_no_api_key();
             return;
         }
-        
+
         setup_test_config();
-        
+
         // Make multiple requests and ensure they're rate limited
         let start = std::time::Instant::now();
-        
+
         // Make 3 requests that should be rate limited
         for i in 0..3 {
             let artist_name = format!("TestArtist{}", i);
             let _ = lookup_theaudiodb_by_artist_name(&artist_name);
         }
-        
+
         let duration = start.elapsed();
-        
+
         // With 100ms rate limit, 3 requests should take at least 200ms
         assert!(duration.as_millis() >= 200, "Rate limiting not working properly: took {:?}", duration);
         println!("Rate limiting test: 3 requests took {:?}", duration);

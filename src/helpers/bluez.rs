@@ -64,27 +64,22 @@ impl BlueZManager {
         for (path, interfaces) in objects {
             // Look for MediaPlayer1 interfaces
             if interfaces.contains_key("org.bluez.MediaPlayer1") {
-                if let Some(device_part) = path.strip_prefix("/org/bluez/hci0/dev_") {
-                    if let Some(addr_part) = device_part.split('/').next() {
-                        let device_address = addr_part.replace('_', ":");
+                if let Some((device_path, device_address)) = parse_device_info_from_player_path(&path) {
+                    // Get device name and connection status
+                    let device_name = self.get_device_name(&device_path);
+                    let is_connected = self.is_device_connected(&device_path);
+                    let playback_status = self.get_playback_status(&path);
 
-                        // Get device name and connection status
-                        let device_path = format!("/org/bluez/hci0/dev_{}", addr_part);
-                        let device_name = self.get_device_name(&device_path);
-                        let is_connected = self.is_device_connected(&device_path);
-                        let playback_status = self.get_playback_status(&path);
+                    let device_info = BluetoothDeviceInfo {
+                        device_address,
+                        device_name,
+                        player_path: path.to_string(),
+                        is_connected,
+                        is_playing: playback_status == BluetoothPlaybackStatus::Playing,
+                    };
 
-                        let device_info = BluetoothDeviceInfo {
-                            device_address,
-                            device_name,
-                            player_path: path.to_string(),
-                            is_connected,
-                            is_playing: playback_status == BluetoothPlaybackStatus::Playing,
-                        };
-
-                        debug!("Found Bluetooth audio device: {:?}", device_info);
-                        devices.push(device_info);
-                    }
+                    debug!("Found Bluetooth audio device: {:?}", device_info);
+                    devices.push(device_info);
                 }
             }
         }
@@ -276,6 +271,35 @@ pub fn parse_playback_status(status: &str) -> BluetoothPlaybackStatus {
     }
 }
 
+/// Parse a BlueZ MediaPlayer1 object path into a device object path and MAC address.
+///
+/// Example input:
+/// /org/bluez/hci1/dev_80_B9_89_1E_B5_6F/player0
+///
+/// Returns:
+/// ("/org/bluez/hci1/dev_80_B9_89_1E_B5_6F", "80:B9:89:1E:B5:6F")
+fn parse_device_info_from_player_path(player_path: &str) -> Option<(String, String)> {
+    let parts: Vec<&str> = player_path.split('/').filter(|p| !p.is_empty()).collect();
+
+    // Expected minimum shape: org/bluez/<adapter>/dev_<addr>/<player>
+    if parts.len() < 5 || parts[0] != "org" || parts[1] != "bluez" {
+        return None;
+    }
+
+    let adapter = parts[2];
+    if !adapter.starts_with("hci") {
+        return None;
+    }
+
+    let device_segment = parts[3];
+    let addr_part = device_segment.strip_prefix("dev_")?;
+
+    let device_path = format!("/org/bluez/{}/{}", adapter, device_segment);
+    let device_address = addr_part.replace('_', ":");
+
+    Some((device_path, device_address))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -368,5 +392,25 @@ mod tests {
         assert!(info.title.is_none());
         assert!(info.duration.is_none());
         assert!(info.position.is_none());
+    }
+
+    #[test]
+    fn parse_device_info_from_player_path_supports_non_hci0_adapter() {
+        let path = "/org/bluez/hci1/dev_80_B9_89_1E_B5_6F/player0";
+        let parsed = parse_device_info_from_player_path(path);
+
+        assert_eq!(
+            parsed,
+            Some((
+                "/org/bluez/hci1/dev_80_B9_89_1E_B5_6F".to_string(),
+                "80:B9:89:1E:B5:6F".to_string(),
+            ))
+        );
+    }
+
+    #[test]
+    fn parse_device_info_from_player_path_returns_none_for_invalid_shape() {
+        assert_eq!(parse_device_info_from_player_path("/org/bluez/hci0/player0"), None);
+        assert_eq!(parse_device_info_from_player_path("/invalid/path"), None);
     }
 }
