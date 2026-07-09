@@ -54,3 +54,49 @@ impl fmt::Display for SystemEvent {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::SystemEvent;
+
+    #[test]
+    fn volume_changed_constructor_sets_all_fields() {
+        let e = SystemEvent::volume_changed(
+            "Master".to_string(),
+            "Master Volume".to_string(),
+            75.0,
+            Some(-10.5),
+            Some(150),
+        );
+
+        match e {
+            SystemEvent::VolumeChanged {
+                control_name,
+                display_name,
+                percentage,
+                decibels,
+                raw_value,
+            } => {
+                assert_eq!(control_name, "Master");
+                assert_eq!(display_name, "Master Volume");
+                assert_eq!(percentage, 75.0);
+                assert_eq!(decibels, Some(-10.5));
+                assert_eq!(raw_value, Some(150));
+            }
+        }
+    }
+
+    #[test]
+    fn event_type_returns_canonical_string() {
+        let e = SystemEvent::volume_changed("ctrl".to_string(), "Ctrl".to_string(), 50.0, None, None);
+        assert_eq!(e.event_type(), "volume_changed");
+    }
+
+    #[test]
+    fn display_includes_control_name_and_percentage() {
+        let e = SystemEvent::volume_changed("Master".to_string(), "Master Volume".to_string(), 42.5, None, None);
+        let s = e.to_string();
+        assert!(s.contains("Master"), "{}", s);
+        assert!(s.contains("42.5"), "{}", s);
+    }
+}

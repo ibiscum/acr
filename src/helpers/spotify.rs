@@ -54,19 +54,19 @@ pub fn default_spotify_proxy_secret() -> String {
 pub enum SpotifyError {
     #[error("Authentication error: {0}")]
     AuthError(String),
-    
+
     #[error("API error: {0}")]
     ApiError(String),
-    
+
     #[error("Token not found")]
     TokenNotFound,
-    
+
     #[error("Security store error: {0}")]
     SecurityStoreError(#[from] crate::helpers::security_store::SecurityStoreError),
-    
+
     #[error("Serialization error: {0}")]
     SerializationError(#[from] serde_json::Error),
-    
+
     #[error("Configuration error: {0}")]
     ConfigError(String),
 }
@@ -176,7 +176,14 @@ impl Clone for Spotify {
 
 impl SpotifyConfig {
     pub fn from_json(spotify_config: &serde_json::Value) -> Self {
-        let oauth_url = spotify_config.get("oauth_url").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let mut oauth_url = spotify_config
+            .get("oauth_url")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        if !oauth_url.is_empty() && !oauth_url.ends_with('/') {
+            oauth_url.push('/');
+        }
         let proxy_secret = match spotify_config.get("proxy_secret").and_then(|v| v.as_str()) {
             Some(s) if !s.trim().is_empty() => s.to_string(),
             _ => default_spotify_proxy_secret(),
@@ -203,64 +210,64 @@ impl Spotify {
         if oauth_url.is_empty() {
             return Err(SpotifyError::ConfigError("OAuth URL is required".to_string()));
         }
-        
+
         if proxy_secret.is_empty() {
             return Err(SpotifyError::ConfigError("Proxy secret is required".to_string()));
         }
-        
+
         // Ensure the OAuth URL has a trailing slash
         if !oauth_url.ends_with('/') {
             oauth_url = format!("{}/", oauth_url);
             info!("Added trailing slash to OAuth URL: '{}'", oauth_url);
         }
-        
+
         // Ensure the OAuth URL starts with http:// or https://
         if !oauth_url.starts_with("http://") && !oauth_url.starts_with("https://") {
             return Err(SpotifyError::ConfigError(format!("Invalid OAuth URL: '{}' - must start with http:// or https://", oauth_url)));
         }
-        
+
         let config = SpotifyConfig {
             oauth_url,
             proxy_secret,
             client_id: None,
             client_secret: None,
         };
-        
+
         let spotify = Spotify { config };
-        
+
         let mut client_guard = SPOTIFY_CLIENT.lock();
         *client_guard = Some(spotify);
-        
+
         info!("Spotify client initialized");
         Ok(())
     }    /// Initialize with default values from secrets.txt
     pub fn initialize_with_defaults() -> Result<()> {
         let oauth_url = default_spotify_oauth_url();
         let proxy_secret = default_spotify_proxy_secret();
-          
+
         info!("Default Spotify OAuth URL: '{}'", oauth_url);
         info!("Default Spotify proxy secret length: {} chars", proxy_secret.len());
           // Check for placeholder values that would indicate misconfiguration
-        let is_placeholder_url = oauth_url.contains("your-oauth-proxy-url") || 
+        let is_placeholder_url = oauth_url.contains("your-oauth-proxy-url") ||
                                 oauth_url.contains("your_spotify_oauth_url") ||
                                 oauth_url == "unknown" ||  // Exact match for "unknown"
                                 oauth_url.is_empty();
-        
-        let is_placeholder_secret = proxy_secret.contains("your-spotify-proxy-secret") || 
+
+        let is_placeholder_secret = proxy_secret.contains("your-spotify-proxy-secret") ||
                                    proxy_secret.contains("your_spotify_proxy_secret") ||
                                    proxy_secret == "unknown" ||  // Exact match for "unknown"
                                    proxy_secret.is_empty();
-                                   
+
         if oauth_url.contains("unknown") {
             info!("OAuth URL contains 'unknown': '{}'", oauth_url);
         }
-        
+
         if is_placeholder_url || is_placeholder_secret {
-            info!("Spotify initialization error: URL is placeholder: {}, Secret is placeholder: {}", 
+            info!("Spotify initialization error: URL is placeholder: {}, Secret is placeholder: {}",
                  is_placeholder_url, is_placeholder_secret);
             return Err(SpotifyError::ConfigError("Default Spotify OAuth credentials are not configured".to_string()));
         }
-        
+
         info!("Initializing Spotify with URL '{}' from secrets.txt", oauth_url);
         Self::initialize(oauth_url, proxy_secret)
     }
@@ -299,19 +306,19 @@ impl Spotify {
         SecurityStore::set(SPOTIFY_ACCESS_TOKEN_KEY, &tokens.access_token)?;
         SecurityStore::set(SPOTIFY_REFRESH_TOKEN_KEY, &tokens.refresh_token)?;
         SecurityStore::set(SPOTIFY_TOKEN_EXPIRY_KEY, &tokens.expires_at.to_string())?;
-        
+
         info!("Spotify tokens stored successfully");
         Ok(())
     }
-    
+
     /// Store user profile information in the security store
     pub fn store_user_profile(&self, profile: &SpotifyUserProfile) -> Result<()> {
         SecurityStore::set(SPOTIFY_USER_ID_KEY, &profile.id)?;
-        
+
         if let Some(display_name) = &profile.display_name {
             SecurityStore::set(SPOTIFY_DISPLAY_NAME_KEY, display_name)?;
         }
-        
+
         info!("Spotify user profile stored successfully");
         Ok(())
     }
@@ -320,23 +327,23 @@ impl Spotify {
         // Get tokens from the security store
         let access_token = SecurityStore::get(SPOTIFY_ACCESS_TOKEN_KEY)
             .map_err(|_| SpotifyError::TokenNotFound)?;
-        
+
         let refresh_token = SecurityStore::get(SPOTIFY_REFRESH_TOKEN_KEY)
             .map_err(|_| SpotifyError::TokenNotFound)?;
-        
+
         let expires_at_str = SecurityStore::get(SPOTIFY_TOKEN_EXPIRY_KEY)
             .map_err(|_| SpotifyError::TokenNotFound)?;
-            
+
         let expires_at = expires_at_str.parse::<u64>()
             .map_err(|_| SpotifyError::AuthError("Invalid token expiry".to_string()))?;
-        
+
         Ok(SpotifyTokens {
             access_token,
             refresh_token,
             expires_at,
         })
     }
-    
+
     /// Check if we have valid Spotify tokens
     pub fn has_valid_tokens(&self) -> bool {
         match self.get_tokens() {
@@ -346,7 +353,7 @@ impl Spotify {
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
                     .as_secs();
-                
+
                 // Token is valid if it expires in the future
                 tokens.expires_at > now
             },
@@ -361,45 +368,45 @@ impl Spotify {
         let _ = SecurityStore::remove(SPOTIFY_TOKEN_EXPIRY_KEY);
         let _ = SecurityStore::remove(SPOTIFY_USER_ID_KEY);
         let _ = SecurityStore::remove(SPOTIFY_DISPLAY_NAME_KEY);
-        
+
         info!("Spotify tokens cleared");
         Ok(())
     }
-    
+
     /// Get user profile information if available
     pub fn get_user_profile(&self) -> Result<SpotifyUserProfile> {
         let user_id = SecurityStore::get(SPOTIFY_USER_ID_KEY)
             .map_err(|_| SpotifyError::AuthError("User ID not found".to_string()))?;
-            
+
         let display_name = SecurityStore::get(SPOTIFY_DISPLAY_NAME_KEY).ok();
-        
+
         Ok(SpotifyUserProfile {
             id: user_id,
             display_name,
             email: None, // We don't store email
         })
     }
-    
+
     /// Check if the OAuth server is reachable and responding as expected
     pub fn check_oauth_server(&self) -> Result<bool> {
         use crate::helpers::http_client::new_http_client;
-        
+
         info!("Checking connectivity to OAuth server: {}", self.config.oauth_url);
-        
+
         // Create an HTTP client with a short timeout for this check
         let http_client = new_http_client(5);
-        
+
         // Try a simple GET request to the base URL
         match http_client.get_text(&self.config.oauth_url) {
             Ok(text) => {
                 // Check if the response contains any indication of being the OAuth service
-                let is_valid = text.contains("OAuth") || 
-                              text.contains("Spotify") || 
+                let is_valid = text.contains("OAuth") ||
+                              text.contains("Spotify") ||
                               text.contains("Authentication") ||
                               text.contains("login");
-                
+
                 info!("OAuth server is reachable. Response looks valid: {}", is_valid);
-                
+
                 // Log a truncated version of the response for debugging
                 let truncated = if text.len() > 100 {
                     format!("{}... (truncated)", &text[0..100])
@@ -407,15 +414,15 @@ impl Spotify {
                     text.clone()
                 };
                 info!("OAuth server response: {}", truncated);
-                
+
                 Ok(is_valid)
             },
             Err(e) => {
                 error!("Failed to connect to OAuth server: {}", e);
                 Err(SpotifyError::ConfigError(format!("OAuth server unreachable: {}", e)))            }
         }
-    }    
-    
+    }
+
     // Build headers for OAuth proxy requests
     pub fn build_oauth_headers(&self) -> Vec<(&str, String)> {
         let mut headers = vec![
@@ -423,7 +430,7 @@ impl Spotify {
         ];
         if let Some(client_id) = self.get_client_id() {
             if !client_id.is_empty() {
-                debug!("Sending X-Spotify-Client-Id: {}... ({} chars)", 
+                debug!("Sending X-Spotify-Client-Id: {}... ({} chars)",
                        sanitize::safe_truncate(client_id, 6), client_id.len());
                 headers.push(("X-Spotify-Client-Id", client_id.to_string()));
             } else {
@@ -434,7 +441,7 @@ impl Spotify {
         }
         if let Some(client_secret) = self.get_client_secret() {
             if !client_secret.is_empty() {
-                debug!("Sending X-Spotify-Client-Secret: {}... ({} chars)", 
+                debug!("Sending X-Spotify-Client-Secret: {}... ({} chars)",
                        sanitize::safe_truncate(client_secret, 6), client_secret.len());
                 headers.push(("X-Spotify-Client-Secret", client_secret.to_string()));
             } else {
@@ -506,15 +513,15 @@ impl Spotify {
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
                     .as_secs();
-                
+
                 if tokens.expires_at <= now + 60 {
                     // Token is expired or about to expire, refresh it
                     info!("Spotify token is expired or about to expire, refreshing");
-                    
+
                     // Only use direct API refresh, never the OAuth proxy
                     match self.refresh_token() {
                         Ok(new_tokens) => {
-                            info!("Token refresh via direct API successful, new token will expire in {} seconds", 
+                            info!("Token refresh via direct API successful, new token will expire in {} seconds",
                                   new_tokens.expires_at.saturating_sub(now));
                             Ok(new_tokens.access_token)
                         },
@@ -535,20 +542,20 @@ impl Spotify {
             }
         }
     }/// Get the current playback state from Spotify API
-    /// 
+    ///
     /// This method fetches information about the user's current playback state,
     /// including the currently playing track, playback position, and active device.
-    /// 
+    ///
     /// See: https://developer.spotify.com/documentation/web-api/reference/get-information-about-the-users-current-playback
     pub fn get_playback_state(&self) -> Result<Option<SpotifyPlaybackState>> {
         use crate::helpers::http_client::{new_http_client, HttpClientError};
-        
+
         // Ensure we have a valid token
         let access_token = self.ensure_valid_token()?;
-        
+
         // Create an HTTP client
         let http_client = new_http_client(10);
-        
+
         // Use the real Spotify API endpoint, not the OAuth proxy
         let endpoint_url = "https://api.spotify.com/v1/me/player";
           // Set up authorization header
@@ -556,9 +563,9 @@ impl Spotify {
             ("Authorization", &format!("Bearer {}", access_token)[..]),
             ("Content-Type", "application/json")
         ];
-        
+
         info!("Fetching Spotify playback state");
-        
+
         // Make the API request
         let response = match http_client.get_json_with_headers(endpoint_url, &headers) {
             Ok(value) => {
@@ -588,13 +595,13 @@ impl Spotify {
                 }
             }
         };
-        
+
         // Parse the playback state response
         match serde_json::from_value::<SpotifyPlaybackState>(response) {
             Ok(playback_state) => {
                 if let Some(track) = &playback_state.item {
-                    debug!("Currently playing: {} by {}", 
-                          track.name, 
+                    debug!("Currently playing: {} by {}",
+                          track.name,
                           track.artists.iter().map(|a| a.name.clone()).collect::<Vec<_>>().join(", "));
                 }
                 Ok(Some(playback_state))
@@ -755,14 +762,14 @@ impl Spotify {
     }
 
     /// Check if a song is in the user's favourites/saved tracks
-    /// 
+    ///
     /// This method searches for the song on Spotify using artist and title,
     /// then checks if any of the found track IDs are in the user's saved tracks.
-    /// 
+    ///
     /// # Arguments
     /// * `artist` - The artist name
     /// * `title` - The song title
-    /// 
+    ///
     /// # Returns
     /// * `Ok(Some(true))` - Song is in favourites
     /// * `Ok(Some(false))` - Song is not in favourites
@@ -770,11 +777,11 @@ impl Spotify {
     /// * `Err(...)` - API error occurred
     pub fn is_song_favourite(&self, artist: &str, title: &str) -> Result<Option<bool>> {
         debug!("Checking if song is favourite: '{}' by '{}'", title, artist);
-        
+
         // First, search for the song on Spotify
         let query = format!("track:\"{}\" artist:\"{}\"", title, artist);
         let search_result = self.search(&query, &["track"], None)?;
-        
+
         // Extract track IDs from search results
         let mut track_ids = Vec::new();
         if let Some(tracks) = search_result.get("tracks").and_then(|t| t.get("items")).and_then(|i| i.as_array()) {
@@ -784,56 +791,56 @@ impl Spotify {
                 }
             }
         }
-        
+
         debug!("Found {} track IDs on Spotify: {:?}", track_ids.len(), track_ids);
-        
+
         if track_ids.is_empty() {
             debug!("No tracks found on Spotify for '{}' by '{}'", title, artist);
             return Ok(None);
         }
-        
+
         // Check if any of these track IDs are in the user's saved tracks
         self.check_saved_tracks(&track_ids)
     }
-    
+
     /// Check if track IDs are in the user's saved tracks
-    /// 
+    ///
     /// Uses the Spotify Web API endpoint: https://developer.spotify.com/documentation/web-api/reference/check-users-saved-tracks
-    /// 
+    ///
     /// # Arguments
     /// * `track_ids` - Vector of Spotify track IDs to check (max 50 per request)
-    /// 
+    ///
     /// # Returns
     /// * `Ok(Some(true))` - At least one track ID is saved
     /// * `Ok(Some(false))` - None of the track IDs are saved
     /// * `Err(...)` - API error occurred
     pub fn check_saved_tracks(&self, track_ids: &[String]) -> Result<Option<bool>> {
         use crate::helpers::http_client::new_http_client;
-        
+
         if track_ids.is_empty() {
             return Ok(Some(false));
         }
-        
+
         // Spotify API allows max 50 IDs per request
         let chunk_size = 50;
         let mut any_saved = false;
-        
+
         for chunk in track_ids.chunks(chunk_size) {
             let access_token = self.ensure_valid_token()?;
             let http_client = new_http_client(10);
-            
+
             // Join track IDs with commas
             let ids_param = chunk.join(",");
-            let url = format!("https://api.spotify.com/v1/me/tracks/contains?ids={}", 
+            let url = format!("https://api.spotify.com/v1/me/tracks/contains?ids={}",
                              urlencoding::encode(&ids_param));
-            
+
             debug!("Checking saved tracks for IDs: {:?}", chunk);
-            
+
             let headers = [
                 ("Authorization", &format!("Bearer {}", access_token)[..]),
                 ("Content-Type", "application/json"),
             ];
-            
+
             let response = match http_client.get_json_with_headers(&url, &headers) {
                 Ok(value) => value,
                 Err(e) => {
@@ -841,9 +848,9 @@ impl Spotify {
                     return Err(SpotifyError::ApiError(format!("Failed to check saved tracks: {}", e)));
                 }
             };
-            
+
             debug!("Saved tracks API response: {}", response);
-            
+
             // Response should be an array of booleans
             if let Some(saved_array) = response.as_array() {
                 for (i, is_saved) in saved_array.iter().enumerate() {
@@ -859,7 +866,7 @@ impl Spotify {
                 return Err(SpotifyError::ApiError("Unexpected response format".to_string()));
             }
         }
-        
+
         debug!("Final result: at least one track is saved = {}", any_saved);
         Ok(Some(any_saved))
     }
@@ -933,7 +940,7 @@ impl crate::helpers::favourites::FavouriteProvider for SpotifyFavouriteProvider 
     }
 
     fn remove_favourite(&self, _song: &crate::data::song::Song) -> std::result::Result<(), crate::helpers::favourites::FavouriteError> {
-        // Spotify Web API doesn't provide an endpoint to remove songs from saved tracks programmatically  
+        // Spotify Web API doesn't provide an endpoint to remove songs from saved tracks programmatically
         // The user would need to do this manually through the Spotify app or web player
         Err(crate::helpers::favourites::FavouriteError::Other("Removing songs from Spotify favourites is not supported via API - use Spotify app".to_string()))
     }
@@ -976,5 +983,51 @@ impl Spotify {
     pub fn set_global_config(spotify_config: &serde_json::Value) {
         let config = SpotifyConfig::from_json(spotify_config);
         let _ = GLOBAL_SPOTIFY_CONFIG.set(config);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn regression_from_json_normalizes_oauth_url_trailing_slash() {
+        let config = serde_json::json!({
+            "oauth_url": "https://oauth.example.com/spotify",
+            "proxy_secret": "proxy_secret"
+        });
+
+        let parsed = SpotifyConfig::from_json(&config);
+        assert_eq!(parsed.oauth_url, "https://oauth.example.com/spotify/");
+    }
+
+    #[test]
+    fn regression_build_login_url_uses_normalized_config_url() {
+        let config = serde_json::json!({
+            "oauth_url": "https://oauth.example.com/spotify",
+            "proxy_secret": "proxy_secret"
+        });
+        let spotify = Spotify {
+            config: SpotifyConfig::from_json(&config),
+        };
+
+        assert_eq!(
+            spotify.build_login_url("session123"),
+            "https://oauth.example.com/spotify/login/session123"
+        );
+    }
+
+    #[test]
+    fn regression_build_create_session_url_uses_normalized_config_url() {
+        let config = serde_json::json!({
+            "oauth_url": "https://oauth.example.com/spotify",
+            "proxy_secret": "proxy_secret"
+        });
+        let spotify = Spotify {
+            config: SpotifyConfig::from_json(&config),
+        };
+
+        let url = spotify.build_create_session_url();
+        assert!(url.starts_with("https://oauth.example.com/spotify/create_session?scope="));
     }
 }

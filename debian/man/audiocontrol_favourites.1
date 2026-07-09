@@ -12,6 +12,9 @@ all configured favourite providers (like Last.fm and local settings).
 .PP
 The tool communicates with a running AudioControl instance via HTTP REST API
 calls and supports multiple favourite providers simultaneously.
+.PP
+The client accepts both direct JSON objects and wrapped API payloads
+using \fBOk\fR/\fBErr\fR envelopes.
 .SH OPTIONS
 .TP
 .BR \-\-url " " \fIURL\fR
@@ -88,13 +91,28 @@ Favourite Providers: 2 enabled out of 2 total
   Last.fm (lastfm): ✓ Enabled
   User settings (settingsdb): ✓ Enabled
 .fi
+.SH API RESPONSE FORMATS
+The client accepts the following response shapes:
+.TP
+Direct object:
+.B { ... }
+.TP
+Wrapped success:
+.B { "Ok": { ... } }
+.TP
+Wrapped error:
+.B { "Err": { "error": "..." } }
+.PP
+If a wrapped error is returned, the command exits with an API error.
+If the response is not a supported object format, the command exits with
+an invalid/unexpected response format error.
 .SH EXIT STATUS
 .TP
 .B 0
 Success
 .TP
 .B 1
-Error (network failure, API error, invalid arguments, etc.)
+Error (network failure, JSON parse failure, API error, invalid/unexpected response format, etc.)
 .SH NOTES
 This tool requires a running AudioControl instance accessible at the specified URL.
 The favourite providers (Last.fm, settings database) must be configured in AudioControl

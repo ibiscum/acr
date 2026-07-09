@@ -2,7 +2,7 @@ use std::mem;
 use std::sync::Arc;
 use parking_lot::Mutex;
 use log::info;
-use crate::data::{Album, Artist, Track};
+use crate::data::{Album, Artist, Identifier, Track};
 
 /// Memory usage tracker to estimate memory used by library components
 pub struct MemoryUsage {
@@ -44,12 +44,12 @@ impl MemoryUsage {
             overhead_memory: 0,
         }
     }
-    
+
     /// Get total memory usage in bytes
     pub fn total(&self) -> usize {
         self.artists_memory + self.albums_memory + self.tracks_memory + self.overhead_memory
     }
-    
+
     /// Format memory size in human-readable format
     pub fn format_size(size: usize) -> String {
         if size < 1024 {
@@ -62,35 +62,35 @@ impl MemoryUsage {
             format!("{:.2} GB", size as f64 / (1024.0 * 1024.0 * 1024.0))
         }
     }
-    
+
     /// Log memory usage statistics
     pub fn log_stats(&self) {
         info!("Memory usage statistics:");
-        info!("  - Artists: {} entries using {}", 
+        info!("  - Artists: {} entries using {}",
               self.artist_count, Self::format_size(self.artists_memory));
-        info!("  - Albums:  {} entries using {}", 
+        info!("  - Albums:  {} entries using {}",
               self.album_count, Self::format_size(self.albums_memory));
-        info!("  - Tracks:  {} entries using {}", 
+        info!("  - Tracks:  {} entries using {}",
               self.track_count, Self::format_size(self.tracks_memory));
         info!("  - Overhead: {}", Self::format_size(self.overhead_memory));
         info!("  - Total:    {}", Self::format_size(self.total()));
-        
+
         if self.artist_count > 0 {
-            info!("  - Average per artist: {}", 
+            info!("  - Average per artist: {}",
                 Self::format_size(self.artists_memory / self.artist_count));
         }
-        
+
         if self.album_count > 0 {
-            info!("  - Average per album: {}", 
+            info!("  - Average per album: {}",
                 Self::format_size(self.albums_memory / self.album_count));
         }
-        
+
         if self.track_count > 0 {
-            info!("  - Average per track: {}", 
+            info!("  - Average per track: {}",
                 Self::format_size(self.tracks_memory / self.track_count));
         }
     }
-    
+
     /// Estimate the memory used by a string
     pub fn string_size(s: &Option<String>) -> usize {
         match s {
@@ -101,17 +101,17 @@ impl MemoryUsage {
             None => 0
         }
     }
-    
+
     /// Estimate the memory used by a vector of strings
     pub fn string_vec_size(strings: &[String]) -> usize {
         // Base size of the Vec
         let base_size = mem::size_of::<Vec<String>>();
-        
+
         // Size of each string in the vector
         let strings_size = strings.iter().fold(0, |acc, s| {
             acc + mem::size_of::<String>() + s.capacity()
         });
-        
+
         // We can't get the capacity from a slice, so we'll just add a small overhead
         // based on the length of the slice as an estimate
         let capacity_overhead = if !strings.is_empty() {
@@ -120,87 +120,92 @@ impl MemoryUsage {
         } else {
             0
         };
-        
+
         base_size + strings_size + capacity_overhead
     }
-    
+
+    /// Estimate heap memory used by an Identifier variant.
+    fn identifier_heap_size(id: &Identifier) -> usize {
+        match id {
+            Identifier::Numeric(_) => 0,
+            Identifier::String(value) => value.capacity(),
+        }
+    }
+
     /// Calculate memory used by an artist
     pub fn calculate_artist_memory(artist: &Artist) -> usize {
         // Base size of Artist struct
         let base_size = mem::size_of::<Artist>();
-        
-        // Size of artist id
-        let id_size = mem::size_of::<u64>();
-        
+
+        // Heap usage for artist id (if string-based)
+        let id_heap_size = Self::identifier_heap_size(&artist.id);
+
         // Size of artist name
         let name_size = artist.name.capacity();
-        
-        // Size of is_multi boolean
-        let is_multi_size = mem::size_of::<bool>();
-        
+
         // Size of metadata if present
         let metadata_size = match &artist.metadata {
             Some(meta) => {
                 // Estimate size of metadata - this could be improved with more detailed calculation
                 let mbid_size = meta.mbid.iter().fold(0, |acc, id| acc + id.capacity());
-                
+
                 // These are Vec<String>, not Option<String>, so calculate directly
                 let thumb_url_size = meta.thumb_url.iter().fold(0, |acc, url| acc + url.capacity());
                 let banner_url_size = meta.banner_url.iter().fold(0, |acc, url| acc + url.capacity());
-                
+
                 // Add potential biography size
                 let biography_size = meta.biography.as_ref().map_or(0, |bio| bio.capacity());
-                
+
                 // Add genres size
                 let genres_size = meta.genres.iter().fold(0, |acc, genre| acc + genre.capacity());
-                
-                mbid_size + thumb_url_size + banner_url_size + biography_size + genres_size + 
+
+                mbid_size + thumb_url_size + banner_url_size + biography_size + genres_size +
                     mem::size_of::<crate::data::metadata::ArtistMeta>()
             },
             None => 0
         };
-        
-        base_size + id_size + name_size + is_multi_size + metadata_size
+
+        base_size + id_heap_size + name_size + metadata_size
     }
-    
+
     /// Calculate memory used by an album
     pub fn calculate_album_memory(album: &Album) -> usize {
         // Base size of Album struct
         let base_size = mem::size_of::<Album>();
-        
-        // Size of album id
-        let id_size = mem::size_of::<u64>();
-        
+
+        // Heap usage for album id (if string-based)
+        let id_heap_size = Self::identifier_heap_size(&album.id);
+
         // Size of album name
         let name_size = album.name.capacity();
-        
+
         // Size of artists (Arc<Mutex<Vec<String>>>)
         let artists_size = mem::size_of::<Arc<Mutex<Vec<String>>>>();
-        
+
         // Access the artists to calculate their memory usage
         let artists_content_size = Self::string_vec_size(&album.artists.lock());
-        
+
         // Size of artists_flat if present
         let artists_flat_size = match &album.artists_flat {
             Some(flat) => mem::size_of::<String>() + flat.capacity(),
             None => 0
         };
-        
+
         // Size of release_date (NaiveDate)
         let release_date_size = if album.release_date.is_some() { mem::size_of::<chrono::NaiveDate>() } else { 0 };
-        
+
         // Size of cover art URL if present
         let cover_art_size = Self::string_size(&album.cover_art);
-        
+
         // Size of URI if present
         let uri_size = Self::string_size(&album.uri);
-        
+
         // The size of the tracks is calculated separately with calculate_tracks_memory
-        
-        base_size + id_size + name_size + artists_size + artists_content_size + 
+
+        base_size + id_heap_size + name_size + artists_size + artists_content_size +
             artists_flat_size + release_date_size + cover_art_size + uri_size
     }
-    
+
     /// Calculate memory used by tracks
     pub fn calculate_tracks_memory(tracks: &Arc<Mutex<Vec<Track>>>) -> usize {
         let mut size = 0;
@@ -241,7 +246,74 @@ impl MemoryUsage {
                 size += mem::size_of::<String>() + uri.capacity();
             }
         }
-        
+
         size
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::MemoryUsage;
+    use crate::data::{Album, Artist, Identifier};
+    use parking_lot::Mutex;
+    use std::sync::Arc;
+
+    #[test]
+    fn regression_calculate_artist_memory_accounts_for_string_identifier_heap() {
+        let numeric = Artist {
+            id: Identifier::Numeric(42),
+            name: "Artist".to_string(),
+            is_multi: false,
+            metadata: None,
+        };
+
+        let string_id = "artist-id-with-significant-length-1234567890".to_string();
+        let string_based = Artist {
+            id: Identifier::String(string_id.clone()),
+            name: "Artist".to_string(),
+            is_multi: false,
+            metadata: None,
+        };
+
+        let numeric_size = MemoryUsage::calculate_artist_memory(&numeric);
+        let string_size = MemoryUsage::calculate_artist_memory(&string_based);
+
+        assert!(string_size >= numeric_size + string_id.capacity());
+    }
+
+    #[test]
+    fn regression_calculate_album_memory_accounts_for_string_identifier_heap() {
+        let common_artists = Arc::new(Mutex::new(vec!["Artist".to_string()]));
+        let common_tracks = Arc::new(Mutex::new(Vec::new()));
+
+        let numeric = Album {
+            id: Identifier::Numeric(7),
+            name: "Album".to_string(),
+            artists: Arc::clone(&common_artists),
+            artists_flat: None,
+            release_date: None,
+            tracks: Arc::clone(&common_tracks),
+            cover_art: None,
+            uri: None,
+            genres: Vec::new(),
+        };
+
+        let string_id = "album-id-with-significant-length-abcdefghijk".to_string();
+        let string_based = Album {
+            id: Identifier::String(string_id.clone()),
+            name: "Album".to_string(),
+            artists: Arc::clone(&common_artists),
+            artists_flat: None,
+            release_date: None,
+            tracks: Arc::clone(&common_tracks),
+            cover_art: None,
+            uri: None,
+            genres: Vec::new(),
+        };
+
+        let numeric_size = MemoryUsage::calculate_album_memory(&numeric);
+        let string_size = MemoryUsage::calculate_album_memory(&string_based);
+
+        assert!(string_size >= numeric_size + string_id.capacity());
     }
 }

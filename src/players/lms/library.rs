@@ -7,31 +7,42 @@ use crate::data::{Album, AlbumArtists, Artist, LibraryError, LibraryInterface};
 use crate::helpers::http_client;
 use crate::players::lms::json_rps::LmsRpcClient;
 use crate::players::lms::lms_audio::lms_image_url;
+fn resolve_track_identifier(track: Option<crate::data::track::Track>) -> Option<String> {
+    track.and_then(|t| {
+        // Prefer explicit track ID and fall back to URI only when ID is missing.
+        t.id
+            .map(|id| match id {
+                crate::data::Identifier::String(s) => s,
+                crate::data::Identifier::Numeric(n) => n.to_string(),
+            })
+            .or(t.uri)
+    })
+}
 
 /// LMS library interface that provides access to albums and artists
 #[derive(Clone)]
 pub struct LMSLibrary {
     /// Client for communicating with the LMS server
     client: Arc<LmsRpcClient>,
-    
+
     /// Cache of albums, key is album name
     albums: Arc<RwLock<HashMap<String, Album>>>,
-    
+
     /// Cache of artists, key is artist name
     artists: Arc<RwLock<HashMap<String, Artist>>>,
-    
+
     /// Album to artist relationships
     album_artists: Arc<RwLock<AlbumArtists>>,
-    
+
     /// Flag indicating if library is loaded
     library_loaded: Arc<Mutex<bool>>,
-    
+
     /// Library loading progress (0.0 - 1.0)
     loading_progress: Arc<Mutex<f32>>,
-    
+
     /// Custom artist separators for splitting artist names
     artist_separators: Arc<Mutex<Option<Vec<String>>>>,
-    
+
     /// Flag to control metadata enhancement
     enhance_metadata: bool,
 }
@@ -40,10 +51,10 @@ impl LMSLibrary {
     /// Create a new LMS library interface with specific connection details
     pub fn with_connection(hostname: &str, port: u16) -> Self {
         debug!("Creating new LMSLibrary with connection {}:{}", hostname, port);
-        
+
         // Create an LmsRpcClient for communicating with the server
         let client = Arc::new(LmsRpcClient::new(hostname, port));
-        
+
         LMSLibrary {
             client,
             albums: Arc::new(RwLock::new(HashMap::new())),
@@ -56,7 +67,7 @@ impl LMSLibrary {
         }
     }
     /// Populate calculated fields in album objects
-    /// 
+    ///
     /// This adds derived fields like cover_art URL for albums that don't have them yet
     /// these calculates fields are not stored, but only calculated on demand
     pub fn populate_calculated_album_fields(&self, album: &mut Album) {
@@ -75,7 +86,7 @@ impl LMSLibrary {
     pub fn get_loading_progress(&self) -> f32 {
         *self.loading_progress.lock()
     }
-    
+
     /// Set custom artist separators for use in library operations
     pub fn set_artist_separators(&mut self, separators: Vec<String>) {
         debug!("Setting custom artist separators in LMSLibrary: {:?}", separators);
@@ -87,25 +98,25 @@ impl LMSLibrary {
         // Return the stored separators if available
         self.artist_separators.lock().clone()
     }
-        
+
     /// Create artist objects from all album artist data
     ///
     /// This method scans all albums in the library, extracts all artist names
-    /// from the album artists list, and creates Artist objects for each if they 
+    /// from the album artists list, and creates Artist objects for each if they
     /// don't already exist. It also updates the album-artist relationships.
     pub fn create_artists(&self) -> Result<usize, LibraryError> {
         debug!("Creating artist objects from album artist data");
         let start_time = Instant::now();
-        
+
         let mut created_count = 0;
-        
+
         // First, get a read lock on the albums to extract all artist names
         let albums = self.albums.read();
-        
+
         // Collect all artist names from albums and their IDs
         let mut artist_names = HashSet::new();
         let mut album_artist_relations = Vec::new();
-        
+
         // Go through all albums and collect artist names
         for album in albums.values() {
             // Extract artist names from the album's artists list
@@ -117,31 +128,31 @@ impl LMSLibrary {
                 album_artist_relations.push((album.id.clone(), artist_name.clone()));
             }
         }
-        
+
         debug!("Found {} unique artist names in albums", artist_names.len());
-        
+
         // Now, get a write lock on the artists collection to add new artists
         let mut artists = self.artists.write();
 
         // Get a write lock on the album_artists relationships
         let mut album_artists = self.album_artists.write();
-        
+
         // Create a new artist object for each name that doesn't already exist
         for artist_name in artist_names {
             // Skip if the artist already exists
             if artists.contains_key(&artist_name) {
                 continue;
             }
-            
+
             // Create a unique ID for the artist based on the name
             use std::collections::hash_map::DefaultHasher;
             use std::hash::{Hash, Hasher};
             use crate::data::Identifier;
-            
+
             let mut hasher = DefaultHasher::new();
             artist_name.hash(&mut hasher);
             let artist_id = hasher.finish();
-            
+
             // Create a new Artist object
             let artist = Artist {
                 id: Identifier::Numeric(artist_id),
@@ -152,14 +163,14 @@ impl LMSLibrary {
 
             // lookup cache_key "artist::metadata::<artistname>" for cached metadata
             let cache_key = format!("artist::metadata::{}", artist_name);
-            
+
             // Try to load metadata from the attribute cache
             let mut artist_with_metadata = artist;
             match crate::helpers::attribute_cache::get::<crate::data::ArtistMeta>(&cache_key) {
                 Ok(Some(cached_metadata)) => {
                     debug!("Loaded metadata for artist {} from attribute cache", artist_name);
                     artist_with_metadata.metadata = Some(cached_metadata);
-                    
+
                     // Check if this is a multi-artist (having multiple MBIDs or partial match)
                     if let Some(ref meta) = artist_with_metadata.metadata {
                         if meta.mbid.len() > 1 || meta.is_partial_match {
@@ -180,7 +191,7 @@ impl LMSLibrary {
             artists.insert(artist_name.clone(), artist_with_metadata);
             created_count += 1;
         }
-        
+
         // Update album-artist relationships
         for (album_id, artist_name) in album_artist_relations {
             // Get artist ID (if it exists)
@@ -189,13 +200,13 @@ impl LMSLibrary {
                 album_artists.add_mapping(album_id, artist.id.clone());
             }
         }
-        
+
         let elapsed = start_time.elapsed();
         info!("Created {} new artists in {:?}", created_count, elapsed);
-        
+
         Ok(created_count)
     }
-    
+
     /// Get artists collection as Arc for direct updating
     pub fn get_artists_arc(&self) -> Arc<RwLock<HashMap<String, Artist>>> {
         self.artists.clone()
@@ -294,10 +305,10 @@ impl LMSLibrary {
             })
             .cloned()
     }    /// Returns the URL for a track's cover artwork
-    /// 
+    ///
     /// # Arguments
     /// * `track_id` - The ID of the track, which can be extracted from track URI
-    /// 
+    ///
     /// # Returns
     /// A string containing the URL for the track's cover artwork in the format:
     /// `http://<server>:<port>/music/<track_id>/cover.jpg`
@@ -307,10 +318,10 @@ impl LMSLibrary {
             Ok(addr) => addr,
             Err(_) => "localhost".to_string(), // Default to localhost if we can't get the address
         };
-        
+
         // Get server port from the client
         let port = self.client.get_server_port();
-        
+
         // Extract the track ID from the URI if it's in a format like file:///path/to/track
         let id = if track_id.contains("://") {
             // For file URIs, extract just the file path part
@@ -322,7 +333,7 @@ impl LMSLibrary {
         } else {
             track_id
         };
-        
+
         // Construct and return the URL
         format!("http://{}:{}/music/{}/cover.jpg", server_addr, port, id)
     }
@@ -338,19 +349,19 @@ impl LibraryInterface for LMSLibrary {
         debug!("Library is_loaded check returning: {}", *loaded);
         *loaded
     }
-    
+
     fn refresh_library(&self) -> Result<(), LibraryError> {
         debug!("Refreshing LMS library data using LMSLibraryLoader");
         let start_time = Instant::now();
-        
+
         // Use our LMSLibraryLoader to load albums
         let loader = super::library_loader::LMSLibraryLoader::new(
             self.client.clone()
         );
-        
+
         // Get artist separators from the configuration, if any
         let artist_separators = self.get_artist_separators();
-        
+
         let result = match loader.load_albums_from_lms(artist_separators) {
             Ok(albums) => {
                 // Mark as not loaded during update
@@ -358,7 +369,7 @@ impl LibraryInterface for LMSLibrary {
 
                 // Reset loading progress to 0
                 { let mut progress = self.loading_progress.lock(); *progress = 0.0; }
-                
+
                 // Update albums collection
                 {
                     let mut self_albums = self.albums.write();
@@ -372,7 +383,7 @@ impl LibraryInterface for LMSLibrary {
 
                     info!("Updated library with {} albums", self_albums.len());
                 }
-                
+
                 // Create artists and update album-artist relationships
                 if let Err(e) = self.create_artists() {
                     error!("Error creating artists: {}", e);
@@ -385,10 +396,10 @@ impl LibraryInterface for LMSLibrary {
                 }
 
                 { let mut progress = self.loading_progress.lock(); *progress = 1.0; }
-                
+
                 let total_time = start_time.elapsed();
                 info!("Library load complete in {:.2?}", total_time);
-                
+
                 // Start background update of artist metadata now that the library is fully loaded
                 if self.enhance_metadata {
                     info!("Starting background metadata update for artists");
@@ -396,7 +407,7 @@ impl LibraryInterface for LMSLibrary {
                         self.artists.clone()
                     );
                 }
-                
+
                 Ok(())
             },
             Err(e) => {
@@ -404,10 +415,10 @@ impl LibraryInterface for LMSLibrary {
                 Err(e)
             }
         };
-        
+
         result
     }
-    
+
     fn get_albums(&self) -> Vec<Album> {
         warn!("Retrieving all albums from LMSLibrary");
         let albums = self.albums.read();
@@ -422,15 +433,15 @@ impl LibraryInterface for LMSLibrary {
         info!("LMSLibrary returning {} artists from get_artists", artists.len());
         artists.values().cloned().collect()
     }
-    
+
     fn get_album_by_artist_and_name(&self, artist: &str, album: &str) -> Option<Album> {
         self.get_album_by_artist_and_name(artist, album)
     }
-    
+
     fn get_artist_by_name(&self, name: &str) -> Option<Artist> {
         self.get_artist_by_name(name)
     }
-    
+
     fn update_artist_metadata(&self) {
         if self.enhance_metadata {
             info!("Starting background metadata update for LMSLibrary artists");
@@ -438,45 +449,42 @@ impl LibraryInterface for LMSLibrary {
             crate::helpers::artist_updater::update_library_artists_metadata_in_background(self.artists.clone());
         }
     }
-    
+
     fn get_album_by_id(&self, id: &crate::data::Identifier) -> Option<Album> {
         self.get_album_by_id(id)
     }
-    
+
     fn get_albums_by_artist_id(&self, artist_id: &crate::data::Identifier) -> Vec<Album> {
         self.get_albums_by_artist_id(artist_id)
     }
     fn get_image(&self, identifier: String) -> Option<(Vec<u8>, String)> {
         debug!("Retrieving image for identifier: {}", identifier);
-        
+
         // Check if the identifier starts with "album:"
         if let Some(album_id_str) = identifier.strip_prefix("album:") {
             debug!("Detected album identifier: {}", album_id_str);
-            
+
             // Parse the album ID as a numeric ID
             match album_id_str.parse::<u64>() {
                 Ok(album_id_num) => {
                     let album_id = crate::data::Identifier::Numeric(album_id_num);
                     warn!("Parsed album ID: {}", album_id);
                     let album = self.get_album_by_id(&album_id);
-                    
+
                     // Get the first track from the album (if any) with proper lifetime handling
                     let track = album.and_then(|a| {
                         let tracks_guard = a.tracks.lock();
                         tracks_guard.first().cloned()
                     });
 
-                    // Extract the track ID if available, otherwise fall back to URI
-                    let track_id = track.and_then(|t| {
-                        // First try the id field
-                        t.id.map(|id| match id {
-                            crate::data::Identifier::String(s) => s,
-                            crate::data::Identifier::Numeric(n) => n.to_string(),
-                        })
-                        // Fall back to URI if no ID is available
-                        .or_else(|| t.uri.clone())
-                    })
-                    .unwrap_or_else(|| "0".to_string());
+                    let track_id = match resolve_track_identifier(track) {
+                        Some(id) => id,
+                        None => {
+                            warn!("No track identifier found for album {}, skipping image fetch", album_id_num);
+                            return None;
+                        }
+                    };
+
                     let track_cover_url = self.track_cover_url(&track_id);
                     warn!("Track cover URL: {}", track_cover_url);
                     // Fetch the image data from the URL using  http client
@@ -490,7 +498,7 @@ impl LibraryInterface for LMSLibrary {
                             return None;
                         }
                     }
-                    
+
                 },
                 Err(e) => {
                     warn!("Failed to parse album ID '{}' as a number: {}", album_id_str, e);
@@ -498,7 +506,7 @@ impl LibraryInterface for LMSLibrary {
                 }
             }
         }
-        
+
         // If we reach here, the identifier is not supported
         warn!("Unsupported image identifier format: {}", identifier);
         None
@@ -536,10 +544,10 @@ impl LibraryInterface for LMSLibrary {
         match key {
             "memory_usage" => {
                 use crate::helpers::memory_report::MemoryUsage;
-                
+
                 // Create memory usage tracker
                 let mut usage = MemoryUsage::new();
-                
+
                 // Calculate size of albums and tracks
                 {
                     let albums = self.albums.read();
@@ -570,10 +578,10 @@ impl LibraryInterface for LMSLibrary {
                     usage.album_artists_count = album_artists.len();
                     usage.overhead_memory += album_artists.memory_usage();
                 }
-                
+
                 // Log the stats for debugging/monitoring
                 usage.log_stats();
-                
+
                 // Return as JSON
                 Some(serde_json::to_string_pretty(&serde_json::json!({
                     "name": "LMSLibrary",
@@ -636,8 +644,42 @@ impl LibraryInterface for LMSLibrary {
             _ => None,
         }
     }
-    
+
     fn as_any(&self) -> &dyn std::any::Any {
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_track_identifier;
+    use crate::data::{Identifier, track::Track};
+
+    #[test]
+    fn regression_resolve_track_identifier_prefers_explicit_id() {
+        let mut track = Track::with_name("Song".to_string());
+        track.id = Some(Identifier::String("abc123".to_string()));
+        track.uri = Some("file:///music/song.flac".to_string());
+
+        assert_eq!(resolve_track_identifier(Some(track)), Some("abc123".to_string()));
+    }
+
+    #[test]
+    fn regression_resolve_track_identifier_falls_back_to_uri() {
+        let mut track = Track::with_name("Song".to_string());
+        track.uri = Some("file:///music/song.flac".to_string());
+
+        assert_eq!(
+            resolve_track_identifier(Some(track)),
+            Some("file:///music/song.flac".to_string())
+        );
+    }
+
+    #[test]
+    fn regression_resolve_track_identifier_none_when_missing() {
+        let track = Track::with_name("Song".to_string());
+
+        assert_eq!(resolve_track_identifier(Some(track)), None);
+        assert_eq!(resolve_track_identifier(None), None);
     }
 }

@@ -1,6 +1,6 @@
 /*!
  * URL encoding helper for creating URL-safe encoded identifiers
- * 
+ *
  * This module provides functionality to encode long URLs/paths into
  * URL-safe base64 strings that can be used as shorter identifiers.
  */
@@ -9,18 +9,18 @@ use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use log::debug;
 
 /// Encode a string to URL-safe base64 without padding
-/// 
+///
 /// This function takes any string (typically a long file path or URL)
 /// and encodes it to a URL-safe base64 string without padding characters.
 /// The resulting string can be safely used in URLs and is shorter than
 /// URL-encoded paths.
-/// 
+///
 /// # Arguments
 /// * `input` - The string to encode
-/// 
+///
 /// # Returns
 /// A URL-safe base64 encoded string without padding
-/// 
+///
 /// # Example
 /// ```no_run
 /// use audiocontrol::helpers::url_encoding::encode_url_safe;
@@ -36,17 +36,17 @@ pub fn encode_url_safe(input: &str) -> String {
 }
 
 /// Decode a URL-safe base64 string back to the original string
-/// 
+///
 /// This function decodes a URL-safe base64 string back to the original
 /// string. Returns None if the input is not valid base64 or cannot be
 /// decoded to a valid UTF-8 string.
-/// 
+///
 /// # Arguments
 /// * `encoded` - The URL-safe base64 encoded string
-/// 
+///
 /// # Returns
 /// The original string if decoding is successful, None otherwise
-/// 
+///
 /// # Example
 /// ```no_run
 /// use audiocontrol::helpers::url_encoding::decode_url_safe;
@@ -77,31 +77,32 @@ pub fn decode_url_safe(encoded: &str) -> Option<String> {
 }
 
 /// Check if a string looks like a URL-safe base64 encoded string
-/// 
+///
 /// This function performs a basic check to see if the input string
 /// could be a URL-safe base64 encoded string. It checks the character
 /// set and attempts to decode it.
-/// 
+///
 /// # Arguments
 /// * `input` - The string to check
-/// 
+///
 /// # Returns
 /// True if the string appears to be URL-safe base64 encoded, false otherwise
 pub fn is_url_safe_base64(input: &str) -> bool {
     // Check if the string contains only valid URL-safe base64 characters
     // URL-safe base64 uses: A-Z, a-z, 0-9, -, _ (no padding since we use NO_PAD)
     if input.is_empty() {
-        return false;
+        // Empty input is a valid URL-safe base64 encoding of an empty string.
+        return true;
     }
-    
+
     let valid_chars = input.chars().all(|c| {
         c.is_ascii_alphanumeric() || c == '-' || c == '_'
     });
-    
+
     if !valid_chars {
         return false;
     }
-    
+
     // Try to decode it to see if it's valid base64
     decode_url_safe(input).is_some()
 }
@@ -131,12 +132,12 @@ mod tests {
     fn test_url_safe_characters() {
         let input = "path/with/spaces and special chars";
         let encoded = encode_url_safe(input);
-        
+
         // Should not contain +, /, or = (which are not URL-safe)
         assert!(!encoded.contains('+'));
         assert!(!encoded.contains('/'));
         assert!(!encoded.contains('='));
-        
+
         // Should only contain URL-safe characters
         assert!(encoded.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'));
     }
@@ -146,13 +147,21 @@ mod tests {
         // Valid base64 strings
         let valid_input = encode_url_safe("test string");
         assert!(is_url_safe_base64(&valid_input));
-        
+        assert!(is_url_safe_base64(""));
+
         // Invalid strings
-        assert!(!is_url_safe_base64(""));
         assert!(!is_url_safe_base64("not base64!"));
         assert!(!is_url_safe_base64("contains/slash"));
         assert!(!is_url_safe_base64("contains+plus"));
         assert!(!is_url_safe_base64("contains=equal"));
+    }
+
+    #[test]
+    fn regression_is_url_safe_base64_accepts_empty_roundtrip_output() {
+        let encoded = encode_url_safe("");
+        assert_eq!(encoded, "");
+        assert!(is_url_safe_base64(&encoded));
+        assert_eq!(decode_url_safe(&encoded), Some("".to_string()));
     }
 
     #[test]

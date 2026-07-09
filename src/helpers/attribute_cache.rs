@@ -13,29 +13,37 @@ use std::num::NonZeroUsize;
 /// - A string like "100K", "200M", "18kB", "189MB", "1G"
 pub fn parse_size_string(size_str: &str) -> Result<usize, String> {
     let size_str = size_str.trim();
-    
+
     // If it's just a number, treat as bytes
     if let Ok(bytes) = size_str.parse::<usize>() {
         return Ok(bytes);
     }
-    
+
     // Parse size with units
     let size_str_upper = size_str.to_uppercase();
-    
+
     // Handle different unit formats
-    let (number_str, multiplier) = if size_str_upper.ends_with("KB") || size_str_upper.ends_with("KIB") {
+    let (number_str, multiplier) = if size_str_upper.ends_with("KIB") {
+        (&size_str_upper[..size_str_upper.len()-3], 1024)
+    } else if size_str_upper.ends_with("KB") {
         (&size_str_upper[..size_str_upper.len()-2], 1024)
     } else if size_str_upper.ends_with("K") {
         (&size_str_upper[..size_str_upper.len()-1], 1024)
-    } else if size_str_upper.ends_with("MB") || size_str_upper.ends_with("MIB") {
+    } else if size_str_upper.ends_with("MIB") {
+        (&size_str_upper[..size_str_upper.len()-3], 1024 * 1024)
+    } else if size_str_upper.ends_with("MB") {
         (&size_str_upper[..size_str_upper.len()-2], 1024 * 1024)
     } else if size_str_upper.ends_with("M") {
         (&size_str_upper[..size_str_upper.len()-1], 1024 * 1024)
-    } else if size_str_upper.ends_with("GB") || size_str_upper.ends_with("GIB") {
+    } else if size_str_upper.ends_with("GIB") {
+        (&size_str_upper[..size_str_upper.len()-3], 1024 * 1024 * 1024)
+    } else if size_str_upper.ends_with("GB") {
         (&size_str_upper[..size_str_upper.len()-2], 1024 * 1024 * 1024)
     } else if size_str_upper.ends_with("G") {
         (&size_str_upper[..size_str_upper.len()-1], 1024 * 1024 * 1024)
-    } else if size_str_upper.ends_with("TB") || size_str_upper.ends_with("TIB") {
+    } else if size_str_upper.ends_with("TIB") {
+        (&size_str_upper[..size_str_upper.len()-3], 1024_usize.pow(4))
+    } else if size_str_upper.ends_with("TB") {
         (&size_str_upper[..size_str_upper.len()-2], 1024_usize.pow(4))
     } else if size_str_upper.ends_with("T") {
         (&size_str_upper[..size_str_upper.len()-1], 1024_usize.pow(4))
@@ -45,7 +53,7 @@ pub fn parse_size_string(size_str: &str) -> Result<usize, String> {
     } else {
         return Err(format!("Unrecognized size format: '{}'. Supported formats: 100K, 200M, 18kB, 189MB, 1G, etc.", size_str));
     };
-    
+
     match number_str.parse::<f64>() {
         Ok(number) => {
             if number < 0.0 {
@@ -124,14 +132,14 @@ impl AttributeCache {
     /// Create a new attribute cache with a specific database file and memory limit
     pub fn with_database_file_and_memory_limit<P: AsRef<Path>>(db_file: P, max_memory_bytes: usize) -> Self {
         let db_path = db_file.as_ref().to_path_buf();
-        
+
         // Try to ensure the directory exists
         if let Some(parent) = db_path.parent() {
             if let Err(e) = std::fs::create_dir_all(parent) {
                 error!("Failed to create directory for attribute cache: {}", e);
             }
         }
-        
+
         let db = Self::setup_database(&db_path);
 
         let max_memory_bytes = if max_memory_bytes > 0 {
@@ -158,7 +166,7 @@ impl AttributeCache {
         match Connection::open(db_path) {
             Ok(conn) => {
                 info!("Successfully opened attribute cache database at {:?}", db_path);
-                
+
                 // First, check if this is a completely new database or needs migration
                 let mut table_exists = false;
                 let mut has_key = false;
@@ -166,18 +174,18 @@ impl AttributeCache {
                 let mut has_created_at = false;
                 let mut has_updated_at = false;
                 let mut has_expires_at = false;
-                
+
                 // Check if table exists and what columns it has
                 if let Ok(mut stmt) = conn.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='cache'") {
                     if stmt.query_row([], |_| Ok(())).is_ok() {
                         table_exists = true;
-                        
+
                         // Check existing columns
                         if let Ok(mut stmt) = conn.prepare("PRAGMA table_info(cache)") {
                             let column_iter = stmt.query_map([], |row| {
                                 row.get::<_, String>(1) // Column name is at index 1
                             });
-                            
+
                             if let Ok(iter) = column_iter {
                                 for col_name in iter.flatten() {
                                     match col_name.as_str() {
@@ -193,12 +201,12 @@ impl AttributeCache {
                         }
                     }
                 }
-                
+
                 // If the table doesn't have all required columns, recreate the database
                 // This is simpler than complex migration logic
                 let schema_complete = has_key && has_value && has_created_at && has_updated_at && has_expires_at;
                 if table_exists && !schema_complete {
-                    warn!("Database schema is incomplete (key: {}, value: {}, created_at: {}, updated_at: {}, expires_at: {}), recreating cache database", 
+                    warn!("Database schema is incomplete (key: {}, value: {}, created_at: {}, updated_at: {}, expires_at: {}), recreating cache database",
                           has_key, has_value, has_created_at, has_updated_at, has_expires_at);
                     if let Err(e) = conn.execute("DROP TABLE IF EXISTS cache", []) {
                         error!("Failed to drop old cache table: {}", e);
@@ -206,7 +214,7 @@ impl AttributeCache {
                     }
                     table_exists = false;
                 }
-                
+
                 // Create the cache table with the full schema
                 if !table_exists {
                     if let Err(e) = conn.execute(
@@ -224,7 +232,7 @@ impl AttributeCache {
                     }
                     info!("Created new cache table with complete schema");
                 }
-                
+
                 debug!("Cache table created or verified successfully");
                 Some(conn)
             },
@@ -248,7 +256,7 @@ impl AttributeCache {
             }
         }
     }
-    
+
     /// Initialize the global attribute cache with a custom directory path and memory limit
     pub fn initialize_global_with_memory_limit<P: AsRef<Path>>(db_file: P, max_memory_bytes: usize) -> Result<(), String> {
         match get_attribute_cache().reconfigure_with_file_and_memory_limit(db_file, max_memory_bytes) {
@@ -262,7 +270,7 @@ impl AttributeCache {
             }
         }
     }
-    
+
     /// Initialize the global attribute cache with a custom directory path and memory limit
     pub fn initialize_with_memory_limit<P: AsRef<Path>>(path: P, max_memory_bytes: usize) -> Result<(), String> {
         Self::initialize_global_with_memory_limit(path, max_memory_bytes)
@@ -293,7 +301,7 @@ impl AttributeCache {
         };
 
         info!("Initializing attribute cache with {}MB memory limit", memory_limit / 1024 / 1024);
-        
+
         Self::initialize_global_with_memory_limit(db_path, memory_limit)?;
 
         // Handle preload_prefixes if specified
@@ -305,7 +313,7 @@ impl AttributeCache {
                         prefixes.push(prefix_str.to_string());
                     }
                 }
-                
+
                 if !prefixes.is_empty() {
                     info!("Preloading {} cache prefixes from configuration", prefixes.len());
                     let mut cache = get_attribute_cache();
@@ -329,24 +337,24 @@ impl AttributeCache {
     fn reconfigure_with_directory<P: AsRef<Path>>(&mut self, dir: P) -> Result<(), String> {
         let cache_dir = dir.as_ref().to_path_buf();
         let db_file = cache_dir.join("attributes.db");
-        
+
         // Try to ensure the directory exists
         if let Err(e) = std::fs::create_dir_all(&cache_dir) {
             return Err(format!("Failed to create directory for attribute cache: {}", e));
         }
-        
+
         // Use the centralized database setup logic
         let db = Self::setup_database(&db_file);
         if db.is_none() {
             return Err("Failed to setup database".to_string());
         }
-        
+
         // Update the instance
         self.db_path = db_file;
         self.db = db;
         self.memory_cache.clear(); // Clear memory cache as we have a new DB
         self.current_memory_bytes = 0;
-        
+
         Ok(())
     }
 
@@ -354,14 +362,14 @@ impl AttributeCache {
     /// This will close the existing database and open a new one with a new memory cache
     fn reconfigure_with_file_and_memory_limit<P: AsRef<Path>>(&mut self, db_file: P, max_memory_bytes: usize) -> Result<(), String> {
         let db_path = db_file.as_ref().to_path_buf();
-        
+
         // Try to ensure the directory exists
         if let Some(parent) = db_path.parent() {
             if let Err(e) = std::fs::create_dir_all(parent) {
                 return Err(format!("Failed to create directory for attribute cache: {}", e));
             }
         }
-        
+
         // Use the centralized database setup logic
         let db = Self::setup_database(&db_path);
         if db.is_none() {
@@ -374,16 +382,16 @@ impl AttributeCache {
             warn!("Invalid memory limit {}, using default of 50MB", max_memory_bytes);
             50 * 1024 * 1024
         };
-        
+
         // Update the instance
         self.db_path = db_path;
         self.db = db;
         self.memory_cache.clear();
         self.current_memory_bytes = 0;
         self.max_memory_bytes = max_memory_bytes;
-        
+
         info!("Attribute cache reconfigured with {}MB memory limit", max_memory_bytes / 1024 / 1024);
-        
+
         Ok(())
     }
 
@@ -408,7 +416,7 @@ impl AttributeCache {
             if let Some((key, value)) = self.memory_cache.pop_lru() {
                 let item_size = key.len() + value.len();
                 self.current_memory_bytes = self.current_memory_bytes.saturating_sub(item_size);
-                debug!("Evicted cache entry '{}' ({} bytes), current memory usage: {} bytes", 
+                debug!("Evicted cache entry '{}' ({} bytes), current memory usage: {} bytes",
                        key, item_size, self.current_memory_bytes);
             } else {
                 // Cache is empty but current_memory_bytes is still > 0, reset it
@@ -422,17 +430,17 @@ impl AttributeCache {
     /// Add an item to memory cache, managing memory usage
     fn add_to_memory_cache(&mut self, key: String, value: Arc<Vec<u8>>) {
         let item_size = key.len() + value.len();
-        
+
         // Remove existing entry if it exists (to update memory usage correctly)
         if let Some(old_value) = self.memory_cache.pop(&key) {
             let old_size = key.len() + old_value.len();
             self.current_memory_bytes = self.current_memory_bytes.saturating_sub(old_size);
         }
-        
+
         // Add new entry
         self.memory_cache.put(key, value);
         self.current_memory_bytes += item_size;
-        
+
         // Evict items if we exceed memory limit
         self.evict_to_memory_limit();
     }
@@ -469,9 +477,9 @@ impl AttributeCache {
                 // For new records: set both created_at and updated_at to current time
                 // For existing records: keep created_at, update only updated_at
                 if let Err(e) = db.execute(
-                    "INSERT INTO cache (key, value, created_at, updated_at, expires_at) 
+                    "INSERT INTO cache (key, value, created_at, updated_at, expires_at)
                      VALUES (?1, ?2, strftime('%s', 'now'), strftime('%s', 'now'), ?3)
-                     ON CONFLICT(key) DO UPDATE SET 
+                     ON CONFLICT(key) DO UPDATE SET
                          value = excluded.value,
                          updated_at = strftime('%s', 'now'),
                          expires_at = excluded.expires_at",
@@ -479,7 +487,7 @@ impl AttributeCache {
                 ) {
                     return Err(format!("Failed to store in database: {}", e));
                 }
-                
+
                 debug!("Stored key '{}' in SQLite cache with expiry: {:?}", key, expires_at);
                 Ok(())
             },
@@ -511,7 +519,7 @@ impl AttributeCache {
                     Ok(stmt) => stmt,
                     Err(e) => return Err(format!("Failed to prepare expiry check statement: {}", e)),
                 };
-                
+
                 match stmt.query_row(params![key], |row| {
                     let expires_at: Option<i64> = row.get(0)?;
                     Ok(expires_at)
@@ -553,7 +561,7 @@ impl AttributeCache {
                     Ok(stmt) => stmt,
                     Err(e) => return Err(format!("Failed to prepare SQL statement: {}", e)),
                 };
-                
+
                 match stmt.query_row(params![key], |row| {
                     let data: Vec<u8> = row.get(0)?;
                     Ok(data)
@@ -564,12 +572,12 @@ impl AttributeCache {
                             Ok(value) => value,
                             Err(e) => return Err(format!("Failed to deserialize from database: {}", e)),
                         };
-                        
+
                         // Add to memory cache after we're done with the database
                         let data_arc = Arc::new(data_vec);
                         let key_string = key.to_string();
                         drop(stmt); // Explicitly drop stmt to release the database borrow
-                        
+
                         self.add_to_memory_cache(key_string, data_arc);
                         debug!("Retrieved key '{}' from SQLite cache", key);
                         Ok(Some(result))
@@ -639,17 +647,25 @@ impl AttributeCache {
 
     /// Clean up old entries that exceed the maximum age
     pub fn cleanup(&mut self) -> Result<usize, String> {
+        self.cleanup_older_than_days(self.max_age_days)
+    }
+
+    /// Clean up entries older than the provided number of days
+    pub fn cleanup_older_than_days(&mut self, days: u64) -> Result<usize, String> {
         if !self.is_enabled() {
             return Err("Cache is disabled".to_string());
         }
 
         match &mut self.db {
             Some(db) => {
-                // Calculate the cutoff timestamp (current time - max_age_days)
-                let cutoff_timestamp = std::time::SystemTime::now()
+                let now = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .map_err(|e| format!("Failed to get current time: {}", e))?
-                    .as_secs() as i64 - (self.max_age_days as i64 * 24 * 60 * 60);
+                    .as_secs() as i64;
+
+                let age_seconds = days.saturating_mul(24 * 60 * 60);
+                let age_seconds_i64 = i64::try_from(age_seconds).unwrap_or(i64::MAX);
+                let cutoff_timestamp = now.saturating_sub(age_seconds_i64);
 
                 match db.execute(
                     "DELETE FROM cache WHERE created_at < ?1",
@@ -657,7 +673,11 @@ impl AttributeCache {
                 ) {
                     Ok(affected_rows) => {
                         if affected_rows > 0 {
-                            info!("Cleaned up {} old entries from attribute cache", affected_rows);
+                            info!(
+                                "Cleaned up {} old entries from attribute cache (older than {} days)",
+                                affected_rows,
+                                days
+                            );
                             // Clear memory cache as some entries might have been removed
                             self.memory_cache.clear();
                             self.current_memory_bytes = 0;
@@ -734,17 +754,17 @@ impl AttributeCache {
         let db = self.db.as_ref()
             .ok_or_else(|| "Database connection is not available".to_string())?;
         let mut keys = Vec::new();
-        
+
         match prefix_filter {
             Some(prefix) => {
                 let pattern = format!("{}%", prefix);
                 let mut stmt = db.prepare("SELECT key FROM cache WHERE key LIKE ?1 ORDER BY key")
                     .map_err(|e| format!("Failed to prepare list statement: {}", e))?;
-                
+
                 let rows = stmt.query_map(params![pattern], |row: &rusqlite::Row| {
                     row.get::<_, String>(0)
                 }).map_err(|e| format!("Failed to execute list query: {}", e))?;
-                
+
                 for row in rows {
                     let key = row.map_err(|e| format!("Failed to read row: {}", e))?;
                     keys.push(key);
@@ -753,11 +773,11 @@ impl AttributeCache {
             None => {
                 let mut stmt = db.prepare("SELECT key FROM cache ORDER BY key")
                     .map_err(|e| format!("Failed to prepare list statement: {}", e))?;
-                
+
                 let rows = stmt.query_map([], |row: &rusqlite::Row| {
                     row.get::<_, String>(0)
                 }).map_err(|e| format!("Failed to execute list query: {}", e))?;
-                
+
                 for row in rows {
                     let key = row.map_err(|e| format!("Failed to read row: {}", e))?;
                     keys.push(key);
@@ -783,7 +803,7 @@ impl AttributeCache {
                 let pattern = format!("{}%", prefix);
                 let mut stmt = db.prepare("SELECT key, LENGTH(value) as size, created_at, updated_at, expires_at FROM cache WHERE key LIKE ?1 ORDER BY key")
                     .map_err(|e| format!("Failed to prepare list statement: {}", e))?;
-                
+
                 let rows = stmt.query_map(params![pattern], |row: &rusqlite::Row| {
                     Ok(CacheEntry {
                         key: row.get::<_, String>(0)?,
@@ -793,7 +813,7 @@ impl AttributeCache {
                         expires_at: row.get::<_, Option<i64>>(4)?,
                     })
                 }).map_err(|e| format!("Failed to execute list query: {}", e))?;
-                
+
                 for row in rows {
                     let entry = row.map_err(|e| format!("Failed to read row: {}", e))?;
                     entries.push(entry);
@@ -802,7 +822,7 @@ impl AttributeCache {
             None => {
                 let mut stmt = db.prepare("SELECT key, LENGTH(value) as size, created_at, updated_at, expires_at FROM cache ORDER BY key")
                     .map_err(|e| format!("Failed to prepare list statement: {}", e))?;
-                
+
                 let rows = stmt.query_map([], |row: &rusqlite::Row| {
                     Ok(CacheEntry {
                         key: row.get::<_, String>(0)?,
@@ -812,7 +832,7 @@ impl AttributeCache {
                         expires_at: row.get::<_, Option<i64>>(4)?,
                     })
                 }).map_err(|e| format!("Failed to execute list query: {}", e))?;
-                
+
                 for row in rows {
                     let entry = row.map_err(|e| format!("Failed to read row: {}", e))?;
                     entries.push(entry);
@@ -837,7 +857,7 @@ impl AttributeCache {
         // First, get the keys to remove from memory cache
         let mut stmt = db.prepare("SELECT key FROM cache WHERE key LIKE ?1")
             .map_err(|e| format!("Failed to prepare select statement: {}", e))?;
-        
+
         let rows = stmt.query_map(params![pattern], |row| {
             row.get::<_, String>(0)
         }).map_err(|e| format!("Failed to execute select query: {}", e))?;
@@ -862,14 +882,14 @@ impl AttributeCache {
     }
 
     /// Preload all cache entries matching a prefix into the LRU memory cache
-    /// 
+    ///
     /// This function loads all database entries with the given prefix into the LRU cache
     /// for faster subsequent access. This is useful for warming up the cache when you
     /// know you'll be accessing many keys with the same prefix.
-    /// 
+    ///
     /// # Arguments
     /// * `prefix` - The prefix to match for cache keys
-    /// 
+    ///
     /// # Returns
     /// The number of entries loaded into memory cache
     pub fn preload_prefix(&mut self, prefix: &str) -> Result<usize, String> {
@@ -884,7 +904,7 @@ impl AttributeCache {
 
         let mut stmt = db.prepare("SELECT key, value FROM cache WHERE key LIKE ?1")
             .map_err(|e| format!("Failed to prepare select statement: {}", e))?;
-        
+
         let rows = stmt.query_map(params![pattern], |row| {
             Ok((
                 row.get::<_, String>(0)?,
@@ -895,7 +915,7 @@ impl AttributeCache {
         let mut loaded_count = 0;
         for row in rows {
             let (key, value) = row.map_err(|e| format!("Failed to read row: {}", e))?;
-            
+
             // Check memory limit before adding
             let entry_size = Self::estimate_cache_entry_size(&key, &value);
             if self.current_memory_bytes + entry_size > self.max_memory_bytes {
@@ -911,14 +931,14 @@ impl AttributeCache {
                     }
                 }
             }
-            
+
             // Store in memory cache
             self.memory_cache.put(key, Arc::new(value));
             self.current_memory_bytes += entry_size;
             loaded_count += 1;
         }
 
-        debug!("Preloaded {} cache entries with prefix '{}' into memory cache (using {:.1}MB memory)", 
+        debug!("Preloaded {} cache entries with prefix '{}' into memory cache (using {:.1}MB memory)",
                loaded_count, prefix, self.current_memory_bytes as f64 / 1024.0 / 1024.0);
         Ok(loaded_count)
     }
@@ -1007,6 +1027,11 @@ pub fn cleanup() -> Result<usize, String> {
     get_attribute_cache().cleanup()
 }
 
+/// Clean up old entries from the attribute cache older than the provided number of days
+pub fn cleanup_older_than_days(days: u64) -> Result<usize, String> {
+    get_attribute_cache().cleanup_older_than_days(days)
+}
+
 /// List all cache keys, optionally filtered by prefix
 pub fn list_keys(prefix_filter: Option<&str>) -> Result<Vec<String>, String> {
     get_attribute_cache().list_keys(prefix_filter)
@@ -1023,14 +1048,14 @@ pub fn remove_by_prefix(prefix: &str) -> Result<usize, String> {
 }
 
 /// Preload all cache entries matching a prefix into the LRU memory cache
-/// 
+///
 /// This function loads all database entries with the given prefix into the LRU cache
 /// for faster subsequent access. This is useful for warming up the cache when you
 /// know you'll be accessing many keys with the same prefix.
-/// 
+///
 /// # Arguments
 /// * `prefix` - The prefix to match for cache keys
-/// 
+///
 /// # Returns
 /// The number of entries loaded into memory cache
 pub fn preload_prefix(prefix: &str) -> Result<usize, String> {
@@ -1070,32 +1095,36 @@ mod tests {
         assert_eq!(parse_size_string("1024").unwrap(), 1024);
         assert_eq!(parse_size_string("0").unwrap(), 0);
         assert_eq!(parse_size_string("123456789").unwrap(), 123456789);
-        
+
         // Test with units
         assert_eq!(parse_size_string("1K").unwrap(), 1024);
         assert_eq!(parse_size_string("1KB").unwrap(), 1024);
         assert_eq!(parse_size_string("1kB").unwrap(), 1024);
         assert_eq!(parse_size_string("1kb").unwrap(), 1024);
-        
+        assert_eq!(parse_size_string("1KiB").unwrap(), 1024);
+
         assert_eq!(parse_size_string("2M").unwrap(), 2 * 1024 * 1024);
         assert_eq!(parse_size_string("2MB").unwrap(), 2 * 1024 * 1024);
         assert_eq!(parse_size_string("2mb").unwrap(), 2 * 1024 * 1024);
-        
+        assert_eq!(parse_size_string("2MiB").unwrap(), 2 * 1024 * 1024);
+
         assert_eq!(parse_size_string("1G").unwrap(), 1024 * 1024 * 1024);
         assert_eq!(parse_size_string("1GB").unwrap(), 1024 * 1024 * 1024);
         assert_eq!(parse_size_string("1gb").unwrap(), 1024 * 1024 * 1024);
-        
+        assert_eq!(parse_size_string("1GiB").unwrap(), 1024 * 1024 * 1024);
+        assert_eq!(parse_size_string("1TiB").unwrap(), 1024_usize.pow(4));
+
         // Test fractional values
         assert_eq!(parse_size_string("0.5K").unwrap(), 512);
         assert_eq!(parse_size_string("1.5M").unwrap(), (1.5 * 1024.0 * 1024.0) as usize);
-        
+
         // Test bytes suffix
         assert_eq!(parse_size_string("100B").unwrap(), 100);
         assert_eq!(parse_size_string("100b").unwrap(), 100);
-        
+
         // Test with whitespace
         assert_eq!(parse_size_string(" 50M ").unwrap(), 50 * 1024 * 1024);
-        
+
         // Test error cases
         assert!(parse_size_string("invalid").is_err());
         assert!(parse_size_string("100Z").is_err());
@@ -1107,27 +1136,27 @@ mod tests {
     #[test]
     fn test_initialize_from_config() {
         let temp_dir = TempDir::new().expect("Failed to create temp directory");
-        
+
         // Test with memory_limit as string
         let db_path1 = temp_dir.path().join("test_config1.db");
         let config = serde_json::json!({
             "dbfile": db_path1.to_str().unwrap(),
             "memory_limit": "10MB"
         });
-        
+
         let result = AttributeCache::initialize_from_config(&config);
         assert!(result.is_ok(), "Failed to initialize with string memory_limit: {:?}", result);
-        
+
         // Test with memory_limit as number
         let db_path2 = temp_dir.path().join("test_config2.db");
         let config = serde_json::json!({
             "dbfile": db_path2.to_str().unwrap(),
             "memory_limit": 5242880 // 5MB in bytes
         });
-        
+
         let result = AttributeCache::initialize_from_config(&config);
         assert!(result.is_ok(), "Failed to initialize with numeric memory_limit: {:?}", result);
-        
+
         // Test with preload_prefixes (should not fail even though prefixes don't exist)
         let db_path4 = temp_dir.path().join("test_config4.db");
         let config = serde_json::json!({
@@ -1135,7 +1164,7 @@ mod tests {
             "memory_limit": "1MB",
             "preload_prefixes": ["test1", "test2"]
         });
-        
+
         let result = AttributeCache::initialize_from_config(&config);
         assert!(result.is_ok(), "Failed to initialize with preload_prefixes: {:?}", result);
     }
@@ -1155,6 +1184,45 @@ mod tests {
     }
 
     #[test]
+    fn test_cleanup_older_than_days_uses_provided_threshold() {
+        let (mut cache, _temp_dir) = create_test_cache();
+
+        cache.set("old", &"old_value").expect("Failed to set old entry");
+        cache.set("new", &"new_value").expect("Failed to set new entry");
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("Failed to get current time")
+            .as_secs() as i64;
+
+        if let Some(db) = cache.db.as_ref() {
+            db.execute(
+                "UPDATE cache SET created_at = ?1 WHERE key = ?2",
+                params![now - (10 * 24 * 60 * 60), "old"],
+            )
+            .expect("Failed to update old entry timestamp");
+            db.execute(
+                "UPDATE cache SET created_at = ?1 WHERE key = ?2",
+                params![now - (2 * 24 * 60 * 60), "new"],
+            )
+            .expect("Failed to update new entry timestamp");
+        } else {
+            panic!("Database should be available in test cache");
+        }
+
+        let deleted = cache
+            .cleanup_older_than_days(7)
+            .expect("cleanup_older_than_days should succeed");
+        assert_eq!(deleted, 1);
+
+        assert!(cache.get::<String>("old").expect("Get old should succeed").is_none());
+        assert_eq!(
+            cache.get::<String>("new").expect("Get new should succeed"),
+            Some("new_value".to_string())
+        );
+    }
+
+    #[test]
     fn test_new_cache() {
         let (cache, _temp_dir) = create_test_cache();
         assert!(cache.is_enabled());
@@ -1164,13 +1232,13 @@ mod tests {
     #[test]
     fn test_set_and_get_string() {
         let (mut cache, _temp_dir) = create_test_cache();
-        
+
         let key = "test_key";
         let value = "test_value".to_string();
-        
+
         // Test set
         cache.set(key, &value).expect("Failed to set value");
-        
+
         // Test get
         let retrieved: Option<String> = cache.get(key).expect("Failed to get value");
         assert_eq!(retrieved, Some(value));
@@ -1179,17 +1247,17 @@ mod tests {
     #[test]
     fn test_set_and_get_struct() {
         let (mut cache, _temp_dir) = create_test_cache();
-        
+
         let key = "test_struct";
         let value = TestData {
             name: "test".to_string(),
             value: 42,
             active: true,
         };
-        
+
         // Test set
         cache.set(key, &value).expect("Failed to set struct");
-        
+
         // Test get
         let retrieved: Option<TestData> = cache.get(key).expect("Failed to get struct");
         assert_eq!(retrieved, Some(value));
@@ -1198,7 +1266,7 @@ mod tests {
     #[test]
     fn test_get_nonexistent_key() {
         let (mut cache, _temp_dir) = create_test_cache();
-        
+
         let retrieved: Option<String> = cache.get("nonexistent").expect("Failed to get nonexistent key");
         assert_eq!(retrieved, None);
     }
@@ -1206,21 +1274,21 @@ mod tests {
     #[test]
     fn test_memory_cache() {
         let (mut cache, _temp_dir) = create_test_cache();
-        
+
         let key = "memory_test";
         let value = "cached_value".to_string();
-        
+
         // Set value
         cache.set(key, &value).expect("Failed to set value");
-        
+
         // First get should load from database into memory
         let retrieved1: Option<String> = cache.get(key).expect("Failed to get value");
         assert_eq!(retrieved1, Some(value.clone()));
-        
+
         // Second get should hit memory cache
         let retrieved2: Option<String> = cache.get(key).expect("Failed to get value from memory");
         assert_eq!(retrieved2, Some(value));
-        
+
         // Verify memory cache contains the key
         assert!(cache.memory_cache.peek(key).is_some());
     }
@@ -1228,25 +1296,25 @@ mod tests {
     #[test]
     fn test_remove() {
         let (mut cache, _temp_dir) = create_test_cache();
-        
+
         let key = "remove_test";
         let value = "to_be_removed".to_string();
-        
+
         // Set value
         cache.set(key, &value).expect("Failed to set value");
-        
+
         // Verify it exists
         let retrieved: Option<String> = cache.get(key).expect("Failed to get value");
         assert_eq!(retrieved, Some(value));
-        
+
         // Remove it
         let removed = cache.remove(key).expect("Failed to remove value");
         assert!(removed);
-        
+
         // Verify it's gone
         let retrieved_after_remove: Option<String> = cache.get(key).expect("Failed to get removed value");
         assert_eq!(retrieved_after_remove, None);
-        
+
         // Verify memory cache is also cleared
         assert!(cache.memory_cache.peek(key).is_none());
     }
@@ -1254,7 +1322,7 @@ mod tests {
     #[test]
     fn test_remove_nonexistent() {
         let (mut cache, _temp_dir) = create_test_cache();
-        
+
         let removed = cache.remove("nonexistent").expect("Failed to remove nonexistent key");
         assert!(!removed);
     }
@@ -1262,28 +1330,28 @@ mod tests {
     #[test]
     fn test_clear() {
         let (mut cache, _temp_dir) = create_test_cache();
-        
+
         // Add some test data
         cache.set("key1", &"value1".to_string()).expect("Failed to set key1");
         cache.set("key2", &42u32).expect("Failed to set key2");
         cache.set("key3", &true).expect("Failed to set key3");
-        
+
         // Verify data exists
         let val1: Option<String> = cache.get("key1").expect("Failed to get key1");
         assert_eq!(val1, Some("value1".to_string()));
-        
+
         // Clear cache
         cache.clear().expect("Failed to clear cache");
-        
+
         // Verify all data is gone
         let val1_after: Option<String> = cache.get("key1").expect("Failed to get key1 after clear");
         let val2_after: Option<u32> = cache.get("key2").expect("Failed to get key2 after clear");
         let val3_after: Option<bool> = cache.get("key3").expect("Failed to get key3 after clear");
-        
+
         assert_eq!(val1_after, None);
         assert_eq!(val2_after, None);
         assert_eq!(val3_after, None);
-        
+
         // Verify memory cache is also cleared
         assert!(cache.memory_cache.is_empty());
     }
@@ -1291,16 +1359,16 @@ mod tests {
     #[test]
     fn test_overwrite_existing_key() {
         let (mut cache, _temp_dir) = create_test_cache();
-        
+
         let key = "overwrite_test";
         let value1 = "first_value".to_string();
         let value2 = "second_value".to_string();
-        
+
         // Set first value
         cache.set(key, &value1).expect("Failed to set first value");
         let retrieved1: Option<String> = cache.get(key).expect("Failed to get first value");
         assert_eq!(retrieved1, Some(value1));
-        
+
         // Overwrite with second value
         cache.set(key, &value2).expect("Failed to set second value");
         let retrieved2: Option<String> = cache.get(key).expect("Failed to get second value");
@@ -1310,16 +1378,16 @@ mod tests {
     #[test]
     fn test_disabled_cache() {
         let (mut cache, _temp_dir) = create_test_cache();
-        
+
         // Disable cache
         cache.enable(false);
         assert!(!cache.is_enabled());
-        
+
         // Try to set value
         let result = cache.set("key", &"value".to_string());
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("disabled"));
-        
+
         // Try to get value
         let result: Result<Option<String>, String> = cache.get("key");
         assert!(result.is_err());
@@ -1329,7 +1397,7 @@ mod tests {
     #[test]
     fn test_max_age_setting() {
         let (mut cache, _temp_dir) = create_test_cache();
-        
+
         // Change max age
         cache.set_max_age(7);
         assert_eq!(cache.max_age_days, 7);
@@ -1339,20 +1407,20 @@ mod tests {
     fn test_persistence_across_instances() {
         let temp_dir = TempDir::new().expect("Failed to create temp directory");
         let cache_file = temp_dir.path().join("persistence_test.db");
-        
+
         let key = "persistent_key";
         let value = TestData {
             name: "persistent".to_string(),
             value: 123,
             active: false,
         };
-        
+
         // Create first cache instance and store data
         {
             let mut cache1 = AttributeCache::with_database_file(&cache_file);
             cache1.set(key, &value).expect("Failed to set value in first instance");
         }
-        
+
         // Create second cache instance and retrieve data
         {
             let mut cache2 = AttributeCache::with_database_file(&cache_file);
@@ -1365,19 +1433,19 @@ mod tests {
     fn test_reconfigure_with_directory() {
         let temp_dir1 = TempDir::new().expect("Failed to create temp directory 1");
         let temp_dir2 = TempDir::new().expect("Failed to create temp directory 2");
-        
+
         let mut cache = AttributeCache::with_database_file(temp_dir1.path().join("cache1.db"));
-        
+
         // Set data in first location
         cache.set("key1", &"value1".to_string()).expect("Failed to set value");
-        
+
         // Reconfigure to second location
         cache.reconfigure_with_directory(temp_dir2.path()).expect("Failed to reconfigure");
-        
+
         // Old data should not be accessible
         let retrieved: Option<String> = cache.get("key1").expect("Failed to get key1");
         assert_eq!(retrieved, None);
-        
+
         // New data should work in new location
         cache.set("key2", &"value2".to_string()).expect("Failed to set value in new location");
         let retrieved2: Option<String> = cache.get("key2").expect("Failed to get key2");
@@ -1388,9 +1456,9 @@ mod tests {
     fn test_serialize_error_handling() {
         // This test is harder to trigger with JSON serialization since most types serialize fine
         // But we can test the error path indirectly by trying to deserialize invalid data
-        
+
         let (mut cache, _temp_dir) = create_test_cache();
-        
+
         // Manually insert invalid JSON data into the database
         if let Some(ref mut db) = cache.db {
             db.execute(
@@ -1398,7 +1466,7 @@ mod tests {
                 params!["invalid_json", b"invalid json data"],
             ).expect("Failed to insert invalid data");
         }
-        
+
         // Try to retrieve as a struct - should fail
         let result: Result<Option<TestData>, String> = cache.get("invalid_json");
         assert!(result.is_err());
@@ -1411,21 +1479,21 @@ mod tests {
         // Initialize global cache with a temporary directory for testing
         let temp_dir = TempDir::new().expect("Failed to create temp directory");
         let _ = super::AttributeCache::initialize_global(temp_dir.path());
-        
+
         let key = "global_test";
         let value = "global_value".to_string();
-        
+
         // Test global set
         super::set(key, &value).expect("Failed to set global value");
-        
+
         // Test global get
         let retrieved: Option<String> = super::get(key).expect("Failed to get global value");
         assert_eq!(retrieved, Some(value));
-        
+
         // Test global remove
         let removed = super::remove(key).expect("Failed to remove global value");
         assert!(removed);
-        
+
         // Verify removal
         let retrieved_after: Option<String> = super::get(key).expect("Failed to get removed global value");
         assert_eq!(retrieved_after, None);
@@ -1437,15 +1505,15 @@ mod tests {
         use std::sync::Arc;
         use parking_lot::Mutex;
         use std::thread;
-        
+
         let temp_dir = TempDir::new().expect("Failed to create temp directory");
         let cache_file = temp_dir.path().join("concurrent_test.db");
         let cache = Arc::new(Mutex::new(AttributeCache::with_database_file(&cache_file)));
-        
+
         let num_threads = 10;
         let operations_per_thread = 50;
         let mut handles = vec![];
-        
+
         // Spawn multiple threads that set and get values concurrently
         for thread_id in 0..num_threads {
             let cache_clone = Arc::clone(&cache);
@@ -1453,13 +1521,13 @@ mod tests {
                 for i in 0..operations_per_thread {
                     let key = format!("thread_{}_key_{}", thread_id, i);
                     let value = format!("thread_{}_value_{}", thread_id, i);
-                    
+
                     // Set value
                     {
                         let mut cache_guard = cache_clone.lock();
                         cache_guard.set(&key, &value).expect("Failed to set value in thread");
                     }
-                    
+
                     // Get value back
                     {
                         let mut cache_guard = cache_clone.lock();
@@ -1470,18 +1538,18 @@ mod tests {
             });
             handles.push(handle);
         }
-        
+
         // Wait for all threads to complete
         for handle in handles {
             handle.join().expect("Thread panicked");
         }
-        
+
         // Verify all data is still accessible
         for thread_id in 0..num_threads {
             for i in 0..operations_per_thread {
                 let key = format!("thread_{}_key_{}", thread_id, i);
                 let expected_value = format!("thread_{}_value_{}", thread_id, i);
-                
+
                 let mut cache_guard = cache.lock();
                 let retrieved: Option<String> = cache_guard.get(&key).expect("Failed to get value after threads");
                 assert_eq!(retrieved, Some(expected_value));
@@ -1496,11 +1564,11 @@ mod tests {
         use parking_lot::Mutex;
         use std::thread;
         use std::time::Duration;
-        
+
         let temp_dir = TempDir::new().expect("Failed to create temp directory");
         let cache_file = temp_dir.path().join("memory_concurrent_test.db");
         let cache = Arc::new(Mutex::new(AttributeCache::with_database_file(&cache_file)));
-        
+
         // Pre-populate the cache
         {
             let mut cache_guard = cache.lock();
@@ -1510,11 +1578,11 @@ mod tests {
                 cache_guard.set(&key, &value).expect("Failed to set initial value");
             }
         }
-        
+
         let num_reader_threads = 3;
         let num_writer_threads = 2;
         let mut handles = vec![];
-        
+
         // Spawn reader threads that access the same keys concurrently
         for _thread_id in 0..num_reader_threads {
             let cache_clone = Arc::clone(&cache);
@@ -1522,7 +1590,7 @@ mod tests {
                 for _iteration in 0..50 { // Reduced iterations to reduce race conditions
                     for key_id in 0..10 {
                         let key = format!("shared_key_{}", key_id);
-                        
+
                         // Just verify we can read some value, don't care about the exact content
                         // since writers might be updating it concurrently
                         {
@@ -1531,7 +1599,7 @@ mod tests {
                             let _retrieved: Result<Option<String>, _> = cache_mut.get(&key);
                             // Don't assert on value since it may be updated by writers
                         }
-                        
+
                         // Small sleep to increase chance of interleaving
                         thread::sleep(Duration::from_millis(1));
                     }
@@ -1539,7 +1607,7 @@ mod tests {
             });
             handles.push(handle);
         }
-        
+
         // Spawn writer threads that update existing keys
         for thread_id in 0..num_writer_threads {
             let cache_clone = Arc::clone(&cache);
@@ -1548,25 +1616,25 @@ mod tests {
                     for key_id in 0..10 {
                         let key = format!("shared_key_{}", key_id);
                         let new_value = format!("updated_by_thread_{}_iter_{}_{}", thread_id, iteration, key_id);
-                        
+
                         {
                             let cache_guard = cache_clone.lock();
                             let mut cache_mut = cache_guard;
                             let _ = cache_mut.set(&key, &new_value); // Ignore errors
                         }
-                        
+
                         thread::sleep(Duration::from_millis(2));
                     }
                 }
             });
             handles.push(handle);
         }
-        
+
         // Wait for all threads to complete
         for handle in handles {
             let _ = handle.join(); // Ignore panics from individual threads
         }
-        
+
         // Test passes if we get here without deadlocks
     }
 
@@ -1575,25 +1643,25 @@ mod tests {
         use std::thread;
         use std::sync::Arc;
         use std::sync::atomic::{AtomicUsize, Ordering};
-        
+
         // Initialize global cache with a temp directory first
         let temp_dir = TempDir::new().expect("Failed to create temp directory");
         super::AttributeCache::initialize_global(temp_dir.path()).expect("Failed to initialize global cache");
-        
+
         let num_threads = 8;
         let operations_per_thread = 25;
         let success_counter = Arc::new(AtomicUsize::new(0));
         let mut handles = vec![];
-        
+
         // Clear global cache first to ensure clean state
         super::clear().ok(); // Ignore errors in case cache is not initialized
-        
+
         // Spawn multiple threads that use global cache functions
         for thread_id in 0..num_threads {
             let counter_clone = Arc::clone(&success_counter);
             let handle = thread::spawn(move || {
                 let mut successful_operations = 0;
-                
+
                 for i in 0..operations_per_thread {
                     let key = format!("global_thread_{}_key_{}", thread_id, i);
                     let value = TestData {
@@ -1601,7 +1669,7 @@ mod tests {
                         value: i as u32,
                         active: i % 2 == 0,
                     };
-                    
+
                     // Set value using global function
                     if super::set(&key, &value).is_ok() {
                         // Get value back using global function
@@ -1614,29 +1682,29 @@ mod tests {
                             _ => {} // Failed to retrieve
                         }
                     }
-                    
+
                     // Test removal occasionally
                     if i % 5 == 0 {
                         super::remove(&key).ok(); // Ignore errors
                     }
                 }
-                
+
                 counter_clone.fetch_add(successful_operations, Ordering::Relaxed);
             });
             handles.push(handle);
         }
-        
+
         // Wait for all threads to complete
         for handle in handles {
             let _ = handle.join(); // Ignore panics
         }
-        
+
         // Verify that most operations were successful
         // We expect some operations to fail due to removals, but most should succeed
         let total_successful = success_counter.load(Ordering::Relaxed);
         let expected_minimum = (num_threads * operations_per_thread) / 3; // At least 33% success rate (relaxed)
-        assert!(total_successful >= expected_minimum, 
-            "Expected at least {} successful operations, got {}", 
+        assert!(total_successful >= expected_minimum,
+            "Expected at least {} successful operations, got {}",
             expected_minimum, total_successful);
     }
 
@@ -1646,20 +1714,20 @@ mod tests {
         use parking_lot::Mutex;
         use std::thread;
         use std::time::Duration;
-        
+
         let temp_dir = TempDir::new().expect("Failed to create temp directory");
         let cache_file = temp_dir.path().join("cleanup_concurrent_test.db");
         let cache = Arc::new(Mutex::new(AttributeCache::with_database_file(&cache_file)));
-        
+
         // Set a very short max age for testing cleanup
         {
             let mut cache_guard = cache.lock();
             cache_guard.set_max_age(0); // Immediate expiry for testing
         }
-        
+
         let num_access_threads = 3;
         let mut handles = vec![];
-        
+
         // Spawn threads that continuously add and access data
         for thread_id in 0..num_access_threads {
             let cache_clone = Arc::clone(&cache);
@@ -1667,26 +1735,26 @@ mod tests {
                 for i in 0..50 {
                     let key = format!("cleanup_thread_{}_key_{}", thread_id, i);
                     let value = format!("cleanup_value_{}", i);
-                    
+
                     // Set value
                     {
                         let mut cache_guard = cache_clone.lock();
                         cache_guard.set(&key, &value).ok(); // Ignore errors
                     }
-                    
+
                     // Try to get value
                     {
                         let mut cache_guard = cache_clone.lock();
                         let _retrieved: Result<Option<String>, _> = cache_guard.get(&key);
                         // Don't assert here as cleanup might remove the value
                     }
-                    
+
                     thread::sleep(Duration::from_millis(1));
                 }
             });
             handles.push(handle);
         }
-        
+
         // Spawn a cleanup thread that periodically runs cleanup
         let cache_cleanup = Arc::clone(&cache);
         let cleanup_handle = thread::spawn(move || {
@@ -1697,12 +1765,12 @@ mod tests {
             }
         });
         handles.push(cleanup_handle);
-        
+
         // Wait for all threads to complete
         for handle in handles {
             handle.join().expect("Thread panicked");
         }
-        
+
         // Test should complete without deadlocks or panics
         // The exact state of the cache is not important, just that it didn't crash
     }
@@ -1713,14 +1781,14 @@ mod tests {
         use parking_lot::Mutex;
         use std::thread;
         use std::time::Duration;
-        
+
         let temp_dir = TempDir::new().expect("Failed to create temp directory");
         let cache_file = temp_dir.path().join("clear_concurrent_test.db");
         let cache = Arc::new(Mutex::new(AttributeCache::with_database_file(&cache_file)));
-        
+
         let num_access_threads = 4;
         let mut handles = vec![];
-        
+
         // Spawn threads that continuously add and access data
         for thread_id in 0..num_access_threads {
             let cache_clone = Arc::clone(&cache);
@@ -1728,26 +1796,26 @@ mod tests {
                 for i in 0..30 {
                     let key = format!("clear_thread_{}_key_{}", thread_id, i);
                     let value = format!("clear_value_{}", i);
-                    
+
                     // Set value
                     {
                         let mut cache_guard = cache_clone.lock();
                         cache_guard.set(&key, &value).ok(); // Ignore errors
                     }
-                    
+
                     // Try to get value
                     {
                         let mut cache_guard = cache_clone.lock();
                         let _retrieved: Result<Option<String>, _> = cache_guard.get(&key);
                         // Don't assert here as clear might remove the value
                     }
-                    
+
                     thread::sleep(Duration::from_millis(1));
                 }
             });
             handles.push(handle);
         }
-        
+
         // Spawn a thread that periodically clears the cache
         let cache_clear = Arc::clone(&cache);
         let clear_handle = thread::spawn(move || {
@@ -1758,12 +1826,12 @@ mod tests {
             }
         });
         handles.push(clear_handle);
-        
+
         // Wait for all threads to complete
         for handle in handles {
             handle.join().expect("Thread panicked");
         }
-        
+
         // Test should complete without deadlocks or panics
         // The exact state of the cache is not important, just that it didn't crash
     }
@@ -1781,7 +1849,7 @@ mod tests {
         let after_set = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
 
         let (created_at, updated_at) = cache.get_timestamps(key).unwrap().unwrap();
-        
+
         // Timestamps should be within reasonable range
         assert!(created_at >= before_set && created_at <= after_set);
         assert!(updated_at >= before_set && updated_at <= after_set);
@@ -1812,7 +1880,7 @@ mod tests {
 
         // Created timestamp should remain the same
         assert_eq!(created_at, new_created_at);
-        
+
         // Updated timestamp should be newer
         assert!(new_updated_at > initial_updated_at);
         assert!(new_updated_at >= before_update && new_updated_at <= after_update);
@@ -1856,7 +1924,7 @@ mod tests {
     #[test]
     fn test_global_timestamp_functions() {
         let (mut cache, _temp_dir) = create_test_cache();
-        
+
         let key = "test_key";
         let value = "test_value";
 
@@ -1904,7 +1972,7 @@ mod tests {
                 )",
                 [],
             ).unwrap();
-            
+
             // Use BLOB format like the real cache (JSON serialized)
             let value_json = serde_json::to_vec("old_value").unwrap();
             conn.execute(
@@ -1915,7 +1983,7 @@ mod tests {
 
         // Create new cache - should recreate the database due to missing expires_at column
         let mut cache = AttributeCache::with_database_file(&cache_file);
-        
+
         // Old data should be gone due to database recreation
         assert_eq!(cache.get::<String>("old_key").unwrap(), None);
 
@@ -1942,7 +2010,7 @@ mod tests {
                 )",
                 [],
             ).unwrap();
-            
+
             let value_json = serde_json::to_vec("old_value").unwrap();
             conn.execute(
                 "INSERT INTO cache (key, value, created_at, updated_at) VALUES (?1, ?2, ?3, ?4)",
@@ -1952,14 +2020,14 @@ mod tests {
 
         // Create new cache - should recreate due to missing expires_at
         let mut cache = AttributeCache::with_database_file(&cache_file);
-        
+
         // Old data should be gone
         assert_eq!(cache.get::<String>("old_key").unwrap(), None);
 
         // New functionality should work
         cache.set_with_ttl("new_key", "new_value", 3600).unwrap();
         assert_eq!(cache.get::<String>("new_key").unwrap(), Some("new_value".to_string()));
-        
+
         let entries = cache.list_entries(None).unwrap();
         assert_eq!(entries.len(), 1);
         assert!(entries[0].expires_at.is_some());
@@ -1984,11 +2052,11 @@ mod tests {
 
         // Create new cache - should recreate due to missing timestamp and expires_at columns
         let mut cache = AttributeCache::with_database_file(&cache_file);
-        
+
         // Should be able to use all functionality
         cache.set_with_expiry("test_key", "test_value", None).unwrap();
         assert_eq!(cache.get::<String>("test_key").unwrap(), Some("test_value".to_string()));
-        
+
         let timestamps = cache.get_timestamps("test_key").unwrap();
         assert!(timestamps.is_some());
     }
@@ -2011,7 +2079,7 @@ mod tests {
                 )",
                 [],
             ).unwrap();
-            
+
             let value_json = serde_json::to_vec("existing_value").unwrap();
             let now = chrono::Utc::now().timestamp();
             conn.execute(
@@ -2022,14 +2090,14 @@ mod tests {
 
         // Create new cache - should NOT recreate database since schema is complete
         let mut cache = AttributeCache::with_database_file(&cache_file);
-        
+
         // Existing data should still be there
         assert_eq!(cache.get::<String>("existing_key").unwrap(), Some("existing_value".to_string()));
-        
+
         // All functionality should work
         cache.set_with_ttl("new_key", "new_value", 1800).unwrap();
         assert_eq!(cache.get::<String>("new_key").unwrap(), Some("new_value".to_string()));
-        
+
         let entries = cache.list_entries(None).unwrap();
         assert_eq!(entries.len(), 2);
     }
@@ -2124,10 +2192,10 @@ mod tests {
     fn test_global_expiry_functions() {
         let temp_dir = TempDir::new().expect("Failed to create temp directory");
         let db_path = temp_dir.path().join("cache.db");
-        
+
         // Initialize the global cache
         super::AttributeCache::initialize_global(&db_path).unwrap();
-        
+
         let key = "global_expiry_test";
         let value = "test_value";
 
@@ -2209,10 +2277,105 @@ mod tests {
 
         // Check that value was updated and expiry was set
         assert_eq!(cache.get::<String>(key).unwrap(), Some(value2.to_string()));
-        
+
         let entries = cache.list_entries(None).unwrap();
         assert_eq!(entries.len(), 1);
         assert!(entries[0].expires_at.is_some());
         assert_eq!(entries[0].expires_at.unwrap(), future_time);
+    }
+
+    // --- remove_by_prefix ---
+
+    #[test]
+    fn remove_by_prefix_deletes_matching_keys_only() {
+        let (mut cache, _temp_dir) = create_test_cache();
+
+        cache.set("artist::mbid::a", &"id1").unwrap();
+        cache.set("artist::mbid::b", &"id2").unwrap();
+        cache.set("album::genres::1",  &"rock").unwrap();
+
+        let removed = cache.remove_by_prefix("artist::mbid::").unwrap();
+        assert_eq!(removed, 2);
+
+        // Matching keys gone
+        assert_eq!(cache.get::<String>("artist::mbid::a").unwrap(), None);
+        assert_eq!(cache.get::<String>("artist::mbid::b").unwrap(), None);
+        // Non-matching key intact
+        assert_eq!(cache.get::<String>("album::genres::1").unwrap(), Some("rock".to_string()));
+    }
+
+    #[test]
+    fn remove_by_prefix_returns_zero_when_no_match() {
+        let (mut cache, _temp_dir) = create_test_cache();
+        cache.set("other::key", &"v").unwrap();
+        assert_eq!(cache.remove_by_prefix("nonexistent::").unwrap(), 0);
+        // Original key untouched
+        assert_eq!(cache.get::<String>("other::key").unwrap(), Some("v".to_string()));
+    }
+
+    // --- list_keys ---
+
+    #[test]
+    fn list_keys_returns_all_keys_when_no_filter() {
+        let (mut cache, _temp_dir) = create_test_cache();
+        cache.set("a", &1u32).unwrap();
+        cache.set("b", &2u32).unwrap();
+        cache.set("c", &3u32).unwrap();
+
+        let mut keys = cache.list_keys(None).unwrap();
+        keys.sort();
+        assert_eq!(keys, vec!["a", "b", "c"]);
+    }
+
+    #[test]
+    fn list_keys_filters_by_prefix() {
+        let (mut cache, _temp_dir) = create_test_cache();
+        cache.set("artist::a", &"x").unwrap();
+        cache.set("artist::b", &"y").unwrap();
+        cache.set("album::c",  &"z").unwrap();
+
+        let mut keys = cache.list_keys(Some("artist::")).unwrap();
+        keys.sort();
+        assert_eq!(keys, vec!["artist::a", "artist::b"]);
+    }
+
+    // --- preload_prefix ---
+
+    #[test]
+    fn preload_prefix_populates_memory_cache() {
+        let (mut cache, _temp_dir) = create_test_cache();
+        cache.set("genre::rock",  &"Rock").unwrap();
+        cache.set("genre::jazz",  &"Jazz").unwrap();
+        cache.set("artist::solo", &"Solo").unwrap();
+
+        // Clear memory cache to simulate a cold start
+        cache.memory_cache.clear();
+        cache.current_memory_bytes = 0;
+
+        let loaded = cache.preload_prefix("genre::").unwrap();
+        assert_eq!(loaded, 2);
+
+        // Both genre entries should now be in the memory cache
+        assert!(cache.memory_cache.peek("genre::rock").is_some());
+        assert!(cache.memory_cache.peek("genre::jazz").is_some());
+        // Unrelated key must NOT have been loaded
+        assert!(cache.memory_cache.peek("artist::solo").is_none());
+    }
+
+    #[test]
+    fn preload_prefix_returns_zero_on_no_match() {
+        let (mut cache, _temp_dir) = create_test_cache();
+        cache.set("foo::bar", &"v").unwrap();
+        let loaded = cache.preload_prefix("missing::").unwrap();
+        assert_eq!(loaded, 0);
+    }
+
+    // --- parse_size_string: zero byte edge case ---
+
+    #[test]
+    fn parse_size_string_rejects_zero_with_unit_suffix() {
+        // "0K" must be rejected (0 * 1024 = 0 bytes is meaningless for a cache limit)
+        assert!(parse_size_string("0K").is_err());
+        assert!(parse_size_string("0M").is_err());
     }
 }

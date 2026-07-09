@@ -23,8 +23,11 @@ pub use shairport::ShairportController;
 pub use bluetooth::BluetoothPlayerController;
 pub use player_factory::{create_player_from_json, create_player_from_json_str, PlayerCreationError};
 pub use raat::MetadataPipeReader;
+pub use raat::RAATPlayerController;
 // Export the LibrespotPlayerController for use in player_factory
 pub use librespot::LibrespotPlayerController;
+// Export the LMSAudioController for a consistent top-level players API
+pub use lms::LMSAudioController;
 // Export the GenericPlayerController for use in player_factory
 pub use generic::GenericPlayerController;
 // Export the MprisPlayerController for use in player_factory (Unix only)
@@ -32,4 +35,21 @@ pub use generic::GenericPlayerController;
 pub use mpris::MprisPlayerController;
 // Export the event API components
 pub use event_api::{PlayerEventResponse, player_event_update};
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn regression_exports_raat_controller_at_top_level() {
+		let type_name = std::any::type_name::<RAATPlayerController>();
+		assert!(type_name.ends_with("RAATPlayerController"));
+	}
+
+	#[test]
+	fn regression_exports_lms_audio_controller_at_top_level() {
+		let type_name = std::any::type_name::<LMSAudioController>();
+		assert!(type_name.ends_with("LMSAudioController"));
+	}
+}
 

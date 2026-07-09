@@ -1,38 +1,81 @@
-.TH AUDIOCONTROL_DUMP_STORE 1 "July 2025" "AudioControl Manual" "User Commands"
+.TH AUDIOCONTROL_DUMP_STORE 1 "July 2026" "audiocontrol" "AudioControl Security Store Tool"
 .SH NAME
-audiocontrol_dump_store \- dump audiocontrol data store contents
+audiocontrol_dump_store \- inspect AudioControl security store contents
 .SH SYNOPSIS
 .B audiocontrol_dump_store
 [\fIOPTIONS\fR]
 .SH DESCRIPTION
 .B audiocontrol_dump_store
-is a utility for inspecting and dumping the contents of the audiocontrol
-data store. This tool is useful for debugging storage-related issues and
-understanding the current state of persistent data.
+inspects the AudioControl security store JSON file.
+.br
+Without a key, it lists key names and masks values.
+.br
+With a key, it attempts to decrypt and print values.
 .PP
-The data store contains configuration data, user preferences, playlists,
-and other persistent information used by the audiocontrol system.
+Some documentation refers to this command as \fBacr_dump_store\fR.
 .SH OPTIONS
 .TP
+.BR \-s ", " \-\-store\-path " " \fIPATH\fR
+Path to \fBsecurity_store.json\fR.
+If not specified, the default is \fBsecrets/security_store.json\fR.
+.TP
+.BR \-k ", " \-\-key " " \fIKEY\fR
+Encryption key used to decrypt stored values.
+If omitted, values are masked.
+.TP
 .BR \-h ", " \-\-help
-Display help information and exit
+Print help information and exit.
 .TP
 .BR \-V ", " \-\-version
-Display version information and exit
-.SH FILES
+Print version information and exit.
+.SH BEHAVIOR
 .TP
-.I /var/lib/audiocontrol/
-Default data store directory
+Without \fB\-\-key\fR:
+Reads the JSON file directly, requires a \fBvalues\fR object, and prints
+keys as \fBkey: ***\fR.
+.TP
+With \fB\-\-key\fR:
+Initializes \fBSecurityStore\fR and prints decrypted key/value pairs.
+If initialization fails, the command falls back to raw masked dump mode.
+.SH EXIT STATUS
+The command exits non-zero when:
+.TP
+1.
+The store file does not exist.
+.TP
+2.
+The JSON file cannot be parsed.
+.TP
+3.
+Raw mode finds missing or invalid \fBvalues\fR map.
+.TP
+4.
+Decrypt mode fails to enumerate keys after initialization.
+.PP
+In decrypt mode, per-key decryption failures are logged and skipped.
 .SH EXAMPLES
 .TP
-Dump all data store contents:
+Dump masked keys from default location:
 .B audiocontrol_dump_store
+.TP
+Dump masked keys from custom file:
+.B audiocontrol_dump_store \-\-store\-path /var/lib/audiocontrol/security_store.json
+.TP
+Attempt decryption with provided key:
+.B audiocontrol_dump_store \-\-key "$SECRETS_ENCRYPTION_KEY"
+.TP
+Use custom path and key:
+.B audiocontrol_dump_store \-\-store\-path ./secrets/security_store.json \-\-key "$SECRETS_ENCRYPTION_KEY"
+.SH FILES
+.TP
+.I secrets/security_store.json
+Default security store path.
+.TP
+.I secrets.txt.sample
+Sample secrets file containing encryption key configuration.
 .SH SEE ALSO
 .BR audiocontrol (1),
 .BR acr_dump_cache (1),
-.BR audiocontrol_lms_client (1),
 .BR audiocontrol_send_update (1)
-.SH AUTHOR
-HiFiBerry <info@hifiberry.com>
-.SH COPYRIGHT
-Copyright \(co 2025 HiFiBerry. All rights reserved.
+.SH AUTHORS
+HiFiBerry AudioControl development team.

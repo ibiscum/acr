@@ -76,41 +76,41 @@ def relaunch_in_venv() -> None:
 def ensure_dependencies():
     """Ensure Python dependencies are installed"""
     requirements_file = TEST_DIR / "requirements.txt"
-    
+
     print("Installing Python dependencies...")
     result = subprocess.run([
         active_python(), "-m", "pip", "install", "-r", str(requirements_file)
     ], capture_output=True, text=True)
-    
+
     if result.returncode != 0:
         print(f"Failed to install dependencies: {result.stderr}")
         return False
-    
+
     print("Dependencies installed successfully")
     return True
 
 def build_audiocontrol():
     """Build the AudioControl binary"""
     print("Building AudioControl binary...")
-    
+
     # Change to project root directory (one level up from tests)
     project_root = Path(__file__).parent.parent
-    
+
     result = subprocess.run([
         "cargo", "build"
     ], cwd=str(project_root), capture_output=True, text=True)
-    
+
     if result.returncode != 0:
         print(f"Failed to build AudioControl: {result.stderr}")
         return False
-    
+
     print("AudioControl built successfully")
     return True
 
 def run_tests():
     """Run the integration tests"""
     test_dir = TEST_DIR
-    
+
     print("Running integration tests...")
 
     # Run all discovered test files to avoid stale hardcoded names.
@@ -118,33 +118,33 @@ def run_tests():
     if not test_files:
         print("No integration test files found")
         return False
-    
+
     all_passed = True
-    
+
     for test_file in test_files:
         test_path = test_dir / test_file
 
         print(f"\\n{'='*50}")
         print(f"Running {test_file}")
         print(f"{'='*50}")
-        
+
         result = subprocess.run([
             active_python(), "-m", "pytest", str(test_path), "-v", "--tb=short"
         ])
-        
+
         if result.returncode != 0:
             all_passed = False
             print(f"FAILED: {test_file}")
         else:
             print(f"PASSED: {test_file}")
-    
+
     return all_passed
 
 def main():
     """Main function"""
     print("AudioControl Integration Test Runner")
     print("=" * 40)
-    
+
     # Bootstrap and switch into the local virtual environment.
     if not ensure_venv():
         return 1
@@ -153,22 +153,22 @@ def main():
 
     # Change to the tests directory
     os.chdir(TEST_DIR)
-    
+
     # Step 1: Install dependencies
     if not ensure_dependencies():
         return 1
-    
+
     # Step 2: Build AudioControl
     if not build_audiocontrol():
         return 1
-    
+
     # Step 3: Run tests
     if run_tests():
-        print("\\n" + "=" * 40)
+        print("\n" + "=" * 40)
         print("All tests passed!")
         return 0
     else:
-        print("\\n" + "=" * 40)
+        print("\n" + "=" * 40)
         print("Some tests failed!")
         return 1
 

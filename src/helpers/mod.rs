@@ -61,11 +61,36 @@ pub use playback_progress::PlayerProgress;
 /// Trait for services that can update artist metadata
 pub trait ArtistUpdater {
     /// Update an artist with additional metadata from a service
-    /// 
+    ///
     /// # Arguments
     /// * `artist` - The artist to update
-    /// 
+    ///
     /// # Returns
     /// The updated artist with additional metadata
     fn update_artist(&self, artist: Artist) -> Artist;
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn regression_exports_player_progress_at_helpers_root() {
+        let progress = crate::helpers::PlayerProgress::new();
+        assert_eq!(progress.get_position(), 0.0);
+        assert!(!progress.is_playing());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn regression_exports_unix_helper_modules() {
+        // Validate that unix-gated helper modules remain exported from module root.
+        assert_eq!(crate::helpers::mpris::BusType::Session.to_string(), "session");
+
+        let parsed = crate::helpers::shairportsync_messages::parse_shairport_message(b"ssncpaus");
+        match parsed {
+            crate::helpers::shairportsync_messages::ShairportMessage::Control(action) => {
+                assert_eq!(action, "PAUSE");
+            }
+            other => panic!("expected Control(PAUSE), got {:?}", other),
+        }
+    }
 }

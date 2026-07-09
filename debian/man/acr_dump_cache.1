@@ -7,6 +7,8 @@ acr_dump_cache \- manage AudioControl cache database entries
 .SH DESCRIPTION
 .B acr_dump_cache
 is a command-line tool for managing the AudioControl cache database. It allows you to list, clean, and analyze cache entries including artist data, images, and MusicBrainz metadata.
+.br
+The Rust binary name is \fBaudiocontrol_dump_cache\fR; some packaging and docs refer to it as \fBacr_dump_cache\fR.
 .SH OPTIONS
 .TP
 .BR \-c ", " \-\-cache\-dir " " \fIDIR\fR
@@ -40,6 +42,12 @@ Show artist MusicBrainz data (shortcut for \fB\-\-prefix "artist::mbid"\fR).
 .TP
 .B \-\-imagemeta
 Show image metadata (shortcut for \fB\-\-prefix "image_meta:"\fR).
+.TP
+.B \-\-artistsplit
+Show artist split cache (shortcut for \fB\-\-prefix "artist::split"\fR).
+.TP
+.B \-\-artistnotfound
+Show MusicBrainz negative cache (shortcut for \fB\-\-prefix "artist::not_found"\fR).
 .SH CLEAN COMMAND
 .TP
 .BR \-p ", " \-\-prefix " " \fIPREFIX\fR
@@ -59,6 +67,28 @@ Clean artist MusicBrainz data (shortcut for \fB\-\-prefix "artist::mbid"\fR).
 .TP
 .B \-\-imagemeta
 Clean image metadata (shortcut for \fB\-\-prefix "image_meta:"\fR).
+.TP
+.B \-\-artistsplit
+Clean artist split cache (shortcut for \fB\-\-prefix "artist::split"\fR).
+.TP
+.B \-\-artistnotfound
+Clean MusicBrainz negative cache (shortcut for \fB\-\-prefix "artist::not_found"\fR).
+.SH VALIDATION RULES
+.TP
+Only one shortcut option may be used at a time.
+.TP
+\fB\-\-prefix\fR cannot be combined with shortcut options.
+.TP
+\fBclean\fR requires one of: \fB\-\-all\fR, \fB\-\-prefix\fR, \fB\-\-older-than-days\fR, or a shortcut option.
+.TP
+\fB\-\-all\fR and \fB\-\-prefix\fR cannot be combined.
+.SH DRY RUN BEHAVIOR
+.TP
+With \fB\-\-all\fR, prints total entries that would be deleted.
+.TP
+With \fB\-\-prefix\fR or a shortcut, prints count and up to 10 sample keys.
+.TP
+With \fB\-\-older-than-days\fR, evaluates the age threshold and prints count and up to 10 sample keys.
 .SH STATS COMMAND
 .TP
 .BR \-b ", " \-\-by\-prefix
@@ -76,6 +106,12 @@ Show what image metadata would be cleaned (dry run):
 .TP
 Clean all artist MusicBrainz data entries:
 .B acr_dump_cache clean \-\-artistmbid
+.TP
+Clean only MusicBrainz negative cache entries:
+.B acr_dump_cache clean \-\-artistnotfound
+.TP
+Show what entries older than 30 days would be cleaned:
+.B acr_dump_cache clean \-\-older\-than\-days 30 \-\-dry\-run
 .TP
 Show cache statistics grouped by prefix:
 .B acr_dump_cache stats \-\-by\-prefix

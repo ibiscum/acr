@@ -57,3 +57,31 @@ pub fn initialize_tokio_runtime() {
 pub fn get_tokio_runtime() -> &'static Runtime {
     &TOKIO_RUNTIME
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ptr;
+
+    #[test]
+    fn regression_get_tokio_runtime_returns_singleton_instance() {
+        let first = get_tokio_runtime();
+        let second = get_tokio_runtime();
+        assert!(ptr::eq(first, second));
+    }
+
+    #[test]
+    fn regression_initialize_tokio_runtime_is_idempotent() {
+        initialize_tokio_runtime();
+        let initialized = get_tokio_runtime();
+        initialize_tokio_runtime();
+        let initialized_again = get_tokio_runtime();
+        assert!(ptr::eq(initialized, initialized_again));
+    }
+
+    #[test]
+    fn integration_global_runtime_executes_futures() {
+        let result = get_tokio_runtime().block_on(async { 21 + 21 });
+        assert_eq!(result, 42);
+    }
+}

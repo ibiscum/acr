@@ -18,25 +18,25 @@ use once_cell::sync::Lazy;
 pub struct RAATPlayerController {
     /// Base controller for managing state listeners
     base: BasePlayerController,
-    
+
     /// Metadata pipe source path/URL
     metadata_source: String,
 
     /// Control pipe path/URL for sending commands
     control_pipe: String,
-    
+
     /// Current song information
     current_song: Arc<RwLock<Option<Song>>>,
 
     /// Current player state
     current_state: Arc<RwLock<PlayerState>>,
-    
+
     /// Current stream details
     stream_details: Arc<RwLock<Option<StreamDetails>>>,
-    
+
     /// Last update timestamp for timeout detection
     last_update_time: Arc<RwLock<Instant>>,
-    
+
     /// Whether to reopen the metadata pipe when it's closed
     reopen_metadata_pipe: bool,
 }
@@ -71,9 +71,9 @@ static PLAYER_STATE: Lazy<Mutex<PlayerStateMap>> = Lazy::new(|| Mutex::new(HashM
 impl RAATPlayerController {
     /// Create a new RAAT player controller with custom metadata source, control pipe, reopen setting, and systemd unit check
     pub fn with_pipes_and_reopen_and_systemd(metadata_source: &str, control_pipe: &str, reopen: bool, systemd_unit: Option<&str>) -> Self {
-        debug!("Creating new RAATPlayerController with metadata_source: {}, control_pipe: {}, reopen: {}, systemd_unit: {:?}", 
+        debug!("Creating new RAATPlayerController with metadata_source: {}, control_pipe: {}, reopen: {}, systemd_unit: {:?}",
                metadata_source, control_pipe, reopen, systemd_unit);
-        
+
         // Check systemd unit if specified
         if let Some(unit_name) = systemd_unit {
             if !unit_name.is_empty() {
@@ -90,10 +90,10 @@ impl RAATPlayerController {
                 }
             }
         }
-        
+
         // Create a base controller with player name and ID
         let base = BasePlayerController::with_player_info("raat", "raat");
-        
+
         let player = Self {
             base,
             metadata_source: metadata_source.to_string(),
@@ -104,17 +104,17 @@ impl RAATPlayerController {
             last_update_time: Arc::new(RwLock::new(Instant::now())),
             reopen_metadata_pipe: reopen,
         };
-        
+
         // Set default capabilities
         player.set_default_capabilities();
-        
+
         player
     }
-    
+
     /// Set the default capabilities for this player
     fn set_default_capabilities(&self) {
         debug!("Setting default RAATPlayerController capabilities");
-        
+
         // We don't actually know what capabilities this player has until we
         // receive metadata, so we'll start with a minimal set and update later
         self.base.set_capabilities(vec![
@@ -124,14 +124,14 @@ impl RAATPlayerController {
             PlayerCapability::ReceivesUpdates, // Added ReceivesUpdates capability
         ], false); // Don't notify on initialization
     }
-    
+
     /// Starts a background thread that listens for RAAT metadata
     /// The thread will run until the running flag is set to false
     fn start_metadata_listener(&self, running: Arc<AtomicBool>, self_arc: Arc<Self>) {
         let source = self.metadata_source.clone();
-        
+
         info!("Starting RAAT metadata listener thread");
-        
+
         // Spawn a new thread for metadata listening
         thread::spawn(move || {
             info!("RAAT metadata listener thread started");
@@ -145,7 +145,7 @@ impl RAATPlayerController {
         while running.load(Ordering::SeqCst) {
             // Clone the Arc before moving it into the closure to avoid moving the original
             let player_clone = player_arc.clone();
-            
+
             // Create a metadata callback function that will update the player state
             let callback = Box::new(move |song: Song, state: PlayerState, capabilities: PlayerCapabilitySet, stream_details: StreamDetails| {
                 // Process the metadata and update the player
@@ -153,7 +153,7 @@ impl RAATPlayerController {
             });
               // Create a metadata pipe reader with our callback and reopen setting
             let reader = MetadataPipeReader::with_callback_and_reopen(source, callback, player_arc.reopen_metadata_pipe);
-            
+
             // Try to read from the pipe
             match reader.read_and_log_pipe() {
                 Ok(_) => {
@@ -174,7 +174,7 @@ impl RAATPlayerController {
                         break; // Exit the loop if reopen is false
                     }                }
             }
-            
+
             // If we get here and reopen is true, wait before trying to reconnect
             if running.load(Ordering::SeqCst) && player_arc.reopen_metadata_pipe {
                 // Wait a reasonable amount of time before reconnecting
@@ -192,16 +192,16 @@ impl RAATPlayerController {
             }
         }
     }
-    
+
     /// Process metadata updates from the pipe reader
-    fn update_metadata(&self, song: Song, player_state: PlayerState, 
+    fn update_metadata(&self, song: Song, player_state: PlayerState,
                        capabilities: PlayerCapabilitySet, stream_details: StreamDetails) {
         // Update the last update timestamp
         {
             let mut last_update = self.last_update_time.write();
             *last_update = Instant::now();
         }
-        
+
         // Store the new song if different from current
         let mut song_to_notify: Option<Song> = None;
         {
@@ -210,7 +210,7 @@ impl RAATPlayerController {
                 (Some(old), new) => old.title != new.title || old.artist != new.artist || old.album != new.album,
                 (None, _) => true,
             };
-            
+
             if song_changed {
                 debug!("Updating current song from metadata");
                 // Replace the current song
@@ -218,7 +218,7 @@ impl RAATPlayerController {
                 song_to_notify = Some(song);
             }
         }
-        
+
         // Check if position has changed and notify if needed
         if let Some(position) = player_state.position {
             // Get the previously stored position
@@ -226,19 +226,19 @@ impl RAATPlayerController {
                 let state = self.current_state.read();
                 state.position
             };
-            
+
             // If position has changed by more than 1 second or we don't have a previous position, notify
             let position_changed = match old_position {
                 Some(old_pos) => (old_pos - position).abs() > 1.0,
                 None => true
             };
-            
+
             if position_changed {
                 debug!("Position changed to {:.1}s, notifying", position);
                 self.base.notify_position_changed(position);
             }
         }
-        
+
         // Update stored player state
         {
             let mut current_state = self.current_state.write();
@@ -279,26 +279,26 @@ impl RAATPlayerController {
             // Update metadata
             current_state.metadata = player_state.metadata.clone();
         }
-        
+
         // Update stored capabilities
         let capabilities_changed = self.base.set_capabilities_set(capabilities, false);
         if capabilities_changed {
             let current_caps = self.base.get_capabilities();
             self.base.notify_capabilities_changed(&current_caps);
         }
-        
+
         // Update stored stream details
         {
             let mut details = self.stream_details.write();
             *details = Some(stream_details);
         }
-        
+
         // Now notify listeners of song change if needed
         // This needs to be done after updating state to avoid race conditions
         if let Some(song) = song_to_notify {
             self.base.notify_song_changed(Some(&song));
         }
-        
+
         // Mark the player as alive since we got data
         self.base.alive();
     }
@@ -306,14 +306,14 @@ impl RAATPlayerController {
     /// Write a command to the control pipe
     fn write_to_control_pipe(&self, command: &str) -> bool {
         debug!("Writing command to control pipe: {}", command);
-        
+
         // Use the stream helper to open the control pipe
         // This automatically handles different types of destinations:
         // - Local files/pipes
         // - TCP network streams (using tcp:// URL format)
         // - Windows named pipes or Unix FIFOs
         use crate::helpers::stream_helper::{open_stream, AccessMode};
-        
+
         match open_stream(&self.control_pipe, AccessMode::Write) {
             Ok(mut stream_wrapper) => {
                 match stream_wrapper.as_writer() {
@@ -348,18 +348,18 @@ impl RAATPlayerController {
     /// If no updates are received for 10 seconds while playing, state becomes Unknown
     fn start_timeout_monitor(&self, timeout_flag: Arc<AtomicBool>, self_arc: Arc<Self>) {
         debug!("Starting RAAT timeout monitor thread");
-        
+
         thread::spawn(move || {
             debug!("RAAT timeout monitor thread started");
-            
+
             while timeout_flag.load(Ordering::SeqCst) {
                 // Check timeout every second
                 thread::sleep(Duration::from_secs(1));
-                
+
                 if !timeout_flag.load(Ordering::SeqCst) {
                     break;
                 }
-                
+
                 // Check if we're currently playing
                 let is_playing = {
                     if let Some(state) = self_arc.current_state.try_read() {
@@ -394,7 +394,7 @@ impl RAATPlayerController {
                     }
                 }
             }
-            
+
             debug!("RAAT timeout monitor thread shutting down");
         });
     }
@@ -410,13 +410,13 @@ impl PlayerController for RAATPlayerController {
 
     fn receive_update(&self, update: PlayerUpdate) -> bool {
         debug!("RAATPlayerController received update: {:?}", update); // It's good practice to log the received update for debugging.
-        
+
         // Update the last update timestamp
         {
             let mut last_update = self.last_update_time.write();
             *last_update = Instant::now();
         }
-        
+
         match update {
             PlayerUpdate::SongChanged(new_song) => {
                 let mut current_song_locked = self.current_song.write();
@@ -425,10 +425,11 @@ impl PlayerController for RAATPlayerController {
                 self.base.notify_song_changed(new_song.as_ref());
             }
             PlayerUpdate::PositionChanged(new_position) => {
+                let mut current_state_locked = self.current_state.write();
+                current_state_locked.position = new_position;
+                drop(current_state_locked); // Release lock before notifying
+
                 if let Some(pos) = new_position {
-                    let mut current_state_locked = self.current_state.write();
-                    current_state_locked.position = Some(pos);
-                    drop(current_state_locked); // Release lock before notifying
                     self.base.notify_position_changed(pos);
                 }
             }
@@ -452,23 +453,27 @@ impl PlayerController for RAATPlayerController {
                 // that logic could be added here.
             }
         }
+
+        // Updates received through the generic update path also indicate activity.
+        self.base.alive();
+
         true // Indicate that the update was processed
     }
-    
+
     fn get_song(&self) -> Option<Song> {
         debug!("Getting current song from stored value");
         // Return a clone of the stored song
         let song = self.current_song.read();
         song.clone()
     }
-    
+
     fn get_loop_mode(&self) -> LoopMode {
         debug!("Getting current loop mode");
         // Get the loop mode from the current state
         let state = self.current_state.read();
         state.loop_mode
     }
-    
+
     fn get_playback_state(&self) -> PlaybackState {
         trace!("Getting current playback state");
         // Try to get the state from the current state with a timeout
@@ -485,7 +490,7 @@ impl PlayerController for RAATPlayerController {
             }
         }
     }
-    
+
     fn get_position(&self) -> Option<f64> {
         trace!("Getting current playback position");
         // Try to get the position from the current state with a non-blocking read
@@ -500,28 +505,28 @@ impl PlayerController for RAATPlayerController {
             }
         }
     }
-    
+
     fn get_shuffle(&self) -> bool {
         debug!("Getting current shuffle state");
         let state = self.current_state.read();
         state.shuffle
     }
-    
+
     fn get_player_name(&self) -> String {
         "raat".to_string()
     }
-    
+
     fn get_aliases(&self) -> Vec<String> {
         vec!["roon".to_string(), "raat".to_string()]
     }
-    
+
     fn get_player_id(&self) -> String {
         "raat".to_string()
     }
-    
+
     fn send_command(&self, command: PlayerCommand) -> bool {
         info!("Sending command to RAAT player: {}", command);
-        
+
         // Map the PlayerCommand to the corresponding string command for RAAT
         let cmd_string = match command {
             PlayerCommand::Play => "play",
@@ -559,25 +564,25 @@ impl PlayerController for RAATPlayerController {
                 return false;
             },
         };
-        
+
         // Send the command to the control pipe
         self.write_to_control_pipe(cmd_string)
     }
-    
+
     fn as_any(&self) -> &dyn Any {
         self
     }
 
     fn start(&self) -> bool {
         info!("Starting RAAT player controller");
-        
+
         // Create a new Arc<Self> for thread-safe sharing of player instance
         let player_arc = Arc::new(self.clone());
-        
+
         // Create new running flags
         let running = Arc::new(AtomicBool::new(true));
         let timeout_flag = Arc::new(AtomicBool::new(true));
-        
+
         // Store the running flags in the player instance
         {
             let mut state = PLAYER_STATE.lock();
@@ -603,10 +608,10 @@ impl PlayerController for RAATPlayerController {
             true
         }
     }
-    
+
     fn stop(&self) -> bool {
         info!("Stopping RAAT player controller");
-        
+
         // Signal both threads to stop
         {
             let mut state = PLAYER_STATE.lock();
@@ -627,5 +632,56 @@ impl PlayerController for RAATPlayerController {
     fn get_queue(&self) -> Vec<Track> {
         debug!("RAATController: get_queue called - returning empty vector");
         Vec::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RAATPlayerController;
+    use crate::data::{PlaybackState, PlayerUpdate};
+    use crate::players::player_controller::PlayerController;
+
+    #[test]
+    fn receive_update_position_none_clears_cached_position() {
+        let controller = RAATPlayerController::with_pipes_and_reopen_and_systemd(
+            "/tmp/raat-metadata-test",
+            "/tmp/raat-control-test",
+            false,
+            None,
+        );
+
+        assert!(controller.receive_update(PlayerUpdate::PositionChanged(Some(42.0))));
+        assert_eq!(controller.get_position(), Some(42.0));
+
+        assert!(controller.receive_update(PlayerUpdate::PositionChanged(None)));
+        assert_eq!(controller.get_position(), None);
+    }
+
+    #[test]
+    fn regression_receive_update_marks_player_alive() {
+        let controller = RAATPlayerController::with_pipes_and_reopen_and_systemd(
+            "/tmp/raat-metadata-test",
+            "/tmp/raat-control-test",
+            false,
+            None,
+        );
+
+        assert_eq!(controller.get_last_seen(), None);
+        assert!(controller.receive_update(PlayerUpdate::StateChanged(PlaybackState::Playing)));
+        assert!(controller.get_last_seen().is_some());
+    }
+
+    #[test]
+    fn regression_receive_update_state_change_updates_cached_state() {
+        let controller = RAATPlayerController::with_pipes_and_reopen_and_systemd(
+            "/tmp/raat-metadata-test",
+            "/tmp/raat-control-test",
+            false,
+            None,
+        );
+
+        assert_eq!(controller.get_playback_state(), PlaybackState::Unknown);
+        assert!(controller.receive_update(PlayerUpdate::StateChanged(PlaybackState::Paused)));
+        assert_eq!(controller.get_playback_state(), PlaybackState::Paused);
     }
 }

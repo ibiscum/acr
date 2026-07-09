@@ -52,7 +52,7 @@ fn publish_volume_change_event(
                display_name, control_name, percentage,
                decibels.map(|db| format!("{:.1}", db)).unwrap_or_else(|| "N/A".to_string()),
                raw_value.map(|r| r.to_string()).unwrap_or_else(|| "N/A".to_string()));
-    
+
     let event = PlayerEvent::VolumeChanged {
         control_name,
         display_name,
@@ -60,7 +60,7 @@ fn publish_volume_change_event(
         decibels,
         raw_value,
     };
-    
+
     let event_bus = EventBus::instance();
     event_bus.publish(event);
 }
@@ -98,6 +98,14 @@ impl DecibelRange {
 
     /// Convert percentage (0-100) to decibel value within this range
     pub fn percent_to_db(&self, percent: f64) -> f64 {
+        if percent.is_nan() {
+            return self.min_db;
+        }
+
+        if percent.is_infinite() {
+            return if percent.is_sign_positive() { self.max_db } else { self.min_db };
+        }
+
         if percent <= 0.0 {
             self.min_db
         } else if percent >= 100.0 {
@@ -109,6 +117,14 @@ impl DecibelRange {
 
     /// Convert decibel value to percentage (0-100) within this range
     pub fn db_to_percent(&self, db: f64) -> f64 {
+        if db.is_nan() {
+            return 0.0;
+        }
+
+        if db.is_infinite() {
+            return if db.is_sign_positive() { 100.0 } else { 0.0 };
+        }
+
         if db <= self.min_db {
             0.0
         } else if db >= self.max_db {
@@ -210,7 +226,7 @@ pub struct AlsaVolumeControl {
 #[cfg(all(feature = "alsa", not(windows)))]
 impl AlsaVolumeControl {
     /// Create a new ALSA volume control
-    /// 
+    ///
     /// # Arguments
     /// * `device` - ALSA device name (e.g., "hw:0", "default")
     /// * `control_name` - ALSA control name (e.g., "Master", "PCM")
@@ -241,7 +257,7 @@ impl AlsaVolumeControl {
     /// Get the ALSA decibel range for this control
     fn get_alsa_db_range(&self) -> Result<DecibelRange, VolumeError> {
         use alsa::mixer::{Mixer, SelemId, MilliBel};
-        
+
         let mixer = Mixer::new(&self.device, false)
             .map_err(|e| VolumeError::DeviceError(format!("Failed to open mixer {}: {}", self.device, e)))?;
 
@@ -255,7 +271,7 @@ impl AlsaVolumeControl {
             // Convert from ALSA's millibel to dB (millibel = 1/100 dB)
             let min_db_f = MilliBel::to_db(min_db) as f64;
             let max_db_f = MilliBel::to_db(max_db) as f64;
-            
+
             // Validate and clamp dB values to reasonable ranges
             // ALSA sometimes returns extreme values that don't make sense
             let min_db_clamped = if min_db_f < -200.0 || min_db_f.is_infinite() || min_db_f.is_nan() {
@@ -263,13 +279,13 @@ impl AlsaVolumeControl {
             } else {
                 min_db_f.max(-200.0) // Don't go below -200dB
             };
-            
+
             let max_db_clamped = if max_db_f > 50.0 || max_db_f.is_infinite() || max_db_f.is_nan() {
                 0.0 // Default maximum
             } else {
                 max_db_f.min(50.0) // Don't go above +50dB
             };
-            
+
             return Ok(DecibelRange::new(min_db_clamped, max_db_clamped));
         }
 
@@ -279,20 +295,20 @@ impl AlsaVolumeControl {
             // Convert from ALSA's millibel to dB (millibel = 1/100 dB)
             let min_db_f = MilliBel::to_db(min_db) as f64;
             let max_db_f = MilliBel::to_db(max_db) as f64;
-            
+
             // Validate and clamp dB values to reasonable ranges
             let min_db_clamped = if min_db_f < -200.0 || min_db_f.is_infinite() || min_db_f.is_nan() {
                 -120.0
             } else {
                 min_db_f.max(-200.0)
             };
-            
+
             let max_db_clamped = if max_db_f > 50.0 || max_db_f.is_infinite() || max_db_f.is_nan() {
                 0.0
             } else {
                 max_db_f.min(50.0)
             };
-            
+
             return Ok(DecibelRange::new(min_db_clamped, max_db_clamped));
         }
 
@@ -306,7 +322,7 @@ impl AlsaVolumeControl {
         F: FnOnce(&alsa::mixer::Selem) -> Result<R, VolumeError>,
     {
         use alsa::mixer::{Mixer, SelemId};
-        
+
         let mixer = Mixer::new(&self.device, false)
             .map_err(|e| VolumeError::DeviceError(format!("Failed to open mixer {}: {}", self.device, e)))?;
 
@@ -327,7 +343,7 @@ impl VolumeControl for AlsaVolumeControl {
                 let (min, max) = selem.get_playback_volume_range();
                 let current = selem.get_playback_volume(alsa::mixer::SelemChannelId::mono())
                     .map_err(|e| VolumeError::AlsaError(format!("Failed to get playback volume: {}", e)))?;
-                
+
                 if max > min {
                     let percent = ((current - min) as f64 / (max - min) as f64) * 100.0;
                     Ok(percent.clamp(0.0, 100.0))
@@ -338,7 +354,7 @@ impl VolumeControl for AlsaVolumeControl {
                 let (min, max) = selem.get_capture_volume_range();
                 let current = selem.get_capture_volume(alsa::mixer::SelemChannelId::mono())
                     .map_err(|e| VolumeError::AlsaError(format!("Failed to get capture volume: {}", e)))?;
-                
+
                 if max > min {
                     let percent = ((current - min) as f64 / (max - min) as f64) * 100.0;
                     Ok(percent.clamp(0.0, 100.0))
@@ -361,13 +377,13 @@ impl VolumeControl for AlsaVolumeControl {
             if selem.has_playback_volume() {
                 let (min, max) = selem.get_playback_volume_range();
                 let target_value = min + ((percent / 100.0) * (max - min) as f64) as i64;
-                
+
                 selem.set_playback_volume_all(target_value)
                     .map_err(|e| VolumeError::AlsaError(format!("Failed to set playback volume: {}", e)))?;
             } else if selem.has_capture_volume() {
                 let (min, max) = selem.get_capture_volume_range();
                 let target_value = min + ((percent / 100.0) * (max - min) as f64) as i64;
-                
+
                 selem.set_capture_volume_all(target_value)
                     .map_err(|e| VolumeError::AlsaError(format!("Failed to set capture volume: {}", e)))?;
             } else {
@@ -381,12 +397,12 @@ impl VolumeControl for AlsaVolumeControl {
         if result.is_ok() {
             let current_db = self.get_volume_db().ok();
             let current_raw = self.get_raw_value().ok();
-            
+
             log::debug!("ALSA volume set programmatically: {}:{} -> {:.1}% ({} dB) [raw: {}]",
                        self.device, self.control_name, percent,
                        current_db.map(|db| format!("{:.1}", db)).unwrap_or_else(|| "N/A".to_string()),
                        current_raw.map(|r| r.to_string()).unwrap_or_else(|| "N/A".to_string()));
-            
+
             publish_volume_change_event(
                 self.info.internal_name.clone(),
                 self.info.display_name.clone(),
@@ -405,7 +421,7 @@ impl VolumeControl for AlsaVolumeControl {
 
     fn is_available(&self) -> bool {
         use alsa::mixer::{Mixer, SelemId};
-        
+
         let mixer = match Mixer::new(&self.device, false) {
             Ok(mixer) => mixer,
             Err(_) => return false,
@@ -462,12 +478,12 @@ impl VolumeControl for AlsaVolumeControl {
         if result.is_ok() {
             let current_percent = self.get_volume_percent().unwrap_or(0.0);
             let current_db = self.get_volume_db().ok();
-            
+
             log::debug!("ALSA volume set via raw value: {}:{} -> {:.1}% ({} dB) [raw: {}]",
                        self.device, self.control_name, current_percent,
                        current_db.map(|db| format!("{:.1}", db)).unwrap_or_else(|| "N/A".to_string()),
                        value);
-            
+
             publish_volume_change_event(
                 self.info.internal_name.clone(),
                 self.info.display_name.clone(),
@@ -486,18 +502,18 @@ impl VolumeControl for AlsaVolumeControl {
 
         thread::spawn(move || {
             log::debug!("Starting ALSA volume change monitoring for {}:{}", device, control_name);
-            
+
             // Simple polling-based implementation
             // In a real implementation, you'd use ALSA's event system
             let mut last_volume = None;
-            
+
             loop {
                 // Check volume every 100ms
                 thread::sleep(Duration::from_millis(100));
-                
+
                 if let Ok(mixer) = alsa::mixer::Mixer::new(&device, false) {
                     let selem_id = alsa::mixer::SelemId::new(&control_name, 0);
-                    
+
                     if let Some(selem) = mixer.find_selem(&selem_id) {
                         if selem.has_playback_volume() {
                             if let Ok(volume_raw) = selem.get_playback_volume(alsa::mixer::SelemChannelId::mono()) {
@@ -507,11 +523,11 @@ impl VolumeControl for AlsaVolumeControl {
                                 } else {
                                     0.0
                                 };
-                                
+
                                 // Only send event if volume actually changed
                                 if last_volume.is_none_or(|last: f64| (last - volume_percent).abs() > 0.1) {
                                     last_volume = Some(volume_percent);
-                                    
+
                                     // Try to get dB value
                                     let db_value = if selem.has_playback_volume() {
                                         let (min_db, max_db) = selem.get_playback_db_range();
@@ -522,12 +538,12 @@ impl VolumeControl for AlsaVolumeControl {
                                     } else {
                                         None
                                     };
-                                    
+
                                     log::debug!("ALSA volume change detected: {}:{} -> {:.1}% ({} dB) [raw: {}]",
-                                               device, control_name, volume_percent, 
+                                               device, control_name, volume_percent,
                                                db_value.map(|db| format!("{:.1}", db)).unwrap_or_else(|| "N/A".to_string()),
                                                volume_raw);
-                                    
+
                                     // Publish to global event bus
                                     publish_volume_change_event(
                                         format!("alsa:{}:{}", device, control_name),
@@ -557,7 +573,7 @@ impl VolumeControl for AlsaVolumeControl {
 }
 
 /// Dummy implementation of VolumeControl for testing
-/// 
+///
 /// This implementation doesn't control any real hardware and is primarily used for unit tests.
 /// It simulates a volume control with a range from -120dB to 0dB.
 pub struct DummyVolumeControl {
@@ -568,7 +584,7 @@ pub struct DummyVolumeControl {
 
 impl DummyVolumeControl {
     /// Create a new dummy volume control
-    /// 
+    ///
     /// # Arguments
     /// * `internal_name` - Internal name for the control
     /// * `display_name` - Human-readable name for UI
@@ -577,7 +593,7 @@ impl DummyVolumeControl {
         let db_range = DecibelRange::new(-120.0, 0.0);
         let info = VolumeControlInfo::new(internal_name, display_name)
             .with_decibel_range(db_range);
-        
+
         Self {
             info,
             current_percent: Arc::new(RwLock::new(initial_percent.clamp(0.0, 100.0))),
@@ -617,14 +633,14 @@ impl VolumeControl for DummyVolumeControl {
         if !self.is_available {
             return Err(VolumeError::DeviceError("Dummy device not available".to_string()));
         }
-        
+
         if !(0.0..=100.0).contains(&percent) {
             return Err(VolumeError::InvalidRange(format!("Volume percentage {} is out of range (0-100)", percent)));
         }
 
         // Update the current value
         *self.current_percent.write() = percent;
-        
+
         // Publish volume change event
         let db_value = self.get_volume_db().ok();
         publish_volume_change_event(
@@ -634,7 +650,7 @@ impl VolumeControl for DummyVolumeControl {
             db_value,
             Some(percent as i64),
         );
-        
+
         Ok(())
     }
 
@@ -665,7 +681,7 @@ impl VolumeControl for DummyVolumeControl {
         if !self.is_available {
             return Err(VolumeError::DeviceError("Dummy device not available".to_string()));
         }
-        
+
         if !(0..=100).contains(&value) {
             return Err(VolumeError::InvalidRange(format!("Raw value {} is out of range (0-100)", value)));
         }
@@ -673,7 +689,7 @@ impl VolumeControl for DummyVolumeControl {
         // Update the current value
         let percent = value as f64;
         *self.current_percent.write() = percent;
-        
+
         // Publish volume change event
         let db_value = self.get_volume_db().ok();
         publish_volume_change_event(
@@ -683,24 +699,24 @@ impl VolumeControl for DummyVolumeControl {
             db_value,
             Some(value),
         );
-        
+
         Ok(())
     }
 }
 
 /// Create a new ALSA volume control
-/// 
+///
 /// # Arguments
 /// * `device` - ALSA device name (e.g., "hw:0", "default")
 /// * `control_name` - ALSA control name (e.g., "Master", "PCM")
 /// * `display_name` - Human-readable name for UI
-/// 
+///
 /// # Returns
 /// A boxed VolumeControl trait object
 #[cfg(all(feature = "alsa", not(windows)))]
 pub fn create_alsa_volume_control(
-    device: String, 
-    control_name: String, 
+    device: String,
+    control_name: String,
     display_name: String
 ) -> Result<Box<dyn VolumeControl>, VolumeError> {
     let control = AlsaVolumeControl::new(device, control_name, display_name)?;
@@ -708,12 +724,12 @@ pub fn create_alsa_volume_control(
 }
 
 /// Create a new dummy volume control
-/// 
+///
 /// # Arguments
 /// * `internal_name` - Internal name for the control
 /// * `display_name` - Human-readable name for UI
 /// * `initial_percent` - Initial volume percentage (0-100)
-/// 
+///
 /// # Returns
 /// A boxed VolumeControl trait object
 pub fn create_dummy_volume_control(
@@ -732,17 +748,17 @@ mod tests {
     #[test]
     fn test_decibel_range() {
         let range = DecibelRange::new(-60.0, 0.0);
-        
+
         // Test percent to dB conversion
         assert_eq!(range.percent_to_db(0.0), -60.0);
         assert_eq!(range.percent_to_db(100.0), 0.0);
         assert_eq!(range.percent_to_db(50.0), -30.0);
-        
+
         // Test dB to percent conversion
         assert_eq!(range.db_to_percent(-60.0), 0.0);
         assert_eq!(range.db_to_percent(0.0), 100.0);
         assert_eq!(range.db_to_percent(-30.0), 50.0);
-        
+
         // Test edge cases
         assert_eq!(range.percent_to_db(-10.0), -60.0); // Clamp to min
         assert_eq!(range.percent_to_db(110.0), 0.0);   // Clamp to max
@@ -753,13 +769,13 @@ mod tests {
     #[test]
     fn test_decibel_range_wide() {
         let range = DecibelRange::new(-120.0, 0.0);
-        
+
         // Test wide range conversions
         assert_eq!(range.percent_to_db(0.0), -120.0);
         assert_eq!(range.percent_to_db(100.0), 0.0);
         assert_eq!(range.percent_to_db(25.0), -90.0);
         assert_eq!(range.percent_to_db(75.0), -30.0);
-        
+
         assert_eq!(range.db_to_percent(-120.0), 0.0);
         assert_eq!(range.db_to_percent(0.0), 100.0);
         assert_eq!(range.db_to_percent(-90.0), 25.0);
@@ -772,11 +788,11 @@ mod tests {
         assert_eq!(info.internal_name, "test");
         assert_eq!(info.display_name, "Test Control");
         assert!(info.decibel_range.is_none());
-        
+
         let range = DecibelRange::new(-60.0, 0.0);
         let info_with_db = info.with_decibel_range(range);
         assert!(info_with_db.decibel_range.is_some());
-        
+
         let db_range = info_with_db.decibel_range.unwrap();
         assert_eq!(db_range.min_db, -60.0);
         assert_eq!(db_range.max_db, 0.0);
@@ -785,16 +801,16 @@ mod tests {
     #[test]
     fn test_dummy_volume_control_basic() {
         let control = DummyVolumeControl::new_default();
-        
+
         // Test basic properties
         assert!(control.is_available());
         assert_eq!(control.get_current_percent(), 50.0);
-        
+
         let info = control.get_info();
         assert_eq!(info.internal_name, "dummy:test");
         assert_eq!(info.display_name, "Test Volume Control");
         assert!(info.decibel_range.is_some());
-        
+
         let db_range = info.decibel_range.unwrap();
         assert_eq!(db_range.min_db, -120.0);
         assert_eq!(db_range.max_db, 0.0);
@@ -807,13 +823,13 @@ mod tests {
             "Test Control".to_string(),
             75.0
         );
-        
+
         // Test volume operations
         assert_eq!(control.get_volume_percent().unwrap(), 75.0);
         assert!(control.set_volume_percent(50.0).is_ok());
         assert!(control.set_volume_percent(0.0).is_ok());
         assert!(control.set_volume_percent(100.0).is_ok());
-        
+
         // Test invalid ranges
         assert!(control.set_volume_percent(-10.0).is_err());
         assert!(control.set_volume_percent(110.0).is_err());
@@ -822,18 +838,18 @@ mod tests {
     #[test]
     fn test_dummy_volume_control_raw_operations() {
         let control = DummyVolumeControl::new_default();
-        
+
         // Test raw operations
         let (min, max) = control.get_raw_range().unwrap();
         assert_eq!(min, 0);
         assert_eq!(max, 100);
-        
+
         assert_eq!(control.get_raw_value().unwrap(), 50);
-        
+
         assert!(control.set_raw_value(25).is_ok());
         assert!(control.set_raw_value(0).is_ok());
         assert!(control.set_raw_value(100).is_ok());
-        
+
         // Test invalid raw values
         assert!(control.set_raw_value(-10).is_err());
         assert!(control.set_raw_value(110).is_err());
@@ -842,11 +858,11 @@ mod tests {
     #[test]
     fn test_dummy_volume_control_availability() {
         let mut control = DummyVolumeControl::new_default();
-        
+
         // Initially available
         assert!(control.is_available());
         assert!(control.get_volume_percent().is_ok());
-        
+
         // Make unavailable
         control.set_available(false);
         assert!(!control.is_available());
@@ -855,7 +871,7 @@ mod tests {
         assert!(control.get_raw_range().is_err());
         assert!(control.get_raw_value().is_err());
         assert!(control.set_raw_value(50).is_err());
-        
+
         // Make available again
         control.set_available(true);
         assert!(control.is_available());
@@ -865,12 +881,12 @@ mod tests {
     #[test]
     fn test_volume_control_db_operations() {
         let control = DummyVolumeControl::new_default();
-        
+
         // Test dB operations (using default trait implementations)
         let current_db = control.get_volume_db().unwrap();
         // 50% of -120dB to 0dB range should be -60dB
         assert_eq!(current_db, -60.0);
-        
+
         // Test setting dB values
         assert!(control.set_volume_db(-90.0).is_ok()); // Should be 25%
         assert!(control.set_volume_db(-30.0).is_ok()); // Should be 75%
@@ -883,11 +899,11 @@ mod tests {
         // Create a control without dB range
         let mut control = DummyVolumeControl::new_default();
         control.info.decibel_range = None;
-        
+
         // dB operations should fail
         assert!(control.get_volume_db().is_err());
         assert!(control.set_volume_db(-60.0).is_err());
-        
+
         // Percentage operations should still work
         assert!(control.get_volume_percent().is_ok());
         assert!(control.set_volume_percent(75.0).is_ok());
@@ -900,9 +916,9 @@ mod tests {
             "Factory Test Control".to_string(),
             25.0
         );
-        
+
         assert_eq!(control.get_volume_percent().unwrap(), 25.0);
-        
+
         let info = control.get_info();
         assert_eq!(info.internal_name, "factory_test");
         assert_eq!(info.display_name, "Factory Test Control");
@@ -919,7 +935,7 @@ mod tests {
             VolumeError::IoError("test io error".to_string()),
             VolumeError::NotSupported("test not supported".to_string()),
         ];
-        
+
         let expected_prefixes = vec![
             "Device error:",
             "Control not found:",
@@ -928,7 +944,7 @@ mod tests {
             "I/O error:",
             "Not supported:",
         ];
-        
+
         for (error, expected_prefix) in errors.iter().zip(expected_prefixes.iter()) {
             let error_string = format!("{}", error);
             assert!(error_string.starts_with(expected_prefix));
@@ -942,7 +958,7 @@ mod tests {
             create_dummy_volume_control("test1".to_string(), "Test 1".to_string(), 30.0),
             create_dummy_volume_control("test2".to_string(), "Test 2".to_string(), 70.0),
         ];
-        
+
         for control in controls {
             assert!(control.is_available());
             assert!(control.get_volume_percent().is_ok());
@@ -953,21 +969,229 @@ mod tests {
     #[test]
     fn test_clamping_edge_cases() {
         let range = DecibelRange::new(-120.0, 0.0);
-        
+
         // Test very small positive and negative numbers
         // Use approximate comparison for floating point precision
         let result = range.percent_to_db(0.001);
         assert!((result - (-119.9988)).abs() < 0.001); // Should be very close to min_db + small delta
-        
+
         let result = range.percent_to_db(99.999);
         assert!((result - (-0.0012)).abs() < 0.001); // Should be very close to max_db - small delta
-        
+
         // Test exact boundary values
         assert_eq!(range.db_to_percent(-120.0), 0.0);
         assert_eq!(range.db_to_percent(0.0), 100.0);
-        
+
         // Test values just outside boundaries
         assert_eq!(range.db_to_percent(-120.1), 0.0);
         assert_eq!(range.db_to_percent(0.1), 100.0);
+    }
+
+    #[test]
+    fn test_decibel_range_asymmetric() {
+        // Test with asymmetric ranges
+        let range = DecibelRange::new(-80.0, 20.0);
+
+        assert_eq!(range.percent_to_db(0.0), -80.0);
+        assert_eq!(range.percent_to_db(100.0), 20.0);
+        assert_eq!(range.percent_to_db(50.0), -30.0);
+
+        assert_eq!(range.db_to_percent(-80.0), 0.0);
+        assert_eq!(range.db_to_percent(20.0), 100.0);
+        assert_eq!(range.db_to_percent(-30.0), 50.0);
+    }
+
+    #[test]
+    fn test_decibel_range_small_range() {
+        // Test with very small range
+        let range = DecibelRange::new(-6.0, 0.0);
+
+        assert_eq!(range.percent_to_db(0.0), -6.0);
+        assert_eq!(range.percent_to_db(100.0), 0.0);
+        assert_eq!(range.percent_to_db(50.0), -3.0);
+    }
+
+    #[test]
+    fn test_decibel_range_positive_only() {
+        // Test with positive range (unusual but possible)
+        let range = DecibelRange::new(0.0, 12.0);
+
+        assert_eq!(range.percent_to_db(0.0), 0.0);
+        assert_eq!(range.percent_to_db(100.0), 12.0);
+        assert_eq!(range.percent_to_db(50.0), 6.0);
+    }
+
+    #[test]
+    fn test_volume_change_event() {
+        let event = VolumeChangeEvent {
+            control_name: "Master".to_string(),
+            new_percentage: 75.0,
+            new_db: Some(-6.0),
+        };
+
+        assert_eq!(event.control_name, "Master");
+        assert_eq!(event.new_percentage, 75.0);
+        assert_eq!(event.new_db, Some(-6.0));
+    }
+
+    #[test]
+    fn test_volume_change_event_without_db() {
+        let event = VolumeChangeEvent {
+            control_name: "PCM".to_string(),
+            new_percentage: 50.0,
+            new_db: None,
+        };
+
+        assert_eq!(event.control_name, "PCM");
+        assert_eq!(event.new_percentage, 50.0);
+        assert_eq!(event.new_db, None);
+    }
+
+    #[test]
+    fn test_dummy_volume_control_extreme_values() {
+        let control = DummyVolumeControl::new_default();
+
+        // Test setting to extreme values
+        assert!(control.set_volume_percent(0.0).is_ok());
+        assert_eq!(control.get_volume_percent().unwrap(), 0.0);
+
+        assert!(control.set_volume_percent(100.0).is_ok());
+        assert_eq!(control.get_volume_percent().unwrap(), 100.0);
+
+        // Very small positive values
+        assert!(control.set_volume_percent(0.001).is_ok());
+        assert!(control.get_volume_percent().unwrap() > 0.0);
+
+        // Values very close to max
+        assert!(control.set_volume_percent(99.999).is_ok());
+        assert!(control.get_volume_percent().unwrap() < 100.0);
+    }
+
+    #[test]
+    fn test_dummy_volume_control_multiple_state_changes() {
+        let control = DummyVolumeControl::new_default();
+
+        // Perform multiple state transitions
+        assert!(control.set_volume_percent(25.0).is_ok());
+        assert_eq!(control.get_volume_percent().unwrap(), 25.0);
+
+        assert!(control.set_volume_percent(75.0).is_ok());
+        assert_eq!(control.get_volume_percent().unwrap(), 75.0);
+
+        assert!(control.set_volume_percent(0.0).is_ok());
+        assert_eq!(control.get_volume_percent().unwrap(), 0.0);
+
+        assert!(control.set_volume_percent(100.0).is_ok());
+        assert_eq!(control.get_volume_percent().unwrap(), 100.0);
+    }
+
+    #[test]
+    fn test_dummy_volume_control_raw_value_tracking() {
+        let control = DummyVolumeControl::new_default();
+
+        // Set percentage and verify raw value
+        assert!(control.set_volume_percent(0.0).is_ok());
+        assert_eq!(control.get_raw_value().unwrap(), 0);
+
+        assert!(control.set_volume_percent(100.0).is_ok());
+        assert_eq!(control.get_raw_value().unwrap(), 100);
+
+        assert!(control.set_volume_percent(50.0).is_ok());
+        assert_eq!(control.get_raw_value().unwrap(), 50);
+    }
+
+    #[test]
+    fn test_dummy_volume_control_initial_values() {
+        // Test with various initial values
+        let control1 = DummyVolumeControl::new("ctrl1".to_string(), "Control 1".to_string(), 0.0);
+        assert_eq!(control1.get_volume_percent().unwrap(), 0.0);
+
+        let control2 = DummyVolumeControl::new("ctrl2".to_string(), "Control 2".to_string(), 50.0);
+        assert_eq!(control2.get_volume_percent().unwrap(), 50.0);
+
+        let control3 = DummyVolumeControl::new("ctrl3".to_string(), "Control 3".to_string(), 100.0);
+        assert_eq!(control3.get_volume_percent().unwrap(), 100.0);
+    }
+
+    #[test]
+    fn test_volume_control_info_builder() {
+        let range1 = DecibelRange::new(-60.0, 0.0);
+        let range2 = DecibelRange::new(-120.0, 0.0);
+
+        let info = VolumeControlInfo::new("test1".to_string(), "Test 1".to_string())
+            .with_decibel_range(range1);
+
+        assert_eq!(info.decibel_range.as_ref().unwrap().min_db, -60.0);
+        assert_eq!(info.decibel_range.as_ref().unwrap().max_db, 0.0);
+
+        let info2 = VolumeControlInfo::new("test2".to_string(), "Test 2".to_string())
+            .with_decibel_range(range2);
+
+        assert_eq!(info2.decibel_range.as_ref().unwrap().min_db, -120.0);
+    }
+
+    #[test]
+    fn test_dummy_volume_with_different_ranges() {
+        // Create controls with different initial percentages
+        let low = DummyVolumeControl::new("low".to_string(), "Low".to_string(), 10.0);
+        let mid = DummyVolumeControl::new("mid".to_string(), "Mid".to_string(), 50.0);
+        let high = DummyVolumeControl::new("high".to_string(), "High".to_string(), 90.0);
+
+        assert_eq!(low.get_volume_percent().unwrap(), 10.0);
+        assert_eq!(mid.get_volume_percent().unwrap(), 50.0);
+        assert_eq!(high.get_volume_percent().unwrap(), 90.0);
+
+        // Verify dB values are computed correctly with default range
+        let low_db = low.get_volume_db().unwrap();
+        let mid_db = mid.get_volume_db().unwrap();
+        let high_db = high.get_volume_db().unwrap();
+
+        assert!(low_db < mid_db && mid_db < high_db);
+    }
+
+    #[test]
+    fn test_raw_value_boundary_conditions() {
+        let control = DummyVolumeControl::new_default();
+        let (min, max) = control.get_raw_range().unwrap();
+
+        // Set to min and max raw values
+        assert!(control.set_raw_value(min).is_ok());
+        assert!(control.set_raw_value(max).is_ok());
+
+        // Try to set outside range
+        assert!(control.set_raw_value(min - 1).is_err());
+        assert!(control.set_raw_value(max + 1).is_err());
+    }
+
+    #[test]
+    fn test_percentage_boundary_precision() {
+        let range = DecibelRange::new(-120.0, 0.0);
+
+        // Test precision at boundaries
+        for percent in [0.0, 0.1, 25.0, 50.0, 75.0, 99.9, 100.0] {
+            let db = range.percent_to_db(percent);
+            let back_to_percent = range.db_to_percent(db);
+
+            // Should round-trip accurately
+            assert!((percent - back_to_percent).abs() < 0.001);
+        }
+    }
+
+    #[test]
+    fn regression_decibel_range_percent_to_db_handles_non_finite_inputs() {
+        let range = DecibelRange::new(-60.0, 0.0);
+
+        assert_eq!(range.percent_to_db(f64::NAN), -60.0);
+        assert_eq!(range.percent_to_db(f64::NEG_INFINITY), -60.0);
+        assert_eq!(range.percent_to_db(f64::INFINITY), 0.0);
+    }
+
+    #[test]
+    fn regression_decibel_range_db_to_percent_handles_non_finite_inputs() {
+        let range = DecibelRange::new(-60.0, 0.0);
+
+        assert_eq!(range.db_to_percent(f64::NAN), 0.0);
+        assert_eq!(range.db_to_percent(f64::NEG_INFINITY), 0.0);
+        assert_eq!(range.db_to_percent(f64::INFINITY), 100.0);
     }
 }

@@ -42,34 +42,34 @@ impl Error for FavouriteError {}
 /// Trait for services that can manage favourite songs
 pub trait FavouriteProvider {
     /// Check if a song is marked as favourite
-    /// 
+    ///
     /// # Arguments
     /// * `song` - The song to check
-    /// 
+    ///
     /// # Returns
     /// `Ok(true)` if the song is a favourite, `Ok(false)` if not, or an error
     fn is_favourite(&self, song: &Song) -> Result<bool, FavouriteError>;
 
     /// Add a song to favourites
-    /// 
+    ///
     /// # Arguments
     /// * `song` - The song to add as favourite
-    /// 
+    ///
     /// # Returns
     /// `Ok(())` if successful, or an error
     fn add_favourite(&self, song: &Song) -> Result<(), FavouriteError>;
 
     /// Remove a song from favourites
-    /// 
+    ///
     /// # Arguments
     /// * `song` - The song to remove from favourites
-    /// 
+    ///
     /// # Returns
     /// `Ok(())` if successful, or an error
     fn remove_favourite(&self, song: &Song) -> Result<(), FavouriteError>;
 
     /// Get the total number of favourite songs
-    /// 
+    ///
     /// # Returns
     /// `Some(count)` if the provider supports counting, `None` if not supported
     fn get_favourite_count(&self) -> Option<usize>;
@@ -92,10 +92,10 @@ pub trait FavouriteProvider {
 fn validate_song(song: &Song) -> Result<(), FavouriteError> {
     let artist = song.artist.as_ref()
         .ok_or_else(|| FavouriteError::InvalidSong("Artist is required".to_string()))?;
-    
+
     let title = song.title.as_ref()
         .ok_or_else(|| FavouriteError::InvalidSong("Title is required".to_string()))?;
-    
+
     if artist.trim().is_empty() {
         return Err(FavouriteError::InvalidSong("Artist cannot be empty".to_string()));
     }
@@ -128,20 +128,34 @@ impl FavouriteManager {
     pub fn is_favourite(&self, song: &Song) -> Result<bool, FavouriteError> {
         validate_song(song)?;
 
+        let mut enabled_providers = 0usize;
+        let mut error_count = 0usize;
+        let mut errors = Vec::new();
+
         for provider in &self.providers {
             if !provider.is_enabled() {
                 continue;
             }
+            enabled_providers += 1;
 
             match provider.is_favourite(song) {
                 Ok(true) => return Ok(true),
                 Ok(false) => continue,
                 Err(e) => {
-                    log::warn!("Error checking favourite in provider {}: {}", 
+                    log::warn!("Error checking favourite in provider {}: {}",
                               provider.provider_name(), e);
+                    error_count += 1;
+                    errors.push(format!("{}: {}", provider.provider_name(), e));
                     continue;
                 }
             }
+        }
+
+        if enabled_providers > 0 && error_count == enabled_providers {
+            return Err(FavouriteError::Other(format!(
+                "Failed to check favourite in all providers: {}",
+                errors.join(", ")
+            )));
         }
 
         Ok(false)
@@ -152,12 +166,16 @@ impl FavouriteManager {
     pub fn get_favourite_providers_display_names(&self, song: &Song) -> Result<(bool, Vec<String>), FavouriteError> {
         validate_song(song)?;
 
+        let mut enabled_providers = 0usize;
+        let mut error_count = 0usize;
+        let mut errors = Vec::new();
         let mut favourite_provider_display_names = Vec::new();
 
         for provider in &self.providers {
             if !provider.is_enabled() {
                 continue;
             }
+            enabled_providers += 1;
 
             match provider.is_favourite(song) {
                 Ok(true) => {
@@ -165,11 +183,20 @@ impl FavouriteManager {
                 }
                 Ok(false) => continue,
                 Err(e) => {
-                    log::warn!("Error checking favourite in provider {}: {}", 
+                    log::warn!("Error checking favourite in provider {}: {}",
                               provider.provider_name(), e);
+                    error_count += 1;
+                    errors.push(format!("{}: {}", provider.provider_name(), e));
                     continue;
                 }
             }
+        }
+
+        if favourite_provider_display_names.is_empty() && enabled_providers > 0 && error_count == enabled_providers {
+            return Err(FavouriteError::Other(format!(
+                "Failed to check favourite in all providers: {}",
+                errors.join(", ")
+            )));
         }
 
         let is_favourite = !favourite_provider_display_names.is_empty();
@@ -195,7 +222,7 @@ impl FavouriteManager {
                     log::info!("Successfully added favourite to {}", provider.provider_name());
                 }
                 Err(e) => {
-                    log::error!("Failed to add favourite in provider {}: {}", 
+                    log::error!("Failed to add favourite in provider {}: {}",
                                provider.provider_name(), e);
                     errors.push(format!("{}: {}", provider.provider_name(), e));
                 }
@@ -231,7 +258,7 @@ impl FavouriteManager {
                     log::info!("Successfully removed favourite from {}", provider.provider_name());
                 }
                 Err(e) => {
-                    log::error!("Failed to remove favourite in provider {}: {}", 
+                    log::error!("Failed to remove favourite in provider {}: {}",
                                provider.provider_name(), e);
                     errors.push(format!("{}: {}", provider.provider_name(), e));
                 }
@@ -293,21 +320,21 @@ impl Default for FavouriteManager {
 /// Initialize the global favourite manager with default providers
 pub fn initialize_favourite_providers() {
     let mut manager = GLOBAL_FAVOURITE_MANAGER.lock();
-    
+
     // Clear any existing providers
     manager.providers.clear();
-    
+
     // Add Last.fm provider
     manager.add_provider(Box::new(crate::helpers::lastfm::LastfmFavouriteProvider::new()));
-    
+
     // Add SettingsDB provider
     manager.add_provider(Box::new(crate::helpers::settings_db::SettingsDbFavouriteProvider::new()));
-    
+
     // Add Spotify provider
     manager.add_provider(Box::new(crate::helpers::spotify::SpotifyFavouriteProvider::new()));
-    
-    log::info!("Initialized favourite providers: {} total, {} enabled", 
-               manager.provider_count(), 
+
+    log::info!("Initialized favourite providers: {} total, {} enabled",
+               manager.provider_count(),
                manager.enabled_provider_count());
 }
 
@@ -350,4 +377,132 @@ pub fn get_provider_count() -> (usize, usize) {
 /// Get detailed provider information from the global manager
 pub fn get_provider_details() -> Vec<serde_json::Value> {
     get_favourite_manager().get_provider_details()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Debug)]
+    struct MockProvider {
+        name: &'static str,
+        display_name: &'static str,
+        enabled: bool,
+        favourite_result: Result<bool, FavouriteError>,
+    }
+
+    impl FavouriteProvider for MockProvider {
+        fn is_favourite(&self, _song: &Song) -> Result<bool, FavouriteError> {
+            self.favourite_result.clone()
+        }
+
+        fn add_favourite(&self, _song: &Song) -> Result<(), FavouriteError> {
+            Ok(())
+        }
+
+        fn remove_favourite(&self, _song: &Song) -> Result<(), FavouriteError> {
+            Ok(())
+        }
+
+        fn get_favourite_count(&self) -> Option<usize> {
+            Some(0)
+        }
+
+        fn provider_name(&self) -> &'static str {
+            self.name
+        }
+
+        fn display_name(&self) -> &'static str {
+            self.display_name
+        }
+
+        fn is_enabled(&self) -> bool {
+            self.enabled
+        }
+
+        fn is_active(&self) -> bool {
+            self.enabled
+        }
+    }
+
+    impl Clone for FavouriteError {
+        fn clone(&self) -> Self {
+            match self {
+                FavouriteError::NetworkError(msg) => FavouriteError::NetworkError(msg.clone()),
+                FavouriteError::StorageError(msg) => FavouriteError::StorageError(msg.clone()),
+                FavouriteError::AuthError(msg) => FavouriteError::AuthError(msg.clone()),
+                FavouriteError::NotConfigured(msg) => FavouriteError::NotConfigured(msg.clone()),
+                FavouriteError::InvalidSong(msg) => FavouriteError::InvalidSong(msg.clone()),
+                FavouriteError::Other(msg) => FavouriteError::Other(msg.clone()),
+            }
+        }
+    }
+
+    fn sample_song() -> Song {
+        Song {
+            artist: Some("Artist".to_string()),
+            title: Some("Title".to_string()),
+            ..Song::default()
+        }
+    }
+
+    #[test]
+    fn is_favourite_returns_error_when_all_enabled_providers_fail() {
+        let mut manager = FavouriteManager::new();
+        manager.add_provider(Box::new(MockProvider {
+            name: "p1",
+            display_name: "Provider 1",
+            enabled: true,
+            favourite_result: Err(FavouriteError::NetworkError("offline".to_string())),
+        }));
+        manager.add_provider(Box::new(MockProvider {
+            name: "p2",
+            display_name: "Provider 2",
+            enabled: true,
+            favourite_result: Err(FavouriteError::AuthError("expired".to_string())),
+        }));
+
+        let result = manager.is_favourite(&sample_song());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn get_favourite_providers_display_names_returns_error_when_all_enabled_providers_fail() {
+        let mut manager = FavouriteManager::new();
+        manager.add_provider(Box::new(MockProvider {
+            name: "p1",
+            display_name: "Provider 1",
+            enabled: true,
+            favourite_result: Err(FavouriteError::NetworkError("offline".to_string())),
+        }));
+        manager.add_provider(Box::new(MockProvider {
+            name: "p2",
+            display_name: "Provider 2",
+            enabled: true,
+            favourite_result: Err(FavouriteError::AuthError("expired".to_string())),
+        }));
+
+        let result = manager.get_favourite_providers_display_names(&sample_song());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn is_favourite_still_returns_false_when_some_providers_succeed_with_false() {
+        let mut manager = FavouriteManager::new();
+        manager.add_provider(Box::new(MockProvider {
+            name: "p1",
+            display_name: "Provider 1",
+            enabled: true,
+            favourite_result: Err(FavouriteError::NetworkError("offline".to_string())),
+        }));
+        manager.add_provider(Box::new(MockProvider {
+            name: "p2",
+            display_name: "Provider 2",
+            enabled: true,
+            favourite_result: Ok(false),
+        }));
+
+        let result = manager.is_favourite(&sample_song()).unwrap();
+        assert!(!result);
+    }
 }

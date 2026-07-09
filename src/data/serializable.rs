@@ -1,6 +1,6 @@
 /// Trait for objects that can be serialized to JSON
 use serde::{Serialize, de::DeserializeOwned};
-use std::fmt::Debug;
+use log::error;
 
 /// Error type for serialization/deserialization operations
 #[derive(Debug)]
@@ -25,15 +25,27 @@ pub trait Serializable: Serialize {
     /// Returns:
     ///     JSON string representation of the object
     fn to_json(&self) -> String {
-        serde_json::to_string(self).unwrap_or_default()
+        match serde_json::to_string(self) {
+            Ok(json) => json,
+            Err(e) => {
+                error!("Failed to serialize object to JSON: {}", e);
+                String::new()
+            }
+        }
     }
-    
+
     /// Convert the object to a pretty-printed JSON string representation
     ///
     /// Returns:
     ///     Pretty-printed JSON string representation of the object
     fn to_json_pretty(&self) -> String {
-        serde_json::to_string_pretty(self).unwrap_or_default()
+        match serde_json::to_string_pretty(self) {
+            Ok(json) => json,
+            Err(e) => {
+                error!("Failed to serialize object to pretty JSON: {}", e);
+                String::new()
+            }
+        }
     }
 }
 

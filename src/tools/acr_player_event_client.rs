@@ -192,7 +192,8 @@ fn build_event_data(event: &EventType) -> Result<Value, Box<dyn Error>> {
         EventType::LoopModeChanged { loop_mode } => {
             let mode_str = match loop_mode {
                 LoopMode::None => "none",
-                LoopMode::Song | LoopMode::Track => "song",
+                LoopMode::Song => "song",
+                LoopMode::Track => "track",
                 LoopMode::Playlist => "playlist",
             };
 
@@ -206,7 +207,9 @@ fn build_event_data(event: &EventType) -> Result<Value, Box<dyn Error>> {
             file,
             json: json_str,
         } => {
-            let queue_data = if let Some(file_path) = file {
+            let queue_data = if file.is_some() && json_str.is_some() {
+                return Err("Only one of --file or --json can be provided for queue_changed".into());
+            } else if let Some(file_path) = file {
                 let file_content = std::fs::read_to_string(file_path)?;
                 serde_json::from_str::<Value>(&file_content)?
             } else if let Some(json_str) = json_str {
@@ -225,4 +228,46 @@ fn build_event_data(event: &EventType) -> Result<Value, Box<dyn Error>> {
     };
 
     Ok(event_data)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn regression_loop_mode_track_maps_to_track() {
+        let event = EventType::LoopModeChanged {
+            loop_mode: LoopMode::Track,
+        };
+        let data = build_event_data(&event).expect("event data should build");
+        assert_eq!(data["type"], "loop_mode_changed");
+        assert_eq!(data["loop_mode"], "track");
+    }
+
+    #[test]
+    fn regression_queue_changed_rejects_both_sources() {
+        let event = EventType::QueueChanged {
+            file: Some("queue.json".to_string()),
+            json: Some("[]".to_string()),
+        };
+        let err = build_event_data(&event).expect_err("both input sources should fail");
+        assert!(
+            err.to_string().contains("Only one of --file or --json can be provided"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn regression_queue_changed_requires_source() {
+        let event = EventType::QueueChanged {
+            file: None,
+            json: None,
+        };
+        let err = build_event_data(&event).expect_err("missing input source should fail");
+        assert!(
+            err.to_string()
+                .contains("Either --file or --json must be provided for queue_changed"),
+            "unexpected error: {err}"
+        );
+    }
 }

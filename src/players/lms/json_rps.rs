@@ -68,27 +68,27 @@ struct JsonRpcResponse {
 pub struct LmsRpcClient {
     /// Base URL of the LMS server (e.g., "http://192.168.1.100:9000")
     base_url: String,
-    
+
     /// HTTP client for making requests
     client: Arc<dyn HttpClient>, // Changed from Box<dyn HttpClient>
-    
+
     /// Request counter for unique IDs
     request_id: Arc<AtomicU32>, // Changed from u32
-    
+
     /// Lock to serialize requests
     request_lock: Arc<Mutex<()>>, // New field
 }
 
 impl LmsRpcClient {
     /// Create a new LMS JSON-RPC client
-    /// 
+    ///
     /// # Arguments
     /// * `host` - Hostname or IP address of the LMS server
     /// * `port` - HTTP port of the LMS server (typically 9000)
     pub fn new(host: &str, port: u16) -> Self {
         let base_url = format!("http://{}:{}", host, port);
         let client = Arc::from(new_http_client(DEFAULT_TIMEOUT_SECS)); // Wrapped in Arc
-            
+
         LmsRpcClient {
             base_url,
             client,
@@ -96,7 +96,7 @@ impl LmsRpcClient {
             request_lock: Arc::new(Mutex::new(())), // Initialize shared lock
         }
     }
-    
+
     /// Set a custom timeout for the client
     pub fn with_timeout(self, timeout_secs: u64) -> Self {
         Self {
@@ -106,7 +106,7 @@ impl LmsRpcClient {
             request_lock: self.request_lock, // Clone Arc, shares lock
         }
     }
-    
+
     /// Set a specific HTTP client implementation
     pub fn with_client(self, client: Box<dyn HttpClient>) -> Self {
         Self {
@@ -116,34 +116,34 @@ impl LmsRpcClient {
             request_lock: self.request_lock, // Clone Arc, shares lock
         }
     }
-    
+
     /// Get the next request ID
     fn next_id(&self) -> u32 {
         self.request_id.fetch_add(1, Ordering::SeqCst) // Use atomic counter
     }
-    
+
     /// Send a database query command
-    /// 
+    ///
     /// # Arguments
     /// * `command` - Command name (e.g., "artists", "albums", "titles")
     /// * `start` - Start index for pagination (0-based)
     /// * `items_per_response` - Number of items to return per response
     /// * `params` - Tagged parameters as key-value pairs (e.g., ("tags", "a"))
-    /// 
+    ///
     /// # Returns
     /// The result field of the response as a JSON Value
-    pub fn database_request(&self, command: &str, start: u32, items_per_response: u32, 
+    pub fn database_request(&self, command: &str, start: u32, items_per_response: u32,
                   params: Vec<(&str, &str)>) -> Result<Value, LmsRpcError> {
-        debug!("Command: {}, start: {}, items: {}, params: {:?}", 
+        debug!("Command: {}, start: {}, items: {}, params: {:?}",
                command, start, items_per_response, params);
-        
+
         // Build command with proper format: command start itemsPerResponse tag1:value1 tag2:value2...
         let mut command_values = vec![
             Value::String(command.to_string()),
             Value::String(start.to_string()), // Encode as string instead of number
             Value::String(items_per_response.to_string()), // Encode as string instead of number
         ];
-        
+
         // Add tagged parameters
         for (tag, value) in params {
             // Special case for query parameters denoted by "?"
@@ -168,9 +168,9 @@ impl LmsRpcClient {
         // Pass None for player_id to use the default "0" for database commands
         self.request_raw(None, command_values)
     }
-    
+
     /// Send a raw command to a specific player with mixed parameter types
-    /// 
+    ///
     /// # Arguments
     /// * `player_id` - Optional MAC address of player. If None, "0" will be used for database commands
     /// * `command` - Command array as JSON Values for mixed types
@@ -182,26 +182,26 @@ impl LmsRpcClient {
         // The LMS jsonrpc.js API expects params to be an array with:
         // 1. The player_id as the first element (or "0" for command that doesn't require a player)
         // 2. A nested array containing the command and parameters as the second element
-        
+
         // Debug log the command before creating the request
         let url = format!("{}{}", self.base_url, JSONRPC_PATH);
         debug!("LMS command to {}: player_id={:?}, command={:?}", url, player_id, command);
-        
+
         // Create the nested command array
         let command_array = Value::Array(command.clone());
-        
+
         // Create params array with player_id followed by the command array
         let params = vec![
             Value::String(player_id.unwrap_or("0").to_string()),
             command_array
         ];
-        
+
         let request = JsonRpcRequest {
             id: self.next_id(),
             method: "slim.request".to_string(),
             params,
         };
-        
+
         debug!("Sending LMS request to {}: {:?}", url, request);
 
         match post_json(self.client.as_ref(), &url, &request) {
@@ -224,25 +224,25 @@ impl LmsRpcClient {
             }
         }
     }
-    
+
     /// Send a control command to a specific player (without pagination parameters)
-    /// 
+    ///
     /// # Arguments
     /// * `player_id` - MAC address of player (e.g., "00:04:20:ab:cd:ef")
     /// * `command` - Command name (e.g., "pause", "play", "stop")
     /// * `args` - Command arguments as simple values without tags
-    /// 
+    ///
     /// # Returns
     /// The result field of the response as a JSON Value
-    pub fn control_request(&self, player_id: &str, command: &str, 
+    pub fn control_request(&self, player_id: &str, command: &str,
                           args: Vec<&str>) -> Result<Value, LmsRpcError> {
         debug!("Control command: {}, args: {:?}", command, args);
-        
+
         // Build command with proper format: command arg1 arg2...
         let mut command_values = vec![
             Value::String(command.to_string()),
         ];
-        
+
         // Add arguments as simple values
         for arg in args {
             command_values.push(Value::String(arg.to_string()));
@@ -252,11 +252,11 @@ impl LmsRpcClient {
 
         self.request_raw(Some(player_id), command_values)
     }
-    
+
     /// Get a list of available players
     pub fn get_players(&self) -> Result<Vec<Player>, LmsRpcError> {
         let result = self.control_request("0:0:0:0:0:0:0:0", "players", vec!["0", "100"])?;
-        
+
         // Extract the players array
         match result.get("players_loop") {
             Some(players_array) => {
@@ -268,12 +268,12 @@ impl LmsRpcClient {
             None => Ok(Vec::new()), // No players available
         }
     }
-    
+
     /// Get player status including current track info
     pub fn get_player_status(&self, player_id: &str) -> Result<PlayerStatus, LmsRpcError> {
         // Use control_request since we need to address a specific player
         let result = self.control_request(player_id, "status", vec!["0", "1", "tags:abcltiqyKo"])?;
-        
+
         match serde_json::from_value::<PlayerStatus>(result.clone()) {
             Ok(status) => Ok(status),
             Err(e) => {
@@ -283,9 +283,9 @@ impl LmsRpcClient {
             }
         }
     }
-    
+
     /// Get the server address (hostname or IP) from the base URL
-    /// 
+    ///
     /// # Returns
     /// The server address as a String if it can be extracted
     pub fn get_server_address(&self) -> Result<String, LmsRpcError> {
@@ -296,12 +296,12 @@ impl LmsRpcClient {
             }
             return Ok(stripped.to_string());
         }
-        
+
         Err(LmsRpcError::ParseError("Could not extract server address from base URL".to_string()))
     }
-    
+
     /// Get the server port from the base URL
-    /// 
+    ///
     /// # Returns
     /// The server port number
     pub fn get_server_port(&self) -> u16 {
@@ -315,80 +315,78 @@ impl LmsRpcClient {
                 }
             }
         }
-        
+
         // Default LMS port if we couldn't extract it
         9000
     }
-    
+
     /// Play the current track
     pub fn play(&self, player_id: &str) -> Result<Value, LmsRpcError> {
         self.control_request(player_id, "play", vec![])
     }
-    
+
     /// Pause the current track
     pub fn pause(&self, player_id: &str) -> Result<Value, LmsRpcError> {
         self.control_request(player_id, "pause", vec!["1"])
     }
-    
+
     /// Toggle pause/play
     pub fn toggle_pause(&self, player_id: &str) -> Result<Value, LmsRpcError> {
         self.control_request(player_id, "pause", vec![])
     }
-    
+
     /// Stop playback
     pub fn stop(&self, player_id: &str) -> Result<Value, LmsRpcError> {
         self.control_request(player_id, "stop", vec![])
     }
-    
+
     /// Skip to next track
     pub fn next(&self, player_id: &str) -> Result<Value, LmsRpcError> {
         self.control_request(player_id, "playlist", vec!["index", "+1"])
     }
-    
+
     /// Skip to previous track
     pub fn previous(&self, player_id: &str) -> Result<Value, LmsRpcError> {
         self.control_request(player_id, "playlist", vec!["index", "-1"])
     }
-    
+
     /// Set volume (0-100)
     pub fn set_volume(&self, player_id: &str, volume: u8) -> Result<Value, LmsRpcError> {
         let volume = volume.min(100);
         self.control_request(player_id, "mixer", vec!["volume", &volume.to_string()])
     }
-    
+
     /// Get current volume
     pub fn get_volume(&self, player_id: &str) -> Result<u8, LmsRpcError> {
         let result = self.control_request(player_id, "mixer", vec!["volume", "?"])?;
-        
+
         match result.get("_volume") {
             Some(volume) => {
-                volume.as_u64()
-                    .map(|v| v as u8)
+                parse_u8_scalar(volume)
                     .ok_or_else(|| LmsRpcError::ParseError("Volume is not a number".to_string()))
             },
             None => Err(LmsRpcError::ParseError("Volume not found in response".to_string())),
         }
     }
-    
+
     /// Set mute status
     pub fn set_mute(&self, player_id: &str, mute: bool) -> Result<Value, LmsRpcError> {
         let mute_val = if mute { "1" } else { "0" };
         self.control_request(player_id, "mixer", vec!["muting", mute_val])
     }
-    
+
     /// Toggle mute status
     pub fn toggle_mute(&self, player_id: &str) -> Result<Value, LmsRpcError> {
         self.control_request(player_id, "mixer", vec!["muting"])
     }
-    
+
     /// Get mute status
     pub fn is_muted(&self, player_id: &str) -> Result<bool, LmsRpcError> {
         let result = self.control_request(player_id, "mixer", vec!["muting", "?"])?;
-        
+
         match result.get("_muting") {
             Some(muting) => {
-                muting.as_i64()
-                    .map(|v| v != 0)
+                parse_bool_scalar(muting)
                     .ok_or_else(|| LmsRpcError::ParseError("Muting value is not a number".to_string()))
             },
             None => Err(LmsRpcError::ParseError("Muting status not found in response".to_string())),
@@ -401,53 +399,51 @@ impl LmsRpcClient {
         let time_str = format!("{:.1}", seconds);
         self.control_request(player_id, "time", vec![&time_str])
     }
-    
+
     /// Set shuffle mode (0=off, 1=songs, 2=albums)
     pub fn set_shuffle(&self, player_id: &str, shuffle_mode: u8) -> Result<Value, LmsRpcError> {
         let mode = shuffle_mode.min(2).to_string();
         self.control_request(player_id, "playlist", vec!["shuffle", &mode])
     }
-    
+
     /// Get shuffle mode
     pub fn get_shuffle(&self, player_id: &str) -> Result<u8, LmsRpcError> {
         let result = self.control_request(player_id, "playlist", vec!["shuffle", "?"])?;
-        
+
         match result.get("_shuffle") {
             Some(shuffle) => {
-                shuffle.as_u64()
-                    .map(|v| v as u8)
+                parse_u8_scalar(shuffle)
                     .ok_or_else(|| LmsRpcError::ParseError("Shuffle mode is not a number".to_string()))
             },
             None => Err(LmsRpcError::ParseError("Shuffle mode not found in response".to_string())),
         }
     }
-    
+
     /// Set repeat mode (0=off, 1=song, 2=playlist)
     pub fn set_repeat(&self, player_id: &str, repeat_mode: u8) -> Result<Value, LmsRpcError> {
         let mode = repeat_mode.min(2).to_string();
         self.control_request(player_id, "playlist", vec!["repeat", &mode])
     }
-    
+
     /// Get repeat mode
     pub fn get_repeat(&self, player_id: &str) -> Result<u8, LmsRpcError> {
         let result = self.control_request(player_id, "playlist", vec!["repeat", "?"])?;
-        
+
         match result.get("_repeat") {
             Some(repeat) => {
-                repeat.as_u64()
-                    .map(|v| v as u8)
+                parse_u8_scalar(repeat)
                     .ok_or_else(|| LmsRpcError::ParseError("Repeat mode is not a number".to_string()))
             },
             None => Err(LmsRpcError::ParseError("Repeat mode not found in response".to_string())),
         }
     }
-    
+
     /// Check if a specific MAC address is connected to this LMS server
     /// If no MAC address is provided, it will check all local interfaces
     pub fn is_connected(&self, mac_addr: Option<&str>) -> Result<bool, LmsRpcError> {
         // Get players to check connections
         let players = self.get_players()?;
-        
+
         // Get MAC addresses to check
         let mac_addresses = match mac_addr {
             Some(mac) => {
@@ -469,21 +465,21 @@ impl LmsRpcClient {
                 }
             }
         };
-        
+
         // Check if any player's MAC address matches one of our MAC addresses
         for player in players {
             // Only check connected players
             if player.is_connected == 0 {
                 continue;
             }
-            
+
             // Parse the player's MAC address
             match normalize_mac_address(&player.playerid) {
                 Ok(player_mac) => {
                     // Check against our MAC addresses
                     for local_mac in &mac_addresses {
                         if player_mac == *local_mac {
-                            debug!("Found matching MAC: player {} ({}) matches local interface", 
+                            debug!("Found matching MAC: player {} ({}) matches local interface",
                                   player.name, player_mac);
                             return Ok(true);
                         }
@@ -494,28 +490,28 @@ impl LmsRpcClient {
                 }
             }
         }
-        
+
         // No matches found
         Ok(false)
     }
 
     /// Search for content in the LMS library
-    /// 
+    ///
     /// # Arguments
     /// * `player_id` - MAC address of player
     /// * `query` - Search query string
     /// * `limit` - Maximum number of results to return
-    /// 
+    ///
     /// # Returns
     /// Search results containing tracks, albums, artists, and playlists
     pub fn search(&self, query: &str, limit: u32) -> Result<SearchResults, LmsRpcError> {
         debug!("Searching for '{}' (limit {})", query, limit);
         let mut results = SearchResults::default();
-        
+
         // Search for tracks
-        let track_results = self.database_request("search", 0, limit, 
+        let track_results = self.database_request("search", 0, limit,
             vec![("term", query), ("type", "track"), ("tags", "aCdtl")])?;
-            
+
         if let Some(tracks_array) = track_results.get("tracks_loop") {
             if let Some(tracks) = tracks_array.as_array() {
                 for track_value in tracks {
@@ -525,11 +521,11 @@ impl LmsRpcClient {
                 }
             }
         }
-        
+
         // Search for albums
-        let album_results = self.database_request("search", 0, limit, 
+        let album_results = self.database_request("search", 0, limit,
             vec![("term", query), ("type", "album"), ("tags", "aCdtlyo")])?;
-            
+
         if let Some(albums_array) = album_results.get("albums_loop") {
             if let Some(albums) = albums_array.as_array() {
                 for album_value in albums {
@@ -539,11 +535,11 @@ impl LmsRpcClient {
                 }
             }
         }
-        
+
         // Search for artists
-        let artist_results = self.database_request("search", 0, limit, 
+        let artist_results = self.database_request("search", 0, limit,
             vec![("term", query), ("type", "artist"), ("tags", "a")])?;
-            
+
         if let Some(artists_array) = artist_results.get("artists_loop") {
             if let Some(artists) = artists_array.as_array() {
                 for artist_value in artists {
@@ -553,11 +549,11 @@ impl LmsRpcClient {
                 }
             }
         }
-        
+
         // Search for playlists
-        let playlist_results = self.database_request("search", 0, limit, 
+        let playlist_results = self.database_request("search", 0, limit,
             vec![("term", query), ("type", "playlist"), ("tags", "p")])?;
-            
+
         if let Some(playlists_array) = playlist_results.get("playlists_loop") {
             if let Some(playlists) = playlists_array.as_array() {
                 for playlist_value in playlists {
@@ -567,7 +563,7 @@ impl LmsRpcClient {
                 }
             }
         }
-        
+
         Ok(results)
     }
 }
@@ -614,6 +610,33 @@ pub struct PlayerStatus {
 
 fn default_zero() -> u8 { 0 }
 
+fn parse_u8_scalar(value: &Value) -> Option<u8> {
+    if let Some(v) = value.as_u64() {
+        return u8::try_from(v).ok();
+    }
+
+    value.as_str().and_then(|s| s.parse::<u8>().ok())
+}
+
+fn parse_bool_scalar(value: &Value) -> Option<bool> {
+    if let Some(v) = value.as_i64() {
+        return Some(v != 0);
+    }
+
+    if let Some(v) = value.as_u64() {
+        return Some(v != 0);
+    }
+
+    if let Some(v) = value.as_bool() {
+        return Some(v);
+    }
+
+    value
+        .as_str()
+        .and_then(|s| s.parse::<i64>().ok())
+        .map(|v| v != 0)
+}
+
 /// Track information
 #[derive(Debug, Clone, Deserialize)]
 pub struct Track {
@@ -640,7 +663,7 @@ where
 {
     // First deserialize to a serde_json::Value which can represent any JSON value
     let value = Value::deserialize(deserializer)?;
-    
+
     // Convert the value to a string regardless of its type
     Ok(match value {
         Value::String(s) => s,
@@ -685,4 +708,34 @@ pub struct SearchResults {
     pub albums: Vec<Album>,
     pub artists: Vec<Artist>,
     pub playlists: Vec<Playlist>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_bool_scalar, parse_u8_scalar};
+    use serde_json::json;
+
+    #[test]
+    fn regression_parse_u8_scalar_supports_numeric_and_string_values() {
+        assert_eq!(parse_u8_scalar(&json!(5)), Some(5));
+        assert_eq!(parse_u8_scalar(&json!("12")), Some(12));
+        assert_eq!(parse_u8_scalar(&json!("255")), Some(255));
+    }
+
+    #[test]
+    fn regression_parse_u8_scalar_rejects_invalid_values() {
+        assert_eq!(parse_u8_scalar(&json!("abc")), None);
+        assert_eq!(parse_u8_scalar(&json!(-1)), None);
+        assert_eq!(parse_u8_scalar(&json!(300)), None);
+    }
+
+    #[test]
+    fn regression_parse_bool_scalar_supports_string_and_numeric_values() {
+        assert_eq!(parse_bool_scalar(&json!(1)), Some(true));
+        assert_eq!(parse_bool_scalar(&json!(0)), Some(false));
+        assert_eq!(parse_bool_scalar(&json!("1")), Some(true));
+        assert_eq!(parse_bool_scalar(&json!("0")), Some(false));
+        assert_eq!(parse_bool_scalar(&json!(true)), Some(true));
+        assert_eq!(parse_bool_scalar(&json!(false)), Some(false));
+    }
 }

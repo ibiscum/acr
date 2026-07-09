@@ -19,12 +19,12 @@ pub fn map_album(lms_album: &LmsAlbum) -> Option<AcrAlbum> {
         Some(id_str) => id_str.clone(),
         None => return None, // Can't create an album without an ID
     };
-    
+
     let name = match &lms_album.title {
         Some(title) => title.clone(),
         None => return None, // Can't create an album without a title
     };
-    
+
     // Create the album with the required fields
     let mut album = AcrAlbum {
         id: Identifier::String(id),
@@ -37,32 +37,32 @@ pub fn map_album(lms_album: &LmsAlbum) -> Option<AcrAlbum> {
         uri: None,
         genres: Vec::new(),
     };
-    
+
     // Add any artist information if available
     if let Some(artist_name) = &lms_album.artist {
         let mut artists = album.artists.lock();
         artists.push(artist_name.clone());
         album.artists_flat = Some(artist_name.clone());
     }
-    
+
     // Add release year if available
     if let Some(year_str) = &lms_album.year {
         // Try to parse the year in various formats
         // First try as a simple year (YYYY)
         if let Ok(year) = year_str.parse::<i32>() {
             album.release_date = NaiveDate::from_ymd_opt(year, 1, 1);
-        } 
+        }
         // Otherwise try ISO format (YYYY-MM-DD)
         else if let Ok(date) = NaiveDate::parse_from_str(year_str, "%Y-%m-%d") {
             album.release_date = Some(date);
         }
     }
-    
+
     // Add cover art URL if available
     if let Some(artwork_url) = &lms_album.artwork_url {
         album.cover_art = Some(artwork_url.clone());
     }
-    
+
     Some(album)
 }
 
@@ -70,14 +70,14 @@ pub fn map_album(lms_album: &LmsAlbum) -> Option<AcrAlbum> {
 pub fn map_track(lms_track: &LmsTrack, album_artist: Option<&str>) -> AcrTrack {
     // Create a basic track with the title
     let mut track = AcrTrack::with_name(lms_track.title.clone());
-    
+
     // Try to extract a track number
     // LMS doesn't directly provide disc/track numbers in the standard track response
     // but we can try to infer it if available in other fields or from the ID
     if let Ok(track_num) = lms_track.id.parse::<u16>() {
         track.track_number = Some(track_num);
     }
-    
+
     // Add artist if different from album artist
     if !lms_track.artist.is_empty() {
         if let Some(album_artist_name) = album_artist {
@@ -88,12 +88,12 @@ pub fn map_track(lms_track: &LmsTrack, album_artist: Option<&str>) -> AcrTrack {
             track.artist = Some(lms_track.artist.clone());
         }
     }
-    
+
     // Set duration if available
     if let Some(_duration_secs) = lms_track.duration {
         // We don't need to modify the duration, as both use seconds
     }
-    
+
     // Set URI if we can construct one
     // LMS often doesn't provide direct file URIs in basic track responses
     // but we might be able to construct one if needed in the future
@@ -104,8 +104,8 @@ pub fn map_track(lms_track: &LmsTrack, album_artist: Option<&str>) -> AcrTrack {
 /// Maps an LMS Artist to the application's Artist structure
 pub fn map_artist(lms_artist: &LmsArtist) -> AcrArtist {
     // Create a new artist with the ID and name from LMS
-    
-    
+
+
     AcrArtist {
         id: Identifier::String(lms_artist.id.clone()),
         name: lms_artist.artist.clone(),
@@ -118,7 +118,7 @@ pub fn map_artist(lms_artist: &LmsArtist) -> AcrArtist {
 /// Maps a collection of LMS albums to the application's Album structures
 pub fn map_albums(lms_albums: &[LmsAlbum]) -> Vec<AcrAlbum> {
     let mut result = Vec::with_capacity(lms_albums.len());
-    
+
     for lms_album in lms_albums {
         if let Some(album) = map_album(lms_album) {
             result.push(album);
@@ -126,15 +126,15 @@ pub fn map_albums(lms_albums: &[LmsAlbum]) -> Vec<AcrAlbum> {
             warn!("Failed to map LMS album: {:?}", lms_album);
         }
     }
-    
+
     result
 }
 
 /// Maps a collection of LMS tracks to a single album with tracks
 pub fn map_tracks_to_album(
-    album_id: String, 
-    album_name: String, 
-    album_artist: Option<String>, 
+    album_id: String,
+    album_name: String,
+    album_artist: Option<String>,
     lms_tracks: &[LmsTrack]
 ) -> AcrAlbum {
     // Create a new album
@@ -149,7 +149,7 @@ pub fn map_tracks_to_album(
         uri: None,
         genres: Vec::new(),
     };
-    
+
     // Add album artist if available
     if let Some(artist) = album_artist {
         let mut artists = album.artists.lock();
@@ -165,10 +165,10 @@ pub fn map_tracks_to_album(
             album_tracks.push(acr_track);
         }
     }
-    
+
     // Sort the tracks by disc and track number
     album.sort_tracks();
-    
+
     // Try to set cover art from the first track if available
     if let Some(first_track) = lms_tracks.first() {
         if !first_track.coverid.is_empty() {
@@ -178,7 +178,7 @@ pub fn map_tracks_to_album(
             album.cover_art = Some(format!("/music/{}/cover", first_track.coverid));
         }
     }
-    
+
     album
 }
 
@@ -189,21 +189,71 @@ pub fn map_artist_with_albums(
 ) -> (AcrArtist, Vec<AcrAlbum>) {
     // Map the artist
     let artist = map_artist(lms_artist);
-    
+
     // Map all albums
     let albums = lms_albums.iter()
         .filter_map(|album| {
             // Only include albums where this artist is the main artist
-            if let Some(album_artist) = &album.artist {
-                if album_artist == &lms_artist.artist {
-                    return map_album(album);
-                }
+            if album.artist.as_deref() == Some(lms_artist.artist.as_str()) {
+                return map_album(album);
             }
-            // Still include the album if the artist ID matches
-            // (This might be redundant but included for completeness)
-            map_album(album)
+
+            None
         })
         .collect();
-    
+
     (artist, albums)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_album(id: Option<&str>, title: Option<&str>, artist: Option<&str>) -> LmsAlbum {
+        LmsAlbum {
+            id: id.map(str::to_string),
+            title: title.map(str::to_string),
+            artist: artist.map(str::to_string),
+            artwork_url: None,
+            year: None,
+            genres: None,
+            added_time: None,
+        }
+    }
+
+    #[test]
+    fn regression_map_artist_with_albums_filters_out_non_matching_artist() {
+        let lms_artist = LmsArtist {
+            id: "artist-1".to_string(),
+            artist: "Alice".to_string(),
+        };
+        let albums = vec![
+            make_album(Some("1"), Some("Alice Album"), Some("Alice")),
+            make_album(Some("2"), Some("Bob Album"), Some("Bob")),
+            make_album(Some("3"), Some("Unknown Artist Album"), None),
+        ];
+
+        let (_, mapped_albums) = map_artist_with_albums(&lms_artist, &albums);
+
+        assert_eq!(mapped_albums.len(), 1);
+        assert_eq!(mapped_albums[0].name, "Alice Album");
+    }
+
+    #[test]
+    fn regression_map_artist_with_albums_skips_invalid_album_payloads() {
+        let lms_artist = LmsArtist {
+            id: "artist-1".to_string(),
+            artist: "Alice".to_string(),
+        };
+        let albums = vec![
+            make_album(Some("1"), Some("Valid"), Some("Alice")),
+            make_album(None, Some("Missing ID"), Some("Alice")),
+            make_album(Some("2"), None, Some("Alice")),
+        ];
+
+        let (_, mapped_albums) = map_artist_with_albums(&lms_artist, &albums);
+
+        assert_eq!(mapped_albums.len(), 1);
+        assert_eq!(mapped_albums[0].name, "Valid");
+    }
 }

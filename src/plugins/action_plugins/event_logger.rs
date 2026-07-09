@@ -49,6 +49,21 @@ pub struct EventLogger {
 }
 
 impl EventLogger {
+    fn normalize_event_types(event_types: Option<HashSet<String>>) -> Option<HashSet<String>> {
+        let mut normalized: HashSet<String> = event_types
+            .unwrap_or_default()
+            .into_iter()
+            .map(|s| s.trim().to_ascii_lowercase())
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        if normalized.is_empty() {
+            None
+        } else {
+            Some(std::mem::take(&mut normalized))
+        }
+    }
+
     /// Create a new EventLogger
     pub fn new(only_active: bool) -> Self {
         Self {
@@ -65,7 +80,7 @@ impl EventLogger {
             base: BaseActionPlugin::new("EventLogger"),
             only_active,
             log_level,
-            event_types,
+            event_types: Self::normalize_event_types(event_types),
         }
     }
 
@@ -76,13 +91,13 @@ impl EventLogger {
 
     /// Set the event types to log
     pub fn set_event_types(&mut self, event_types: Option<HashSet<String>>) {
-        self.event_types = event_types;
+        self.event_types = Self::normalize_event_types(event_types);
     }
 
     /// Check if an event type should be logged
     fn should_log_event_type(&self, event_type: &str) -> bool {
         match &self.event_types {
-            Some(types) => types.contains(event_type),
+            Some(types) => types.contains(&event_type.to_ascii_lowercase()),
             None => true, // Log all event types if none are specified
         }
     }    /// Get the event type name from a PlayerEvent
@@ -91,7 +106,7 @@ impl EventLogger {
             PlayerEvent::StateChanged { .. } => "state_changed",
             PlayerEvent::SongChanged { .. } => "song_changed",
             PlayerEvent::LoopModeChanged { .. } => "loop_mode_changed",
-            PlayerEvent::RandomChanged { .. } => "random_mode_changed",
+            PlayerEvent::RandomChanged { .. } => "random_changed",
             PlayerEvent::CapabilitiesChanged { .. } => "capabilities_changed",
             PlayerEvent::PositionChanged { .. } => "position_changed",
             PlayerEvent::DatabaseUpdating { .. } => "database_updating",
@@ -100,8 +115,8 @@ impl EventLogger {
             PlayerEvent::ActivePlayerChanged { .. } => "active_player_changed",
             PlayerEvent::VolumeChanged { .. } => "volume_changed",
         }
-    }    
-    
+    }
+
     /// Create a handler for events coming from the event bus
     fn handle_event_bus_events(&self, event: PlayerEvent) {
         trace!("Received event");
@@ -112,10 +127,10 @@ impl EventLogger {
                 Some(source) => source.player_id(),
                 None => "system",
             };
-            
+
             // Get ID of the active player from AudioController
             let active_player_id = controller.get_player_id();
-            
+
             // Event is from active player if IDs match
             event_player_id == active_player_id
         } else {
@@ -152,8 +167,8 @@ impl EventLogger {
         if !self.should_log_event_type(event_type) {
             trace!("Should not log this event type: {}", event_type);
             return;
-        }        
-        
+        }
+
         match &event {
             PlayerEvent::StateChanged { source, state } => {
                 self.log_message(
@@ -302,13 +317,13 @@ impl EventLogger {
                 } else {
                     format!("{:.1}%", percentage)
                 };
-                
+
                 let raw_info = if let Some(raw) = raw_value {
                     format!(" [raw: {}]", raw)
                 } else {
                     String::new()
                 };
-                
+
                 // Volume events are not associated with a specific player
                 self.log_message(
                     &format!(
@@ -322,7 +337,7 @@ impl EventLogger {
                 );
             },
         }
-    }    
+    }
 }
 
 impl Plugin for EventLogger {
@@ -356,7 +371,7 @@ impl Plugin for EventLogger {
 impl ActionPlugin for EventLogger {
     fn initialize(&mut self, controller: Weak<AudioController>) {
         self.base.set_controller(controller);
-        
+
         // Subscribe to event bus in the initialize method
         log::debug!("EventLogger initializing and subscribing to event bus");
         let self_clone = self.clone();
@@ -364,7 +379,7 @@ impl ActionPlugin for EventLogger {
             self_clone.handle_event(event);
         });
     }
-    
+
     fn handle_event(&self, event: PlayerEvent) {
         self.handle_event_bus_events(event);
     }
@@ -374,19 +389,53 @@ impl ActionPlugin for EventLogger {
 impl Clone for EventLogger {
     fn clone(&self) -> Self {
         let mut new_base = BaseActionPlugin::new(self.base.name());
-        
+
         // Get the controller reference from the original object
         if let Some(controller) = self.base.get_controller() {
             // The controller is already an Arc, we need to downgrade it to a Weak
             let controller_weak = Arc::downgrade(&controller);
             new_base.set_controller(controller_weak);
         }
-        
+
         Self {
             base: new_base,
             only_active: self.only_active,
             log_level: self.log_level,
             event_types: self.event_types.clone(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn regression_empty_event_type_set_means_log_all() {
+        let logger = EventLogger::with_config(false, LogLevel::Info, Some(HashSet::new()));
+        assert!(logger.should_log_event_type("state_changed"));
+        assert!(logger.should_log_event_type("queue_changed"));
+    }
+
+    #[test]
+    fn regression_event_type_filter_is_case_insensitive_and_trimmed() {
+        let mut configured = HashSet::new();
+        configured.insert("  STATE_CHANGED  ".to_string());
+        let logger = EventLogger::with_config(false, LogLevel::Info, Some(configured));
+
+        assert!(logger.should_log_event_type("state_changed"));
+        assert!(logger.should_log_event_type("STATE_CHANGED"));
+        assert!(!logger.should_log_event_type("song_changed"));
+    }
+
+    #[test]
+    fn regression_set_event_types_normalizes_and_clears_empty_values() {
+        let mut logger = EventLogger::new(false);
+
+        let mut configured = HashSet::new();
+        configured.insert("   ".to_string());
+        logger.set_event_types(Some(configured));
+
+        assert!(logger.should_log_event_type("state_changed"));
     }
 }

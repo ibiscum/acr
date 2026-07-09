@@ -45,7 +45,7 @@ pub struct Lastfm {
 struct CurrentScrobbleTrack {
     name: Option<String>,
     artists: Option<Vec<String>>,
-    length: Option<u32>, 
+    length: Option<u32>,
     started_timestamp: Option<SystemTime>, // When the song was first seen/changed to
     scrobbled_song: bool,
     // New fields for playback state tracking
@@ -140,7 +140,7 @@ fn lastfm_worker(
                             // It's important that the immutable borrows above are out of scope.
                             if let Some(original_song_details_ref) = &mut track_data.song_details {
                                 let updated_song_partial = calculate_updates(original_song_details_ref, &track_info_details);
-                                
+
                                 let event = PlayerEvent::SongInformationUpdate {
                                     source: current_player_source.clone(), // Use the cloned source
                                     song: updated_song_partial.clone()
@@ -162,11 +162,11 @@ fn lastfm_worker(
                 } else {
                     warn!("LastFMWorker: player_source was None when attempting to fetch track info. Title: {:?}, Artist: {:?}, Fetched Flag: {}", track_data.song_details.as_ref().and_then(|s| s.title.as_ref()), track_data.song_details.as_ref().and_then(|s| s.artist.as_ref()), track_data.track_info_fetched);
                     // Potentially set track_info_fetched to true here as well if we don't want to retry without a source
-                     track_data.track_info_fetched = true; 
+                     track_data.track_info_fetched = true;
                 }
             } else {
                 warn!("LastFMWorker: Cannot get track info, title or artist missing from stored song details. Title: {:?}, Artist: {:?}, Fetched Flag: {}", track_data.song_details.as_ref().and_then(|s| s.title.as_ref()), track_data.song_details.as_ref().and_then(|s| s.artist.as_ref()), track_data.track_info_fetched);
-                track_data.track_info_fetched = true; 
+                track_data.track_info_fetched = true;
             }
         }
 
@@ -203,7 +203,7 @@ fn lastfm_worker(
 
         if let (Some(name), Some(artists), Some(length_val), Some(actual_started_time)) =
             (&track_data.name, &track_data.artists, &track_data.length, &track_data.started_timestamp) {
-            
+
             let artists_str = artists.join(", ");
 
             let mut current_segment_ms = 0;
@@ -232,10 +232,10 @@ fn lastfm_worker(
                 && !track_data.scrobbled_song && scrobble_enabled { // Added scrobble_enabled check
                     // let scrobble_point_duration_secs = *length_val / 2; // length_val is &u32
                     let scrobble_point_time_secs = 240; // 4 minutes in seconds, Last.fm recommendation
-                    
+
 
                     if effective_elapsed_seconds >= u64::from(*length_val).saturating_mul(50) / 100 || effective_elapsed_seconds >= scrobble_point_time_secs {
-                        
+
                         if client.is_authenticated() { // Check if client is authenticated before scrobbling
                             if let Some(primary_artist) = artists.first() {
                                 let scrobble_timestamp = match actual_started_time.duration_since(SystemTime::UNIX_EPOCH) { // Used actual_started_time
@@ -319,17 +319,22 @@ impl Lastfm {
             worker_running: Arc::new(AtomicBool::new(true)), // Initialize worker_running
         }
     }
-    
+
+    fn prepare_worker_start(&self) {
+        self.worker_running.store(true, Ordering::SeqCst);
+    }
+
     /// Start the worker thread for Last.fm scrobbling
     fn start_worker_thread(&mut self) {
+        self.prepare_worker_start();
         if self.lastfm_client.is_none() {
             if let Ok(client_instance) = LastfmClient::get_instance() {
                 self.lastfm_client = Some(client_instance.clone());
-                
+
                 // Set up the worker thread
                 let track_data_for_thread = Arc::clone(&self.current_track_data);
                 let plugin_name_for_thread = self.name().to_string();
-                let client_for_thread = client_instance; 
+                let client_for_thread = client_instance;
                 let worker_running_for_thread = Arc::clone(&self.worker_running);
                 let scrobble_config_for_thread = self.config.scrobble;
 
@@ -342,7 +347,7 @@ impl Lastfm {
                         scrobble_config_for_thread
                     );
                 });
-                
+
                 self.worker_thread = Some(handle);
                 log::info!("Lastfm: Worker thread started");
             } else {
@@ -366,20 +371,20 @@ impl Lastfm {
                         scrobble_config_for_thread
                     );
                 });
-                
+
                 self.worker_thread = Some(handle);
                 log::info!("Lastfm: Worker thread started");
             }
         }
     }
-    
+
     /// Handle a song changed event
     fn handle_song_changed(&mut self, song_event_opt: &Option<Song>, source: &PlayerSource) {
         let mut track_data = self.current_track_data.lock();
-        
-        if let Some(song_event) = song_event_opt { 
-            let new_name = song_event.title.clone(); 
-            let new_artists_vec = song_event.artist.clone().map(|a| vec![a]); 
+
+        if let Some(song_event) = song_event_opt {
+            let new_name = song_event.title.clone();
+            let new_artists_vec = song_event.artist.clone().map(|a| vec![a]);
             let new_length = song_event.duration.map(|d| d.round() as u32);
 
             let is_different_song = track_data.name != new_name ||
@@ -396,12 +401,12 @@ impl Lastfm {
                     }
                     was_playing_before_change = true;
                 }
-                
+
                 track_data.name = new_name;
                 track_data.artists = new_artists_vec;
                 track_data.length = new_length;
                 track_data.started_timestamp = Some(SystemTime::now());
-                track_data.scrobbled_song = false; 
+                track_data.scrobbled_song = false;
                 track_data.accumulated_play_duration_ms = 0;
                 track_data.song_details = Some(song_event.clone()); // Store the full Song object
                 track_data.player_source = Some(source.clone()); // Store the PlayerSource
@@ -412,14 +417,14 @@ impl Lastfm {
                 } else {
                     track_data.last_play_timestamp = None;
                 }
-                
+
                 info!(
                     "Lastfm: Song changed. New: {:?}-{:?} ({:?})s. Source: {:?}. Play counters reset. Assumed playing: {}. Stored song details.",
-                    track_data.name.as_deref().unwrap_or("N/A"), 
+                    track_data.name.as_deref().unwrap_or("N/A"),
                     track_data.artists.as_ref().map_or_else(
-                        || "N/A".to_string(), 
+                        || "N/A".to_string(),
                         |a_vec| a_vec.join(", ")
-                    ), 
+                    ),
                     track_data.length.map_or_else(|| "N/A".to_string(), |l| l.to_string()),
                     track_data.player_source, // Log the source
                     was_playing_before_change
@@ -439,17 +444,17 @@ impl Lastfm {
                 }
             }
         } else { // song_event_opt is None
-            if track_data.name.is_some() { 
+            if track_data.name.is_some() {
                 info!("Lastfm: Song changed to None (playback stopped), clearing track data.");
                 if track_data.current_playback_state == PlaybackState::Playing {
                     if let Some(lpt) = track_data.last_play_timestamp {
                         let played_ms = lpt.elapsed().unwrap_or_default().as_millis() as u64;
-                        debug!("Lastfm: Added {}ms from final segment of '{:?}'. Total for song: {}ms", 
+                        debug!("Lastfm: Added {}ms from final segment of '{:?}'. Total for song: {}ms",
                                played_ms, track_data.name.as_deref(), track_data.accumulated_play_duration_ms + played_ms);
                     }
                 }
                 let current_state = track_data.current_playback_state; // Preserve current playback state
-                *track_data = CurrentScrobbleTrack::default(); 
+                *track_data = CurrentScrobbleTrack::default();
                 track_data.current_playback_state = current_state; // Restore playback state
                 // player_source is now None due to default()
                 info!("Lastfm: Track data cleared. Player source is now None.");
@@ -478,7 +483,7 @@ impl Lastfm {
             debug!("Lastfm: StateChanged event ({:?}) but no active song. Current internal state: {:?}", new_player_state, track_data.current_playback_state);
             if *new_player_state == PlaybackState::Stopped || *new_player_state == PlaybackState::Killed || *new_player_state == PlaybackState::Disconnected {
                 track_data.current_playback_state = *new_player_state;
-                track_data.last_play_timestamp = None; 
+                track_data.last_play_timestamp = None;
             }
             return;
         }
@@ -504,7 +509,7 @@ impl Lastfm {
         } else if old_player_state != PlaybackState::Playing && *new_player_state == PlaybackState::Playing {
             info!("Lastfm: Playback now 'Playing'. Setting last_play_timestamp.");
             track_data.last_play_timestamp = Some(SystemTime::now());
-            
+
             // Update Now Playing as state changed to Playing for the current song
             if let (Some(client), Some(name_str), Some(artists_vec)) =
                 (&self.lastfm_client, &track_data.name, &track_data.artists) {
@@ -518,14 +523,14 @@ impl Lastfm {
                 }
             }
         }
-        
+
         track_data.current_playback_state = *new_player_state;
     }
 
     /// Create a handler for events coming from the event bus
     fn handle_event_bus_events(&self, event: PlayerEvent) {
         trace!("Received event from event bus");
-        
+
         // First determine if this is from the active player
         let _is_active_player = if let Some(controller) = self.base.get_controller() {
             // Get player ID from the event
@@ -533,23 +538,23 @@ impl Lastfm {
                 Some(source) => source.player_id(),
                 None => "system",
             };
-            
+
             // Get ID of the active player from AudioController
             let active_player_id = controller.get_player_id();
-            
+
             // Event is from active player if IDs match
             event_player_id == active_player_id
         } else {
             false
         };
-        
+
         // Now handle the event the same way we would in on_event
         // We use a clone here since our method takes &self rather than &mut self
         // and we need to update internal state
         if !self.config.enabled {
             return;
         }
-        
+
         match &event {
             PlayerEvent::SongChanged { song: song_event_opt, source, .. } => {
                 let lastfm_arc = Arc::new(Mutex::new(self.clone()));
@@ -596,14 +601,15 @@ impl Plugin for Lastfm {
         match init_result {
             Ok(_) => {
                 info!("Lastfm: Last.fm client connection initialized/verified successfully.");
-                
+                self.prepare_worker_start();
+
                 match LastfmClient::get_instance() {
                     Ok(client_instance) => {
-                        self.lastfm_client = Some(client_instance.clone()); 
+                        self.lastfm_client = Some(client_instance.clone());
 
                         let track_data_for_thread = Arc::clone(&self.current_track_data);
                         let plugin_name_for_thread = self.name().to_string();
-                        let client_for_thread = client_instance; 
+                        let client_for_thread = client_instance;
                         let worker_running_for_thread = Arc::clone(&self.worker_running); // Clone for thread
                         let scrobble_config_for_thread = self.config.scrobble; // Added
 
@@ -611,7 +617,7 @@ impl Plugin for Lastfm {
                             lastfm_worker(track_data_for_thread, plugin_name_for_thread, client_for_thread, worker_running_for_thread, scrobble_config_for_thread);
                         });
                         self.worker_thread = Some(handle);
-                        
+
                         self.base.init()
                     }
                     Err(e) => {
@@ -627,7 +633,7 @@ impl Plugin for Lastfm {
         }
     }    fn shutdown(&mut self) -> bool {
         info!("Lastfm shutdown initiated."); // Updated log
-        
+
         // Signal the worker thread to stop
         self.worker_running.store(false, Ordering::SeqCst);
 
@@ -641,11 +647,11 @@ impl Plugin for Lastfm {
         } else {
             info!("Lastfm: No worker thread to join.");
         }
-        
+
         // Unsubscribe from event bus
         self.base.unsubscribe_from_event_bus();
         log::debug!("Lastfm: Unsubscribed from event bus");
-        
+
         // Perform shutdown tasks from BaseActionPlugin
         self.base.shutdown()
     }
@@ -658,20 +664,20 @@ impl Plugin for Lastfm {
 impl ActionPlugin for Lastfm {
     fn initialize(&mut self, controller: Weak<AudioController>) {
         self.base.set_controller(controller);
-        
+
         // Only subscribe if enabled
         if !self.config.enabled {
             log::info!("Lastfm plugin is disabled, not subscribing to events");
             return;
         }
-        
+
         // Subscribe to event bus in the initialize method
         log::debug!("Lastfm initializing and subscribing to event bus");
         let self_clone = self.clone();
         self.base.subscribe_to_event_bus(move |event| {
             self_clone.handle_event(event);
         });
-        
+
         // Initialize worker thread
         if self.config.enabled && self.worker_thread.is_none() {
             // Start the worker thread
@@ -679,7 +685,7 @@ impl ActionPlugin for Lastfm {
             self.start_worker_thread();
         }
     }
-    
+
     fn handle_event(&self, event: PlayerEvent) {
         // Handle events using the existing method
         self.handle_event_bus_events(event);
@@ -690,14 +696,14 @@ impl ActionPlugin for Lastfm {
 impl Clone for Lastfm {
     fn clone(&self) -> Self {
         let mut new_base = BaseActionPlugin::new(self.base.name());
-        
+
         // Get the controller reference from the original object
         if let Some(controller) = self.base.get_controller() {
             // The controller is already an Arc, we need to downgrade it to a Weak
             let controller_weak = Arc::downgrade(&controller);
             new_base.set_controller(controller_weak);
         }
-        
+
         Self {
             base: new_base,
             config: self.config.clone(),
@@ -772,6 +778,39 @@ fn calculate_updates(original_song: &Song, lastfm_data: &LastfmTrackInfoDetails)
             }
         }
     }
-    
+
     updated_song
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_config() -> LastfmConfig {
+        LastfmConfig {
+            enabled: true,
+            api_key: "k".to_string(),
+            api_secret: "s".to_string(),
+            scrobble: true,
+        }
+    }
+
+    #[test]
+    fn regression_prepare_worker_start_resets_running_flag() {
+        let plugin = Lastfm::new(test_config());
+        plugin.worker_running.store(false, Ordering::SeqCst);
+
+        plugin.prepare_worker_start();
+
+        assert!(plugin.worker_running.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn regression_shutdown_clears_worker_running_flag() {
+        let mut plugin = Lastfm::new(test_config());
+        plugin.worker_running.store(true, Ordering::SeqCst);
+
+        assert!(plugin.shutdown());
+        assert!(!plugin.worker_running.load(Ordering::SeqCst));
+    }
 }

@@ -1,5 +1,5 @@
 // Configuration utilities for ACR
-// 
+//
 // This module provides utilities for reading configuration values with backward compatibility
 // support for the migration from top-level service configuration to the new "services" subtree.
 
@@ -8,38 +8,38 @@ use std::fs;
 use std::path::Path;
 
 /// Helper function to get service configuration with backward compatibility
-/// 
+///
 /// This function first tries to find the service in the new "services" structure,
 /// then falls back to the old top-level structure for backward compatibility.
-/// 
+///
 /// # Arguments
 /// * `config` - The configuration JSON object
 /// * `service_name` - The name of the service to look up (e.g., "spotify", "lastfm", etc.)
-/// 
+///
 /// # Returns
 /// * `Option<&serde_json::Value>` - The service configuration if found, None otherwise
-/// 
+///
 /// # Example
 /// ```rust
 /// use serde_json::json;
 /// use audiocontrol::config::get_service_config;
-/// 
+///
 /// // For a config with new structure:
 /// let config = json!({
 ///   "services": {
 ///     "spotify": { "enable": true }
 ///   }
 /// });
-/// 
+///
 /// if let Some(spotify_config) = get_service_config(&config, "spotify") {
 ///     assert_eq!(spotify_config["enable"], true);
 /// }
-/// 
+///
 /// // For old structure (backward compatibility):
 /// let old_config = json!({
 ///   "spotify": { "enable": false }
 /// });
-/// 
+///
 /// if let Some(spotify_config) = get_service_config(&old_config, "spotify") {
 ///     assert_eq!(spotify_config["enable"], false);
 /// }
@@ -52,13 +52,13 @@ pub fn get_service_config<'a>(config: &'a serde_json::Value, service_name: &str)
             return Some(service_config);
         }
     }
-    
+
     // Fall back to the old top-level structure for backward compatibility
     if let Some(service_config) = config.get(service_name) {
         debug!("Found {} configuration at top level (legacy structure)", service_name);
         return Some(service_config);
     }
-    
+
     // Service configuration not found
     debug!("No {} configuration found in either services section or top level", service_name);
     None
@@ -83,8 +83,14 @@ pub fn merge_player_includes(config: &mut serde_json::Value, config_dir: &Path) 
         return;
     }
 
-    // Ensure config has a players array
+    // Ensure config has a players array.
+    // If a non-array value is present, normalize it so includes are not silently dropped.
     if config.get("players").is_none() {
+        config["players"] = serde_json::Value::Array(vec![]);
+    } else if !config.get("players").is_some_and(serde_json::Value::is_array) {
+        warn!(
+            "Config key 'players' is not an array; replacing it with an empty array before merging includes"
+        );
         config["players"] = serde_json::Value::Array(vec![]);
     }
 
@@ -244,6 +250,26 @@ mod tests {
         let players = config["players"].as_array().unwrap();
         assert_eq!(players.len(), 1);
         assert_eq!(players[0]["generic"]["name"], "new");
+    }
+
+    #[test]
+    fn regression_replaces_non_array_players_and_merges_includes() {
+        let tmp = TempDir::new().unwrap();
+        let players_d = tmp.path().join("players.d");
+        fs::create_dir(&players_d).unwrap();
+        fs::write(
+            players_d.join("player.json"),
+            r#"{"generic": {"name": "included"}}"#,
+        )
+        .unwrap();
+
+        // Invalid shape from user config should not prevent include loading.
+        let mut config = json!({"players": {"unexpected": true}});
+        merge_player_includes(&mut config, tmp.path());
+
+        let players = config["players"].as_array().unwrap();
+        assert_eq!(players.len(), 1);
+        assert_eq!(players[0]["generic"]["name"], "included");
     }
 
     #[test]

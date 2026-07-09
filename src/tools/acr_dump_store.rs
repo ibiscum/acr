@@ -3,7 +3,7 @@ use clap::Parser;
 use log::{error, info};
 use serde_json::Value;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -61,6 +61,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     Err(e) => {
                         error!("Failed to get keys from security store: {}", e);
                         println!("Could not retrieve keys. The store might be corrupted or the key incorrect.");
+                        return Err(Box::new(std::io::Error::other(format!(
+                            "Failed to retrieve keys from security store: {}",
+                            e
+                        ))));
                     }
                 }
             }
@@ -79,22 +83,99 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn dump_raw_store(store_path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+fn extract_raw_store_keys(json_data: &Value) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    let values = json_data
+        .get("values")
+        .and_then(|v| v.as_object())
+        .ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Missing or invalid 'values' map in security store JSON",
+            )
+        })?;
+
+    Ok(values.keys().cloned().collect())
+}
+
+fn dump_raw_store(store_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let content = fs::read_to_string(store_path)?;
     let json_data: Value = serde_json::from_str(&content)?;
 
-    if let Some(values) = json_data.get("values").and_then(|v| v.as_object()) {
-        if values.is_empty() {
-            info!("Security store (raw) is empty or has no 'values' map.");
-        } else {
-            info!("Found {} keys (raw). Values are masked:", values.len());
-            for (key, _value) in values {
-                println!("{}: ***", key);
-            }
+    let keys = match extract_raw_store_keys(&json_data) {
+        Ok(keys) => keys,
+        Err(e) => {
+            error!("Could not find 'values' map in the security store JSON: {}", e);
+            println!("The store file format seems incorrect or does not contain a 'values' map.");
+            return Err(e);
         }
+    };
+
+    if keys.is_empty() {
+        info!("Security store (raw) is empty.");
     } else {
-        error!("Could not find 'values' map in the security store JSON.");
-        println!("The store file format seems incorrect or does not contain a 'values' map.");
+        info!("Found {} keys (raw). Values are masked:", keys.len());
+        for key in keys {
+            println!("{}: ***", key);
+        }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[test]
+    fn regression_extract_raw_store_keys_rejects_missing_values_map() {
+        let json = serde_json::json!({ "version": 1 });
+        let err = extract_raw_store_keys(&json).unwrap_err();
+        assert!(err.to_string().contains("Missing or invalid 'values' map"));
+    }
+
+    #[test]
+    fn regression_extract_raw_store_keys_rejects_non_object_values() {
+        let json = serde_json::json!({ "values": ["not", "an", "object"] });
+        let err = extract_raw_store_keys(&json).unwrap_err();
+        assert!(err.to_string().contains("Missing or invalid 'values' map"));
+    }
+
+    #[test]
+    fn integration_extract_raw_store_keys_returns_all_keys() {
+        let json = serde_json::json!({
+            "values": {
+                "api_key": "encrypted_1",
+                "secret": "encrypted_2"
+            }
+        });
+
+        let keys = extract_raw_store_keys(&json).unwrap();
+        assert_eq!(keys.len(), 2);
+        assert!(keys.contains(&"api_key".to_string()));
+        assert!(keys.contains(&"secret".to_string()));
+    }
+
+    #[test]
+    fn regression_dump_raw_store_errors_on_invalid_structure() {
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+        let store_path = temp_dir.path().join("security_store.json");
+
+        fs::write(&store_path, r#"{"version":1,"last_updated":0}"#)
+            .expect("Failed to write test store file");
+
+        let result = dump_raw_store(&store_path);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn integration_dump_raw_store_accepts_empty_values_map() {
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+        let store_path = temp_dir.path().join("security_store.json");
+
+        fs::write(&store_path, r#"{"values":{},"version":1,"last_updated":0}"#)
+            .expect("Failed to write test store file");
+
+        let result = dump_raw_store(&store_path);
+        assert!(result.is_ok());
+    }
 }

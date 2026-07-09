@@ -82,22 +82,26 @@ impl CoverartResult {
     /// Create a new CoverartResult from a provider and list of URLs
     pub fn new(provider: ProviderInfo, urls: Vec<String>) -> Self {
         let mut images = Vec::new();
-        
+
         for url in &urls {
             let mut image_info = ImageInfo::new(url.clone());
             // Try to fetch metadata for each image
             image_info.fetch_metadata();
             images.push(image_info);
         }
-        
+
         Self::with_images(provider, images)
     }
 
     /// Create a new CoverartResult with pre-computed ImageInfo and apply grading
     pub fn with_images(provider: ProviderInfo, mut images: Vec<ImageInfo>) -> Self {
+        // Remove duplicate URLs while keeping first occurrence.
+        let mut seen_urls = HashSet::new();
+        images.retain(|img| seen_urls.insert(img.url.clone()));
+
         // Apply grading to all images
         let grader = ImageGrader::new();
-        
+
         for image in &mut images {
             // Convert to grader format
             let grader_info = GraderImageInfo {
@@ -108,19 +112,19 @@ impl CoverartResult {
                 format: image.format.clone(),
                 provider: provider.name.clone(),
             };
-            
+
             // Grade the image
             let grade = grader.grade_image(&grader_info);
             image.set_grade(grade.score);
         }
-        
+
         // Sort images by grade (highest first)
         images.sort_by(|a, b| {
             let grade_a = a.grade.unwrap_or(0);
             let grade_b = b.grade.unwrap_or(0);
             grade_b.cmp(&grade_a)
         });
-        
+
         Self {
             provider,
             images,
@@ -145,18 +149,18 @@ pub enum CoverartMethod {
 pub trait CoverartProvider {
     /// Returns the internal name identifier for this provider
     fn name(&self) -> &str;
-    
+
     /// Returns the human-readable display name for this provider
     fn display_name(&self) -> &str;
-    
+
     /// Returns the set of methods this provider supports
     fn supported_methods(&self) -> HashSet<CoverartMethod>;
 
     /// Get cover art for an artist by name
-    /// 
+    ///
     /// # Arguments
     /// * `artist` - The artist name
-    /// 
+    ///
     /// # Returns
     /// * `Vec<String>` - URLs or local file paths to cover art
     fn get_artist_coverart(&self, artist: &str) -> Vec<String> {
@@ -168,11 +172,11 @@ pub trait CoverartProvider {
     }
 
     /// Get cover art for a song by title and artist
-    /// 
+    ///
     /// # Arguments
     /// * `title` - The song title
     /// * `artist` - The artist name
-    /// 
+    ///
     /// # Returns
     /// * `Vec<String>` - URLs or local file paths to cover art
     fn get_song_coverart(&self, title: &str, artist: &str) -> Vec<String> {
@@ -184,12 +188,12 @@ pub trait CoverartProvider {
     }
 
     /// Get cover art for an album by title, artist, and optional year
-    /// 
+    ///
     /// # Arguments
     /// * `title` - The album title
     /// * `artist` - The artist name
     /// * `year` - Optional release year
-    /// 
+    ///
     /// # Returns
     /// * `Vec<String>` - URLs or local file paths to cover art
     fn get_album_coverart(&self, title: &str, artist: &str, year: Option<i32>) -> Vec<String> {
@@ -201,10 +205,10 @@ pub trait CoverartProvider {
     }
 
     /// Get cover art from a URL
-    /// 
+    ///
     /// # Arguments
     /// * `url` - The URL to retrieve cover art from
-    /// 
+    ///
     /// # Returns
     /// * `Vec<String>` - URLs or local file paths to cover art
     fn get_url_coverart(&self, url: &str) -> Vec<String> {
@@ -351,7 +355,7 @@ impl CoverartManager {
     pub fn get_providers(&self) -> &Vec<Arc<dyn CoverartProvider + Send + Sync>> {
         &self.providers
     }
-    
+
     /// Get the number of registered providers
     pub fn provider_count(&self) -> usize {
         self.providers.len()
@@ -372,4 +376,65 @@ static COVERART_MANAGER: Lazy<Arc<Mutex<CoverartManager>>> = Lazy::new(|| {
 /// Get a reference to the global coverart manager
 pub fn get_coverart_manager() -> Arc<Mutex<CoverartManager>> {
     COVERART_MANAGER.clone()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn with_images_deduplicates_duplicate_urls() {
+        let provider = ProviderInfo {
+            name: "test_provider".to_string(),
+            display_name: "Test Provider".to_string(),
+        };
+
+        let images = vec![
+            ImageInfo {
+                url: "https://example.com/a.jpg".to_string(),
+                width: Some(100),
+                height: Some(100),
+                size_bytes: Some(10_000),
+                format: Some("JPEG".to_string()),
+                grade: None,
+            },
+            ImageInfo {
+                url: "https://example.com/a.jpg".to_string(),
+                width: Some(200),
+                height: Some(200),
+                size_bytes: Some(20_000),
+                format: Some("JPEG".to_string()),
+                grade: None,
+            },
+            ImageInfo {
+                url: "https://example.com/b.jpg".to_string(),
+                width: Some(300),
+                height: Some(300),
+                size_bytes: Some(30_000),
+                format: Some("JPEG".to_string()),
+                grade: None,
+            },
+        ];
+
+        let result = CoverartResult::with_images(provider, images);
+        assert_eq!(result.images.len(), 2);
+        assert_eq!(result.images.iter().filter(|img| img.url == "https://example.com/a.jpg").count(), 1);
+    }
+
+    #[test]
+    fn with_images_sets_grade_for_remaining_images() {
+        let provider = ProviderInfo {
+            name: "fanarttv".to_string(),
+            display_name: "FanArt.tv".to_string(),
+        };
+
+        let images = vec![
+            ImageInfo::new("https://example.com/a.jpg".to_string()),
+            ImageInfo::new("https://example.com/a.jpg".to_string()),
+        ];
+
+        let result = CoverartResult::with_images(provider, images);
+        assert_eq!(result.images.len(), 1);
+        assert!(result.images[0].grade.is_some());
+    }
 }

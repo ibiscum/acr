@@ -414,7 +414,7 @@ curl -X POST "$API_BASE_URL/player/mpd/command/add_track" \
   -H "Content-Type: application/json" \
   -d '{"uri": "artist/album/song.mp3"}'
 
-# Remove a track from the queue at position 2  
+# Remove a track from the queue at position 2
 curl -X POST "$API_BASE_URL/player/lms/command/remove_track:2"
 
 # Clear the entire queue
@@ -543,7 +543,7 @@ Retrieves the current queue for a specific player.
         "track_number": 1
       },
       {
-        "id": "track-id-2", 
+        "id": "track-id-2",
         "name": "Track Title 2",
         "artist": "Artist Name",
         "album": "Album Name",
@@ -554,7 +554,7 @@ Retrieves the current queue for a specific player.
     ]
   }
   ```
-- **Error Response** (404 Not Found): 
+- **Error Response** (404 Not Found):
   ```json
   {
     "success": false,
@@ -610,7 +610,7 @@ Adds a single track to the player's queue.
     }
   }
   ```
-  
+
   **Note**: The `metadata` field is a flexible object that can contain any key-value pairs. Common metadata fields include:
   - `title`: Track title
   - `artist`: Artist name
@@ -645,7 +645,7 @@ Removes a track at a specific position from the queue.
 
 **Player Support**:
 - **MPD**: ✅ Removes track at specified position
-- **LMS**: ✅ Removes track at specified position  
+- **LMS**: ✅ Removes track at specified position
 - **Generic Players**: ✅ Removes track from internal queue
 - **Others**: ❌ Not supported
 
@@ -741,7 +741,7 @@ When adding tracks to the queue, you can provide optional metadata that will be 
   "uri": "string (required)",
   "metadata": {
     "title": "string (optional) - Track title",
-    "artist": "string (optional) - Artist name", 
+    "artist": "string (optional) - Artist name",
     "album": "string (optional) - Album name",
     "coverart_url": "string (optional) - URL to cover art image",
     "duration": "number (optional) - Track duration in seconds",
@@ -779,7 +779,7 @@ When queue operations are performed, players may emit events to notify about cha
 
 **Important**: Queue positions and indices are **zero-based** across all operations:
 - Position `0` = First track in queue
-- Position `1` = Second track in queue  
+- Position `1` = Second track in queue
 - Position `n-1` = Last track in queue (where n = queue length)
 
 When removing tracks or playing by index, ensure you account for zero-based indexing to avoid off-by-one errors.
@@ -1365,7 +1365,7 @@ Retrieves complete information for a specific artist by name.
     "player_name": "player-name",
     "artist": {
       "id": "12345678",
-      "name": "artist-name", 
+      "name": "artist-name",
       "is_multi": false,
       "metadata": {
         "mbid": ["musicbrainz-id-1", "musicbrainz-id-2"],
@@ -1480,7 +1480,7 @@ curl "$API_BASE_URL/library/mpd/refresh"
 
 ### Update Player Library Media Database
 
-Triggers a scan for new files in the underlying system. This is different from refresh in that it asks 
+Triggers a scan for new files in the underlying system. This is different from refresh in that it asks
 the backend system (e.g., MPD server) to look for new files on disk.
 
 - **Endpoint**: `/api/library/<player-name>/update`
@@ -1498,7 +1498,7 @@ the backend system (e.g., MPD server) to look for new files on disk.
 
 #### Example
 ```bash
-curl -X POST "$API_BASE_URL/library/mpd/update"
+curl "$API_BASE_URL/library/mpd/update"
 ```
 
 ### Get Library Metadata
@@ -1566,101 +1566,6 @@ Retrieves an image (such as album art) from a player's library.
 #### Example
 ```bash
 curl "$API_BASE_URL/library/mpd/image/album:12345" --output cover.jpg
-```
-
-### Browse Genres
-
-Retrieves the list of all genres available in a player's library. By default, genres are cleaned and normalized using the genre cleanup rules. Pass `?raw=true` to get the raw, unprocessed genre values.
-
-- **Endpoint**: `/api/library/<player-name>/genres`
-- **Method**: GET
-- **Path Parameters**:
-  - `player-name` (string): The name of the player
-- **Query Parameters**:
-  - `raw` (boolean, optional): If `true`, returns unprocessed raw genre values (default: false)
-- **Response**:
-  ```json
-  {
-    "player_name": "player-name",
-    "count": 12,
-    "genres": ["Classical", "Jazz", "Rock", "Electronic"]
-  }
-  ```
-- **Error Response** (404 Not Found): String error message
-
-#### Examples
-```bash
-# Get normalized genres for MPD player
-curl http://<device-ip>:1080/api/library/mpd/genres
-
-# Get raw (unnormalized) genres
-curl "http://<device-ip>:1080/api/library/mpd/genres?raw=true"
-```
-
-### Browse Albums by Genre
-
-Retrieves all albums that match a specific genre (case-insensitive).
-
-- **Endpoint**: `/api/library/<player-name>/albums/by-genre/<genre>`
-- **Method**: GET
-- **Path Parameters**:
-  - `player-name` (string): The name of the player
-  - `genre` (string): The genre to filter by (case-insensitive)
-- **Response**:
-  ```json
-  {
-    "player_name": "player-name",
-    "count": 5,
-    "albums": [
-      // Album objects matching the genre
-    ]
-  }
-  ```
-- **Error Response** (404 Not Found): String error message
-
-#### Examples
-```bash
-# Get all Jazz albums from MPD library
-curl http://<device-ip>:1080/api/library/mpd/albums/by-genre/Jazz
-
-# Genre matching is case-insensitive
-curl http://<device-ip>:1080/api/library/mpd/albums/by-genre/rock
-```
-
-### Browse Artists by Genre
-
-Retrieves all artists associated with a specific genre (case-insensitive), with their album counts.
-
-- **Endpoint**: `/api/library/<player-name>/artists/by-genre/<genre>`
-- **Method**: GET
-- **Path Parameters**:
-  - `player-name` (string): The name of the player
-  - `genre` (string): The genre to filter by (case-insensitive)
-- **Response**:
-  ```json
-  {
-    "player_name": "player-name",
-    "genre": "Rock",
-    "count": 8,
-    "artists": [
-      {
-        "id": "12345678",
-        "name": "Pink Floyd",
-        "is_multi": false,
-        "albums_count": 12
-      }
-    ]
-  }
-  ```
-- **Error Response** (404 Not Found): String error message
-
-#### Examples
-```bash
-# Get all Rock artists from MPD library
-curl http://<device-ip>:1080/api/library/mpd/artists/by-genre/Rock
-
-# Get Classical artists from LMS library
-curl http://<device-ip>:1080/api/library/lms/artists/by-genre/Classical
 ```
 
 ## External Services API
@@ -2009,7 +1914,7 @@ Retrieves information about available and enabled favourite providers.
 
   - `enabled_providers`: List of provider names that are currently enabled
   - `total_providers`: Total number of providers (enabled and disabled)
-  - `enabled_count`: Number of currently enabled providers  
+  - `enabled_count`: Number of currently enabled providers
   - `providers`: Detailed information for each provider
     - `name`: Provider identifier (e.g., "settingsdb", "lastfm", "spotify")
     - `display_name`: Human-readable name for the provider (e.g., "User settings", "Last.fm", "Spotify")
@@ -2216,7 +2121,7 @@ The favourites API requires at least one provider to be configured. Available pr
 Common error scenarios:
 
 - **Missing Parameters**: HTTP 400 with error message
-- **Empty Strings**: HTTP 400 with validation error message  
+- **Empty Strings**: HTTP 400 with validation error message
 - **Invalid JSON**: HTTP 422 Unprocessable Entity
 - **Provider Errors**: Logged but don't prevent other providers from working
 - **No Providers Available**: Operations will complete but may have empty `updated_providers`
@@ -2419,7 +2324,7 @@ Success with simple M3U:
         "duration": null
       },
       {
-        "url": "http://example.com/song2.mp3", 
+        "url": "http://example.com/song2.mp3",
         "title": null,
         "duration": null
       },
@@ -2526,7 +2431,7 @@ Retrieves cover art URLs for a specific artist from all registered providers.
     "results": [
       {
         "provider": {
-          "name": "local_files", 
+          "name": "local_files",
           "display_name": "Local Files"
         },
         "images": [
@@ -2604,7 +2509,7 @@ Directly serves the cached artist image file if available. This endpoint returns
 - **Method**: GET
 - **Parameters**:
   - `artist_b64` (string, required): URL-safe base64 encoded artist name
-- **Response**: 
+- **Response**:
   - **Success (200)**: Binary image data with appropriate `Content-Type` header (`image/jpeg`, `image/png`, `image/gif`, or `image/webp`)
   - **Not Found (404)**: JSON error message if no cached image is available
   - **Bad Request (400)**: JSON error message for invalid artist name encoding
@@ -2635,7 +2540,7 @@ curl "$API_BASE_URL/coverart/artist/Tm9uZXhpc3RlbnQ/image"
 # Returns: 404 with {"error": "No image found for artist 'Nonexistent'"}
 
 # Invalid encoding
-curl "$API_BASE_URL/coverart/artist/invalid!/image"  
+curl "$API_BASE_URL/coverart/artist/invalid!/image"
 # Returns: 400 with {"error": "Invalid artist name encoding"}
 ```
 
@@ -2793,7 +2698,7 @@ Retrieves cover art URLs for a specific album with release year from all registe
       {
         "provider": {
           "name": "local_files",
-          "display_name": "Local Files"  
+          "display_name": "Local Files"
         },
         "images": [
           {
@@ -2907,13 +2812,13 @@ Retrieves information about available cover art methods and the providers that s
             "display_name": "Local Files"
           },
           {
-            "name": "theaudiodb", 
+            "name": "theaudiodb",
             "display_name": "TheAudioDB"
           }
         ]
       },
       {
-        "method": "Song", 
+        "method": "Song",
         "providers": [
           {
             "name": "local_files",
@@ -3044,7 +2949,7 @@ All cover art endpoints return results grouped by provider, with each provider c
 - **Images**: Array of cover art image objects, each containing:
   - `url`: Direct URL or file path to the cover art image (string)
   - `width`: Image width in pixels (integer, optional)
-  - `height`: Image height in pixels (integer, optional) 
+  - `height`: Image height in pixels (integer, optional)
   - `size_bytes`: File size in bytes (integer, optional)
   - `format`: Image format (string, optional) - Common formats: "JPEG", "PNG", "GIF", "WebP", "BMP"
   - `grade`: Image quality score (integer, optional) - Quality score based on provider reputation, file size, and resolution
@@ -3094,7 +2999,7 @@ The client application should handle all URL types appropriately and can use the
 ### Error Handling
 
 - **Invalid base64 encoding**: Returns empty `results` array with warning logged
-- **No providers registered**: Returns empty `results` array  
+- **No providers registered**: Returns empty `results` array
 - **Provider errors**: Individual provider failures are handled gracefully; successful providers still return results
 - **No results found**: Returns empty `results` array when no providers find cover art
 
@@ -3250,12 +3155,12 @@ curl -X POST "$API_BASE_URL/settings/set" \
 
 ### Settings API Notes
 
-**Key Format**: 
+**Key Format**:
 - Settings keys can contain any UTF-8 characters including non-ASCII characters
 - Common convention is to use dot-separated hierarchical keys (e.g., `audio.volume.default`)
 - Keys are case-sensitive
 
-**Value Types**: 
+**Value Types**:
 - The settings database supports any JSON-serializable value types:
   - Strings: `"hello world"`
   - Numbers: `42`, `3.14`
@@ -3264,12 +3169,12 @@ curl -X POST "$API_BASE_URL/settings/set" \
   - Arrays: `[1, 2, 3]`
   - Null: `null`
 
-**Persistence**: 
+**Persistence**:
 - Settings are automatically persisted to the database
 - Changes take effect immediately
 - Some settings may require application restart to be fully applied
 
-**Security**: 
+**Security**:
 - No authentication or authorization is currently implemented
 - All settings are accessible via the API
 - Consider network security when exposing the API
@@ -3709,7 +3614,7 @@ Multiple generic players can be configured with different names and used indepen
   },
   "player_b": {
     "type": "generic",
-    "name": "player_b", 
+    "name": "player_b",
     "display_name": "Player B",
     "capabilities": ["play", "pause", "stop", "next", "previous", "seek"]
   }

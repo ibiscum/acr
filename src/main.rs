@@ -47,10 +47,22 @@ fn main() {
     }
 
     // Look for config file path in command line arguments (-c option)
-    let config_file_path = find_config_file_in_args(&args);
+    let config_file_path = match find_config_file_in_args(&args) {
+        Ok(path) => path,
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            std::process::exit(2);
+        }
+    };
 
     // Look for logging config file path in command line arguments (--log-config option)
-    let log_config_path = find_log_config_in_args(&args);
+    let log_config_path = match find_log_config_in_args(&args) {
+        Ok(path) => path,
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            std::process::exit(2);
+        }
+    };
 
     // Initialize logging system
     if let Err(e) = logging::initialize_logging_with_args(&args, log_config_path.as_deref()) {
@@ -148,7 +160,7 @@ fn main() {
         get_service_config(&controllers_config, "datastore")
     {
         let attribute_cache_config = datastore_config.get("attribute_cache");
-        
+
         let cache_path = if let Some(cache_config) = attribute_cache_config {
             if let Some(cache_path) = cache_config
                 .get("dbfile")
@@ -201,12 +213,12 @@ fn main() {
             "No datastore configuration found, using default attribute cache path: {}",
             default_path
         );
-        
+
         // Initialize with defaults
         if let Err(e) = audiocontrol::helpers::attribute_cache::AttributeCache::initialize_global(&default_path) {
             error!("Failed to initialize attribute cache with defaults: {}", e);
         }
-        
+
         (default_path, Vec::new(), 20_000)
     };
 
@@ -272,13 +284,13 @@ fn main() {
 
     // Initialize TheAudioDB with the configuration
     initialize_theaudiodb(&controllers_config);
-    
+
     // Initialize FanArt.tv with the configuration
     initialize_fanarttv(&controllers_config);
-    
+
     // Initialize configurator with the configuration
     initialize_configurator(&controllers_config);
-    
+
     // Initialize Last.fm with the configuration
     initialize_lastfm(&controllers_config);
     // Initialize Spotify with the configuration
@@ -602,26 +614,32 @@ fn initialize_spotify(config: &serde_json::Value) {
 }
 
 /// Find config file path from command line arguments (-c option)
-fn find_config_file_in_args(args: &[String]) -> Option<String> {
+fn find_config_file_in_args(args: &[String]) -> Result<Option<String>, String> {
     let mut i = 1;
     while i < args.len() {
-        if args[i] == "-c" && i + 1 < args.len() {
-            info!("Using configuration file specified by -c: {}", args[i + 1]);
-            return Some(args[i + 1].clone());
+        if args[i] == "-c" || args[i] == "--config" {
+            if i + 1 >= args.len() {
+                return Err(format!("Missing value for {}", args[i]));
+            }
+            info!("Using configuration file specified by {}: {}", args[i], args[i + 1]);
+            return Ok(Some(args[i + 1].clone()));
         }
         i += 1;
     }
-    None
+    Ok(None)
 }
 
 /// Find logging config file path from command line arguments (--log-config option)
-fn find_log_config_in_args(args: &[String]) -> Option<PathBuf> {
+fn find_log_config_in_args(args: &[String]) -> Result<Option<PathBuf>, String> {
     let mut i = 1;
     while i < args.len() {
-        if (args[i] == "--log-config" || args[i] == "--logging-config") && i + 1 < args.len() {
+        if args[i] == "--log-config" || args[i] == "--logging-config" {
+            if i + 1 >= args.len() {
+                return Err(format!("Missing value for {}", args[i]));
+            }
             let path = PathBuf::from(&args[i + 1]);
             info!("Using logging configuration file: {}", path.display());
-            return Some(path);
+            return Ok(Some(path));
         }
         i += 1;
     }
@@ -640,11 +658,11 @@ fn find_log_config_in_args(args: &[String]) -> Option<PathBuf> {
                 "Found default logging configuration file: {}",
                 path.display()
             );
-            return Some(path);
+            return Ok(Some(path));
         }
     }
 
-    None
+    Ok(None)
 }
 
 /// Check and display the status of compiled secrets
@@ -765,7 +783,7 @@ fn print_help() {
     println!("    audiocontrol [OPTIONS]");
     println!();
     println!("OPTIONS:");
-    println!("    -c <FILE>                   Specify configuration file path");
+    println!("    -c <FILE>, --config <FILE>  Specify configuration file path");
     println!("                                (default: audiocontrol.json)");
     println!();
     println!("    --log-config <FILE>         Specify logging configuration file");
@@ -793,4 +811,43 @@ fn print_help() {
     println!("        Start with debug logging enabled");
     println!();
     println!("For more information, see the documentation in the doc/ directory.");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn args(items: &[&str]) -> Vec<String> {
+        items.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn regression_find_config_file_in_args_supports_short_and_long_options() {
+        let short = args(&["audiocontrol", "-c", "a.json"]);
+        let long = args(&["audiocontrol", "--config", "b.json"]);
+
+        assert_eq!(find_config_file_in_args(&short).unwrap(), Some("a.json".to_string()));
+        assert_eq!(find_config_file_in_args(&long).unwrap(), Some("b.json".to_string()));
+    }
+
+    #[test]
+    fn regression_find_config_file_in_args_rejects_missing_value() {
+        let missing = args(&["audiocontrol", "-c"]);
+        let err = find_config_file_in_args(&missing).unwrap_err();
+        assert!(err.contains("Missing value for -c"));
+    }
+
+    #[test]
+    fn regression_find_log_config_in_args_rejects_missing_value() {
+        let missing = args(&["audiocontrol", "--log-config"]);
+        let err = find_log_config_in_args(&missing).unwrap_err();
+        assert!(err.contains("Missing value for --log-config"));
+    }
+
+    #[test]
+    fn regression_find_log_config_in_args_uses_explicit_path() {
+        let explicit = args(&["audiocontrol", "--logging-config", "/tmp/logging.json"]);
+        let path = find_log_config_in_args(&explicit).unwrap().unwrap();
+        assert_eq!(path, PathBuf::from("/tmp/logging.json"));
+    }
 }

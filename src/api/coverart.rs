@@ -242,6 +242,7 @@ pub fn update_artist_image(artist_b64: String, request: Json<UpdateImageRequest>
     // Store the custom URL in settings database
     let settings_key = format!("artist.image.{}", artist_name);
     debug!("Storing custom image URL in settings: key={}, url={}", settings_key, request.url);
+
     match settings_db::set_string(&settings_key, &request.url) {
         Ok(_) => {
             info!("Successfully stored custom image URL for artist '{}': {}", artist_name, request.url);
@@ -361,7 +362,8 @@ pub fn get_artist_image(artist_b64: String) -> Result<(rocket::http::ContentType
 
 #[cfg(test)]
 mod tests {
-    use super::{get_album_coverart, get_artist_coverart, get_song_coverart, get_url_coverart};
+    use super::{get_album_coverart, get_artist_coverart, get_artist_image, get_song_coverart, get_url_coverart};
+    use rocket::http::Status;
 
     #[test]
     fn get_artist_coverart_invalid_encoding_returns_empty_results() {
@@ -391,5 +393,14 @@ mod tests {
     fn get_url_coverart_invalid_encoding_returns_empty_results() {
         let response = get_url_coverart("invalid_base64!".to_string());
         assert!(response.0.results.is_empty());
+    }
+
+    #[test]
+    fn get_artist_image_invalid_encoding_returns_bad_request() {
+        let response = get_artist_image("invalid_base64!".to_string());
+        match response {
+            Err(status) => assert_eq!(status.0, Status::BadRequest),
+            Ok(_) => panic!("expected invalid encoding to return bad request"),
+        }
     }
 }

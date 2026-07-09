@@ -62,25 +62,25 @@ pub struct ArtistMatch {
 pub trait LibraryInterface {
     /// Create a new library instance with default connection parameters
     fn new() -> Self where Self: Sized;
-    
+
     /// Check if the library data is loaded
     fn is_loaded(&self) -> bool;
-    
+
     /// Refresh the library by loading all albums and artists into memory
     fn refresh_library(&self) -> Result<(), LibraryError>;
-    
+
     /// Get all albums
     fn get_albums(&self) -> Vec<Album>;
-    
+
     /// Get all artists
     fn get_artists(&self) -> Vec<Artist>;
-    
+
     /// Get album by artist and album name
     fn get_album_by_artist_and_name(&self, artist: &str, album: &str) -> Option<Album>;
-    
+
     /// Get album by ID
     fn get_album_by_id(&self, id: &Identifier) -> Option<Album>;
-    
+
     /// Get artist by name
     fn get_artist_by_name(&self, name: &str) -> Option<Artist>;
 
@@ -115,10 +115,10 @@ pub trait LibraryInterface {
                 score,
             })
     }
-    
+
     /// Get albums by artist ID
     fn get_albums_by_artist_id(&self, artist_id: &Identifier) -> Vec<Album>;
-    
+
     /// Force an update of the library data in the underlying system
     ///
     /// This differs from refresh_library in that it asks the backend system
@@ -291,18 +291,18 @@ pub trait LibraryInterface {
 
     /// Allow downcasting to concrete types
     fn as_any(&self) -> &dyn std::any::Any;
-    
+
     /// Get an image by identifier
-    /// the identifier has no specific format, it can be used differently 
+    /// the identifier has no specific format, it can be used differently
     /// depending on the library implementation
     /// returns a tuple of (image data, mime type)
     fn get_image(&self, identifier: String) -> Option<(Vec<u8>, String)>;
-    
+
     /// Update artist metadata in background
     ///
     /// This method should update the metadata for all artists in the library using
     /// background worker thread. The default implementation does nothing.
-    fn update_artist_metadata(&self);
+    fn update_artist_metadata(&self) {}
 
     /// Update album genre metadata in background
     ///
@@ -311,30 +311,30 @@ pub trait LibraryInterface {
     fn update_album_metadata(&self) {}
 
     /// Get a list of meta keys for the library
-    /// 
-    /// This method should return a list of meta keys that are available in the 
+    ///
+    /// This method should return a list of meta keys that are available in the
     /// library.
-    /// The default implementation returns an empty vector.    
+    /// The default implementation returns an empty vector.
     fn get_meta_keys(&self) -> Vec<String> {
         vec![]
     }
 
     /// Get a specific metadata value as string
-    /// 
+    ///
     /// This method should return a specific metadata value for a given key.
     /// The default implementation returns None.
     fn get_metadata_value(&self, _key: &str) -> Option<String> {
         None
     }
-    
+
     /// Get all metadata as a HashMap with JSON values
-    /// 
+    ///
     /// This method should return all metadata for the library as a HashMap with
-    /// JSON values. The default implementation returns an empty HashMap.
+    /// JSON values. The default implementation returns None when no metadata is available.
     fn get_metadata(&self) -> Option<std::collections::HashMap<String, serde_json::Value>> {
         // Convert string metadata to JSON values
         let mut result = std::collections::HashMap::new();
-        
+
         // Add each meta key to the result
         for key in self.get_meta_keys() {
             if let Some(value) = self.get_metadata_value(&key) {
@@ -350,7 +350,7 @@ pub trait LibraryInterface {
                 }
             }
         }
-        
+
         if result.is_empty() {
             None
         } else {

@@ -9,6 +9,7 @@ pub enum PlayerUpdate {
     /// Indicates that the current song may have changed.
     SongChanged(Option<Song>),
     /// Indicates that the playback position may have changed.
+    /// A value of None means the position is unknown and should be cleared.
     PositionChanged(Option<f64>),
     /// Indicates that the playback state may have changed.
     StateChanged(PlaybackState),

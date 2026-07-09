@@ -34,23 +34,25 @@ impl Serialize for Album {
         S: Serializer,
     {
         use serde::ser::SerializeStruct;
-        let mut state = serializer.serialize_struct("Album", 8)?;
-        
+        // Always reserve room for all serialized fields.
+        let mut state = serializer.serialize_struct("Album", 9)?;
+
         // Serialize id using Identifier's serialization
         state.serialize_field("id", &self.id)?;
         state.serialize_field("name", &self.name)?;
-        
+
         // Get lock on artists and serialize directly as Vec<String>
         let artists = self.artists.lock();
         state.serialize_field("artists", &*artists)?;
-        
+        state.serialize_field("artists_flat", &self.artists_flat)?;
+
         // Serialize release_date field
         state.serialize_field("release_date", &self.release_date)?;
-        
+
         // Get lock on tracks and serialize directly as Vec<Track>
         let tracks = self.tracks.lock();
         state.serialize_field("tracks", &*tracks)?;
-        
+
         state.serialize_field("cover_art", &self.cover_art)?;
         state.serialize_field("uri", &self.uri)?;
         if !self.genres.is_empty() {
@@ -73,23 +75,22 @@ impl<'de> Deserialize<'de> for Album {
             name: String,
             #[serde(default)]
             artists: Vec<String>,
+            #[serde(default)]
+            artists_flat: Option<String>,
             // For backward compatibility, also accept the old 'artist' field
             #[serde(default)]
             artist: Option<String>,
-            #[serde(skip_serializing_if = "Option::is_none")]
             release_date: Option<chrono::NaiveDate>,
             tracks: Vec<Track>,
-            #[serde(skip_serializing_if = "Option::is_none")]
             cover_art: Option<String>,
-            #[serde(skip_serializing_if = "Option::is_none")]
             uri: Option<String>,
             #[serde(default)]
             genres: Vec<String>,
         }
-        
+
         // Deserialize to the helper struct first
         let helper = AlbumHelper::deserialize(deserializer)?;
-        
+
         // Convert old artist field to artists if needed
         let mut artists = helper.artists;
         if artists.is_empty() {
@@ -102,13 +103,13 @@ impl<'de> Deserialize<'de> for Album {
                 }
             }
         }
-        
+
         // Convert helper to actual Album
         Ok(Album {
             id: helper.id,
             name: helper.name,
             artists: Arc::new(Mutex::new(artists)),
-            artists_flat: None, // Initialize artists_flat as None
+            artists_flat: helper.artists_flat,
             release_date: helper.release_date,
             tracks: Arc::new(Mutex::new(helper.tracks)),
             cover_art: helper.cover_art,
@@ -120,7 +121,7 @@ impl<'de> Deserialize<'de> for Album {
 
 impl Album {
     /// Sort tracks by disc number and track number
-    /// 
+    ///
     /// This method sorts the album's track list first by disc number (if available)
     /// and then by track number within each disc. This ensures tracks are in the
     /// correct playing order.

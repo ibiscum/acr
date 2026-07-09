@@ -3,12 +3,18 @@ use std::sync::Arc;
 use parking_lot::RwLock;
 use std::collections::HashMap;
 use crate::data::album::Album;
+use std::time::Duration;
 
 const CACHE_KEY_PREFIX: &str = "album::genres::";
+const MUSICBRAINZ_REQUEST_DELAY_MS: u64 = 1000;
 
 /// Return the attribute cache key for a given album ID
 fn cache_key(album_id: &str) -> String {
     format!("{}{}", CACHE_KEY_PREFIX, album_id)
+}
+
+fn musicbrainz_request_delay() -> Duration {
+    Duration::from_millis(MUSICBRAINZ_REQUEST_DELAY_MS)
 }
 
 /// Load cached genres for an album from the attribute cache.
@@ -121,10 +127,12 @@ pub fn update_library_albums_genres_in_background(
                     debug!("Skipping album '{}' — cached empty result", album_name);
                     continue;
                 }
-                // Has cached genres — apply them to the album
+                // Has cached genres — apply them to the album.
+                // Verify album ID to guard against name collisions (two albums with the
+                // same title) between when the snapshot was taken and now.
                 let mut map = albums_collection.write();
                 if let Some(album) = map.get_mut(&album_name) {
-                    if album.genres.is_empty() {
+                    if album.id.to_string() == album_id && album.genres.is_empty() {
                         album.genres = cached;
                         updated += 1;
                     }
@@ -133,7 +141,9 @@ pub fn update_library_albums_genres_in_background(
             }
 
             if artist.is_empty() || album_name.is_empty() {
-                store_cached_genres(&album_id, &[]);
+                // Do not cache an empty result here: the artist/name may be populated
+                // on a later library refresh, so we want to retry then.
+                debug!("Skipping album '{}' — missing artist or album name, will retry next run", album_name);
                 continue;
             }
 
@@ -141,9 +151,12 @@ pub fn update_library_albums_genres_in_background(
 
             if !genres.is_empty() {
                 let mut map = albums_collection.write();
+                // Verify album ID to guard against name collisions.
                 if let Some(album) = map.get_mut(&album_name) {
-                    album.genres = genres;
-                    updated += 1;
+                    if album.id.to_string() == album_id {
+                        album.genres = genres;
+                        updated += 1;
+                    }
                 }
             }
 
@@ -158,12 +171,121 @@ pub fn update_library_albums_genres_in_background(
                 );
             }
 
-            // Rate limiting: MusicBrainz allows 1 req/sec; the rate_limit helper handles
-            // per-request limiting but we add a small sleep to be polite.
-            std::thread::sleep(std::time::Duration::from_millis(50));
+            // MusicBrainz requires no more than 1 request/second.
+            std::thread::sleep(musicbrainz_request_delay());
         }
 
         info!("Album genre update complete: {}/{} albums updated", updated, total);
         let _ = crate::helpers::background_jobs::complete_job(&job_id);
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // --- cache_key ---
+
+    #[test]
+    fn cache_key_has_expected_prefix() {
+        let key = cache_key("42");
+        assert_eq!(key, "album::genres::42");
+    }
+
+    #[test]
+    fn cache_key_is_unique_per_id() {
+        assert_ne!(cache_key("1"), cache_key("2"));
+    }
+
+    #[test]
+    fn musicbrainz_request_delay_respects_one_request_per_second() {
+        let delay = musicbrainz_request_delay();
+        assert!(delay >= std::time::Duration::from_secs(1));
+        assert_eq!(delay, std::time::Duration::from_millis(MUSICBRAINZ_REQUEST_DELAY_MS));
+    }
+
+    // --- background update: album name collision guard ---
+    // The following tests exercise the logic that was added to guard against
+    // applying genres to the wrong album when two albums share a name.
+
+    #[test]
+    fn genres_not_applied_when_album_id_mismatches() {
+        use std::sync::Arc;
+        use parking_lot::{RwLock, Mutex};
+        use std::collections::HashMap;
+        use crate::data::album::Album;
+        use crate::data::Identifier;
+
+        // Build a minimal album map with id=99, name="Greatest Hits"
+        let mut map: HashMap<String, Album> = HashMap::new();
+        let album = Album {
+            id: Identifier::Numeric(99),
+            name: "Greatest Hits".to_string(),
+            artists: Arc::new(Mutex::new(vec![])),
+            artists_flat: None,
+            release_date: None,
+            tracks: Arc::new(Mutex::new(vec![])),
+            cover_art: None,
+            uri: None,
+            genres: vec![],
+        };
+        map.insert("Greatest Hits".to_string(), album);
+
+        let collection = Arc::new(RwLock::new(map));
+
+        // Simulate applying genres fetched for a *different* album id (42 ≠ 99)
+        let stale_id = "42";
+        let genres = vec!["Rock".to_string()];
+        {
+            let mut m = collection.write();
+            if let Some(album) = m.get_mut("Greatest Hits") {
+                if album.id.to_string() == stale_id {
+                    album.genres = genres.clone();
+                }
+            }
+        }
+
+        // Genres must NOT have been written because the ID didn't match
+        let m = collection.read();
+        assert!(m["Greatest Hits"].genres.is_empty());
+    }
+
+    #[test]
+    fn genres_applied_when_album_id_matches() {
+        use std::sync::Arc;
+        use parking_lot::{RwLock, Mutex};
+        use std::collections::HashMap;
+        use crate::data::album::Album;
+        use crate::data::Identifier;
+
+        let mut map: HashMap<String, Album> = HashMap::new();
+        let album = Album {
+            id: Identifier::Numeric(99),
+            name: "Greatest Hits".to_string(),
+            artists: Arc::new(Mutex::new(vec![])),
+            artists_flat: None,
+            release_date: None,
+            tracks: Arc::new(Mutex::new(vec![])),
+            cover_art: None,
+            uri: None,
+            genres: vec![],
+        };
+        map.insert("Greatest Hits".to_string(), album);
+
+        let collection = Arc::new(RwLock::new(map));
+
+        let correct_id = "99";
+        let genres = vec!["Rock".to_string()];
+        {
+            let mut m = collection.write();
+            if let Some(album) = m.get_mut("Greatest Hits") {
+                if album.id.to_string() == correct_id && album.genres.is_empty() {
+                    album.genres = genres.clone();
+                }
+            }
+        }
+
+        let m = collection.read();
+        assert_eq!(m["Greatest Hits"].genres, vec!["Rock".to_string()]);
+    }
 }

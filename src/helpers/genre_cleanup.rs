@@ -125,7 +125,12 @@ impl GenreCleanup {
 
     /// Clean up a single genre string
     pub fn clean_genre(&self, genre: &str) -> Option<String> {
-        let genre_lower = genre.trim().to_lowercase();
+        let trimmed = genre.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+
+        let genre_lower = trimmed.to_lowercase();
 
         if self.ignore_set.contains(&genre_lower) {
             debug!("Ignoring genre: {}", genre);
@@ -137,7 +142,7 @@ impl GenreCleanup {
             return Some(mapped_genre.clone());
         }
 
-        Some(genre.trim().to_string())
+        Some(trimmed.to_string())
     }
 
     /// Clean up a list of genres, removing duplicates and applying mappings
@@ -456,6 +461,29 @@ mod tests {
         assert_eq!(result.len(), 2);
         assert!(result.contains(&"hip-hop".to_string()));
         assert!(result.contains(&"jazz".to_string()));
+    }
+
+    #[test]
+    fn test_clean_genre_drops_empty_or_whitespace_values() {
+        let cleanup = GenreCleanup::from_config(GenreConfig::default()).unwrap();
+
+        assert_eq!(cleanup.clean_genre(""), None);
+        assert_eq!(cleanup.clean_genre("   \t\n  "), None);
+    }
+
+    #[test]
+    fn test_clean_genres_excludes_empty_entries() {
+        let cleanup = GenreCleanup::from_config(GenreConfig::default()).unwrap();
+
+        let input = vec![
+            "rock".to_string(),
+            "   ".to_string(),
+            "".to_string(),
+            "rock".to_string(),
+        ];
+
+        let result = cleanup.clean_genres(input);
+        assert_eq!(result, vec!["rock".to_string()]);
     }
 
     #[test]

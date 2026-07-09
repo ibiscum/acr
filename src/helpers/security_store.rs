@@ -152,7 +152,7 @@ impl SecurityStore {
         let store = SECURITY_STORE.clone();
 
         // Check if the encryption key is valid (non-empty)
-        if encryption_key.is_empty() {
+        if encryption_key.trim().is_empty() {
             return Err(SecurityStoreError::InvalidKeyError("Empty encryption key".to_string()));
         }
 
@@ -465,7 +465,7 @@ impl SecurityStore {
         let store = SECURITY_STORE.clone();
         store.ensure_initialized()?;
 
-        if new_key.is_empty() {
+        if new_key.trim().is_empty() {
             return Err(SecurityStoreError::InvalidKeyError("Empty encryption key".to_string()));
         }
 
@@ -683,5 +683,46 @@ mod tests {
         // Verify values are still there
         assert_eq!(SecurityStore::get("key1").unwrap(), "value1");
         assert_eq!(SecurityStore::get("key2").unwrap(), "value2");
+    }
+
+    #[test]
+    fn regression_initialize_rejects_whitespace_only_key() {
+        let _lock = TEST_MUTEX.lock().unwrap();
+
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test_store.json");
+
+        {
+            let store = SECURITY_STORE.clone();
+            *store.initialized.lock() = false;
+            *store.encryption_key.write() = String::new();
+            *store.cipher.lock() = None;
+            *store.data.lock() = SecurityStoreData::default();
+        }
+
+        let result = SecurityStore::initialize("   \t\n", Some(file_path));
+        assert!(matches!(result, Err(SecurityStoreError::InvalidKeyError(_))));
+    }
+
+    #[test]
+    fn regression_change_encryption_key_rejects_whitespace_only_key() {
+        let _lock = TEST_MUTEX.lock().unwrap();
+
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test_store.json");
+
+        {
+            let store = SECURITY_STORE.clone();
+            *store.initialized.lock() = false;
+            *store.encryption_key.write() = String::new();
+            *store.cipher.lock() = None;
+            *store.data.lock() = SecurityStoreData::default();
+        }
+
+        SecurityStore::initialize("test_key_123", Some(file_path)).unwrap();
+        SecurityStore::set("secret", "value").unwrap();
+
+        let result = SecurityStore::change_encryption_key("   ");
+        assert!(matches!(result, Err(SecurityStoreError::InvalidKeyError(_))));
     }
 }
