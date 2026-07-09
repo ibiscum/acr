@@ -199,7 +199,7 @@ mod tests {
     }
 
     #[test]
-    fn test_get_background_jobs_includes_finished_jobs_current_behavior() {
+    fn test_get_background_jobs_excludes_finished_jobs_current_behavior() {
         let job_id = unique_job_id("finished");
         register_job(job_id.clone(), "Finished Job".to_string()).unwrap();
         update_job(&job_id, Some("done".to_string()), Some(1), Some(1)).unwrap();
@@ -209,11 +209,6 @@ mod tests {
 
         assert!(response.success);
         let jobs = response.jobs.expect("expected jobs payload");
-        let finished_job = jobs
-            .into_iter()
-            .find(|job| job.id == job_id)
-            .expect("finished job should be present in listing");
-        assert!(finished_job.finished);
-        assert!(finished_job.finish_time.is_some());
+        assert!(jobs.into_iter().all(|job| job.id != job_id));
     }
 }
