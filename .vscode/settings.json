@@ -8,6 +8,7 @@
   "rust-analyzer.files.excludeDirs": ["target"],
   "explorer.excludeGitIgnored": false,
   "chat.tools.terminal.autoApprove": {
-    "cargo test": true
+    "cargo test": true,
+    "cargo check": true
   }
 }
