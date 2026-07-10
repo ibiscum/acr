@@ -128,10 +128,17 @@ impl LibrespotPlayerController {
     fn set_default_capabilities(&self) {
         debug!("Setting default LibrespotPlayerController capabilities");
 
-        // Default to limited capabilities - full capabilities will be set in start() if token is available
         self.base.set_capabilities(vec![
             PlayerCapability::Killable,
             PlayerCapability::ReceivesUpdates,
+            PlayerCapability::Play,
+            PlayerCapability::Pause,
+            PlayerCapability::Stop,
+            PlayerCapability::Next,
+            PlayerCapability::Previous,
+            PlayerCapability::Seek,
+            PlayerCapability::Shuffle,
+            PlayerCapability::Loop,
         ], false); // Don't notify on initialization
     }
 

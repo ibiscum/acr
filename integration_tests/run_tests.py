@@ -124,7 +124,7 @@ def run_tests():
     for test_file in test_files:
         test_path = test_dir / test_file
 
-        print(f"\\n{'='*50}")
+        print(f"\n{'='*50}")
         print(f"Running {test_file}")
         print(f"{'='*50}")
 

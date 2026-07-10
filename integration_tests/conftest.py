@@ -720,6 +720,52 @@ class AudioControlTestServer:
 
         time.sleep(0.5)  # Longer wait for reset to complete
 
+    def wait_for_exclusive_playback(
+        self,
+        active_player_id: str,
+        allowed_inactive_states: Optional[List[str]] = None,
+        timeout: float = 5.0,
+        poll_interval: float = 0.1,
+    ) -> Dict[str, Any]:
+        """Wait until one player is playing and all others are paused or stopped."""
+        allowed_states = set((allowed_inactive_states or ["paused", "stopped"]))
+        deadline = time.time() + timeout
+        last_players: Dict[str, Any] = {}
+
+        while time.time() < deadline:
+            players = self.get_players()
+            last_players = players
+
+            if active_player_id not in players:
+                time.sleep(poll_interval)
+                continue
+
+            normalized_states = {
+                player_id: str(player_data.get("state", "unknown")).lower()
+                for player_id, player_data in players.items()
+            }
+
+            active_is_playing = normalized_states.get(active_player_id) == "playing"
+            inactive_valid = all(
+                state in allowed_states
+                for player_id, state in normalized_states.items()
+                if player_id != active_player_id
+            )
+
+            if active_is_playing and inactive_valid:
+                return players
+
+            time.sleep(poll_interval)
+
+        last_states = {
+            player_id: str(player_data.get("state", "unknown")).lower()
+            for player_id, player_data in last_players.items()
+        }
+        raise AssertionError(
+            "Exclusive playback condition not met for "
+            f"'{active_player_id}' within {timeout:.1f}s. Last observed states: {last_states}"
+        )
+
 # Global cleanup function
 def cleanup_all_servers():
     """Clean up all test servers and temporary files"""
@@ -850,6 +896,147 @@ def cache_failure_attribute_server():
     assert server.start_server(), "Failed to start cache attribute failure-injection test server"
     yield server
     server.stop_server()
+
+@pytest.fixture
+def exclusive_playback_transition_sequence():
+    """Generate active-only transitions and monitor non-active players stay non-playing."""
+
+    def _run(
+        server: AudioControlTestServer,
+        inactive_states: Optional[List[str]] = None,
+        active_transition_states: Optional[List[str]] = None,
+        settle_timeout: float = 5.0,
+        inter_event_delay: float = 0.1,
+    ) -> Dict[str, Any]:
+        players = sorted(server.get_players().keys())
+
+        if len(players) < 2:
+            pytest.skip("Exclusive-playback sequence needs at least two players")
+
+        inactive_cycle = inactive_states or ["paused", "stopped"]
+        allowed_inactive_states = sorted(set(state.lower() for state in inactive_cycle))
+        transitions_for_active = [
+            state.lower()
+            for state in (active_transition_states or ["playing", "paused", "playing", "stopped"])
+        ]
+
+        def wait_for_step_state(active_player_id: str, expected_active_state: str) -> Dict[str, Any]:
+            deadline = time.time() + settle_timeout
+            last_snapshot: Dict[str, Any] = {}
+
+            while time.time() < deadline:
+                snapshot = server.get_players()
+                last_snapshot = snapshot
+                normalized = {
+                    player_id: str(player_data.get("state", "unknown")).lower()
+                    for player_id, player_data in snapshot.items()
+                }
+
+                active_matches = normalized.get(active_player_id) == expected_active_state
+                inactive_valid = all(
+                    state in allowed_inactive_states
+                    for player_id, state in normalized.items()
+                    if player_id != active_player_id
+                )
+
+                currently_playing = [
+                    player_id
+                    for player_id, state in normalized.items()
+                    if state == "playing"
+                ]
+
+                if expected_active_state == "playing":
+                    exclusivity_valid = currently_playing == [active_player_id]
+                else:
+                    exclusivity_valid = all(player_id != active_player_id for player_id in currently_playing)
+
+                if active_matches and inactive_valid and exclusivity_valid:
+                    return {
+                        "states": normalized,
+                        "playing_players": currently_playing,
+                    }
+
+                time.sleep(0.05)
+
+            last_states = {
+                player_id: str(player_data.get("state", "unknown")).lower()
+                for player_id, player_data in last_snapshot.items()
+            }
+            raise AssertionError(
+                "Transition step did not converge for active player "
+                f"'{active_player_id}' -> '{expected_active_state}'. "
+                f"Last observed states: {last_states}"
+            )
+
+        sequence_results = []
+        for active_player_id in players:
+            for player_id in players:
+                server.reset_player_state(player_id)
+
+            inactive_targets: Dict[str, str] = {}
+            step_results = []
+
+            # Prepare all non-active players once, then only transition the active player.
+            for idx, player_id in enumerate(players):
+                if player_id == active_player_id:
+                    continue
+
+                target_state = inactive_cycle[idx % len(inactive_cycle)].lower()
+                inactive_targets[player_id] = target_state
+                event = {"type": "state_changed", "state": target_state}
+                response = server.send_player_event(player_id, event)
+
+                assert response is not None, f"No response for player '{player_id}' state update"
+                assert response.get("success", False), (
+                    f"Failed to send {target_state} event to '{player_id}': "
+                    f"{response.get('message', 'unknown error')}"
+                )
+
+                time.sleep(inter_event_delay)
+
+            for step_idx, active_state in enumerate(transitions_for_active):
+                event = {"type": "state_changed", "state": active_state}
+                response = server.send_player_event(active_player_id, event)
+
+                assert response is not None, (
+                    f"No response for active player '{active_player_id}' transition to '{active_state}'"
+                )
+                assert response.get("success", False), (
+                    f"Failed to send {active_state} event to '{active_player_id}': "
+                    f"{response.get('message', 'unknown error')}"
+                )
+
+                time.sleep(inter_event_delay)
+                observation = wait_for_step_state(active_player_id, active_state)
+
+                step_results.append(
+                    {
+                        "step": step_idx,
+                        "active_state": active_state,
+                        "states": observation["states"],
+                        "playing_players": observation["playing_players"],
+                    }
+                )
+
+            final_states = step_results[-1]["states"] if step_results else {}
+
+            sequence_results.append(
+                {
+                    "active_player_id": active_player_id,
+                    "inactive_targets": inactive_targets,
+                    "steps": step_results,
+                    "states": final_states,
+                }
+            )
+
+        return {
+            "players": players,
+            "allowed_inactive_states": allowed_inactive_states,
+            "active_transition_states": transitions_for_active,
+            "sequences": sequence_results,
+        }
+
+    return _run
 
 if __name__ == "__main__":
     # Run cleanup if executed directly

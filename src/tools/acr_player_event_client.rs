@@ -185,7 +185,8 @@ fn build_event_data(event: &EventType) -> Result<Value, Box<dyn Error>> {
         EventType::ShuffleChanged { shuffle } => {
             json!({
                 "type": "shuffle_changed",
-                "shuffle": shuffle
+                "shuffle": shuffle,
+                "enabled": shuffle
             })
         }
 
@@ -199,7 +200,8 @@ fn build_event_data(event: &EventType) -> Result<Value, Box<dyn Error>> {
 
             json!({
                 "type": "loop_mode_changed",
-                "loop_mode": mode_str
+                "loop_mode": mode_str,
+                "mode": mode_str
             })
         }
 
@@ -242,6 +244,16 @@ mod tests {
         let data = build_event_data(&event).expect("event data should build");
         assert_eq!(data["type"], "loop_mode_changed");
         assert_eq!(data["loop_mode"], "track");
+        assert_eq!(data["mode"], "track");
+    }
+
+    #[test]
+    fn regression_shuffle_changed_sets_both_compatibility_keys() {
+        let event = EventType::ShuffleChanged { shuffle: true };
+        let data = build_event_data(&event).expect("event data should build");
+        assert_eq!(data["type"], "shuffle_changed");
+        assert_eq!(data["shuffle"], true);
+        assert_eq!(data["enabled"], true);
     }
 
     #[test]

@@ -87,7 +87,8 @@
           "next",
           "previous",
           "shuffle",
-          "loop"
+          "loop",
+          "stop"
         ],
         "device_name": "AudioControl Test",
         "event_pipe": "/tmp/test_librespot_event_18080"

@@ -126,10 +126,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 song["uri"] = json!(uri);
             }
 
-            let song_event = json!({
-                "type": "song_changed",
-                "song": song
-            });
+            let song_event = build_song_changed_event(song);
 
             send_event(
                 &client,
@@ -141,12 +138,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             )?;
 
             // Send state change event (default to Playing)
-            let state_str = playback_state_to_str(state);
-
-            let state_event = json!({
-                "type": "state_changed",
-                "state": state_str
-            });
+            let state_event = build_state_changed_event(state);
 
             send_event(
                 &client,
@@ -159,12 +151,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
 
         Commands::State { state } => {
-            let state_str = playback_state_to_str(state);
-
-            let event = json!({
-                "type": "state_changed",
-                "state": state_str
-            });
+            let event = build_state_changed_event(state);
 
             send_event(
                 &client,
@@ -178,10 +165,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         Commands::Shuffle { enabled } => {
             let enabled_bool = parse_bool_like_arg(&enabled)?;
-            let event = json!({
-                "type": "shuffle_changed",
-                "enabled": enabled_bool
-            });
+            let event = build_shuffle_changed_event(enabled_bool);
 
             send_event(
                 &client,
@@ -194,16 +178,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
 
         Commands::Loop { mode } => {
-            let mode_str = match mode {
-                LoopMode::Track => "track",
-                LoopMode::Playlist => "playlist",
-                LoopMode::None => "none",
-            };
-
-            let event = json!({
-                "type": "loop_mode_changed",
-                "loop_mode": mode_str
-            });
+            let event = build_loop_mode_changed_event(mode);
 
             send_event(
                 &client,
@@ -217,10 +192,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         Commands::Position { position } => {
             ensure_non_negative("position", position)?;
-            let event = json!({
-                "type": "position_changed",
-                "position": position
-            });
+            let event = build_position_changed_event(position);
 
             send_event(
                 &client,
@@ -245,6 +217,52 @@ fn playback_state_to_str(state: PlaybackState) -> &'static str {
         PlaybackState::Disconnected => "disconnected",
         PlaybackState::Unknown => "unknown",
     }
+}
+
+fn loop_mode_to_str(mode: LoopMode) -> &'static str {
+    match mode {
+        LoopMode::Track => "track",
+        LoopMode::Playlist => "playlist",
+        LoopMode::None => "none",
+    }
+}
+
+fn build_song_changed_event(song: Value) -> Value {
+    json!({
+        "type": "song_changed",
+        "song": song
+    })
+}
+
+fn build_state_changed_event(state: PlaybackState) -> Value {
+    json!({
+        "type": "state_changed",
+        "state": playback_state_to_str(state)
+    })
+}
+
+fn build_shuffle_changed_event(enabled: bool) -> Value {
+    json!({
+        "type": "shuffle_changed",
+        "enabled": enabled,
+        "shuffle": enabled
+    })
+}
+
+fn build_loop_mode_changed_event(mode: LoopMode) -> Value {
+    let mode_str = loop_mode_to_str(mode);
+    json!({
+        "type": "loop_mode_changed",
+        "loop_mode": mode_str,
+        "mode": mode_str
+    })
+}
+
+fn build_position_changed_event(position: f64) -> Value {
+    json!({
+        "type": "position_changed",
+        "position": position
+    })
 }
 
 fn parse_bool_like_arg(value: &str) -> Result<bool, Box<dyn Error>> {
@@ -345,5 +363,28 @@ mod tests {
         assert!(ensure_non_negative("position", -0.1).is_err());
         assert!(ensure_non_negative("position", f64::NAN).is_err());
         assert!(ensure_non_negative("length", f64::INFINITY).is_err());
+    }
+
+    #[test]
+    fn regression_build_shuffle_changed_event_sets_both_compatibility_keys() {
+        let event = build_shuffle_changed_event(true);
+        assert_eq!(event["type"], "shuffle_changed");
+        assert_eq!(event["enabled"], true);
+        assert_eq!(event["shuffle"], true);
+    }
+
+    #[test]
+    fn regression_build_loop_mode_changed_event_sets_both_compatibility_keys() {
+        let event = build_loop_mode_changed_event(LoopMode::Track);
+        assert_eq!(event["type"], "loop_mode_changed");
+        assert_eq!(event["loop_mode"], "track");
+        assert_eq!(event["mode"], "track");
+    }
+
+    #[test]
+    fn regression_build_state_changed_event_uses_state_mapping() {
+        let event = build_state_changed_event(PlaybackState::Paused);
+        assert_eq!(event["type"], "state_changed");
+        assert_eq!(event["state"], "paused");
     }
 }

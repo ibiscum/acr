@@ -151,13 +151,12 @@ impl BackgroundJobs {
         }
     }
 
-    /// Get all currently running background jobs
+    /// Get all background jobs (including finished)
     pub fn get_all_jobs(&self) -> Result<Vec<BackgroundJob>, String> {
         Ok(self
             .jobs
             .lock()
             .values()
-            .filter(|job| !job.finished)
             .cloned()
             .collect())
     }
@@ -207,17 +206,21 @@ mod tests {
     }
 
     #[test]
-    fn get_all_jobs_returns_only_running_jobs() {
+    fn get_all_jobs_returns_all_jobs_including_finished() {
         reset_jobs();
 
         register_job("job1".to_string(), "First job".to_string()).unwrap();
         register_job("job2".to_string(), "Second job".to_string()).unwrap();
         complete_job("job2").unwrap();
 
-        let running = get_all_jobs().unwrap();
-        assert_eq!(running.len(), 1);
-        assert_eq!(running[0].id, "job1");
-        assert!(!running[0].finished);
+        let all = get_all_jobs().unwrap();
+        assert_eq!(all.len(), 2);
+
+        let finished = all.iter().find(|j| j.id == "job2").unwrap();
+        assert!(finished.finished);
+
+        let running = all.iter().find(|j| j.id == "job1").unwrap();
+        assert!(!running.finished);
     }
 
     #[test]

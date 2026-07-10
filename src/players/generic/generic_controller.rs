@@ -568,4 +568,39 @@ mod tests {
         assert!(ok);
         assert!(controller.get_last_seen().is_some());
     }
+
+    #[test]
+    fn regression_default_capabilities_include_pause_and_stop() {
+        let controller = GenericPlayerController::new("generic-test".to_string());
+        let caps = controller.get_capabilities();
+        assert!(caps.has_capability(PlayerCapability::Pause), "default capabilities must include Pause");
+        assert!(caps.has_capability(PlayerCapability::Stop), "default capabilities must include Stop");
+    }
+
+    #[test]
+    fn regression_send_command_pause_sets_state_to_paused() {
+        let controller = GenericPlayerController::new("generic-test".to_string());
+        assert!(controller.send_command(PlayerCommand::Pause));
+        assert_eq!(controller.get_playback_state(), PlaybackState::Paused);
+    }
+
+    #[test]
+    fn regression_send_command_stop_sets_state_to_stopped() {
+        let controller = GenericPlayerController::new("generic-test".to_string());
+        assert!(controller.send_command(PlayerCommand::Stop));
+        assert_eq!(controller.get_playback_state(), PlaybackState::Stopped);
+    }
+
+    #[test]
+    fn regression_config_capabilities_override_defaults() {
+        let config = json!({
+            "name": "limited-player",
+            "capabilities": ["play", "pause"]
+        });
+        let controller = GenericPlayerController::from_config(&config).unwrap();
+        let caps = controller.get_capabilities();
+        assert!(caps.has_capability(PlayerCapability::Play));
+        assert!(caps.has_capability(PlayerCapability::Pause));
+        assert!(!caps.has_capability(PlayerCapability::Stop), "config-overridden capabilities must not include Stop when not listed");
+    }
 }

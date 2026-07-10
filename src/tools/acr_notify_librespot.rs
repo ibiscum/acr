@@ -207,7 +207,9 @@ fn handle_shuffle_changed(client: &ureq::Agent, args: &Args) -> Result<(), Box<d
 
     let event = json!({
         "type": "shuffle_changed",
-        "enabled": shuffle_enabled
+        // Keep both keys for compatibility with different API consumers.
+        "enabled": shuffle_enabled,
+        "shuffle": shuffle_enabled
     });
 
     send_event(
@@ -243,7 +245,9 @@ fn handle_repeat_changed(client: &ureq::Agent, args: &Args) -> Result<(), Box<dy
 
     let event = json!({
         "type": "loop_mode_changed",
-        "loop_mode": loop_mode
+        // Keep both keys for compatibility with different API consumers.
+        "loop_mode": loop_mode,
+        "mode": loop_mode
     });
 
     send_event(
@@ -334,11 +338,12 @@ mod tests {
     }
 
     #[test]
-    fn integration_first_non_empty_line_skips_blank_lines() {
+    fn regression_first_non_empty_line_skips_blank_lines() {
         assert_eq!(first_non_empty_line("\n\nhttps://x\nhttps://y"), Some("https://x"));
         assert_eq!(first_non_empty_line("   \n  "), None);
         assert_eq!(first_non_empty_line("single"), Some("single"));
     }
+
 }
 
 fn handle_preloading(client: &ureq::Agent, args: &Args) -> Result<(), Box<dyn Error>> {

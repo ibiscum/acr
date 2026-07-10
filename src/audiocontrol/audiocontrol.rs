@@ -319,7 +319,7 @@ impl AudioController {
         let source = PlayerSource::new(controller.get_player_name(), controller.get_player_id());
         EventBus::instance().publish(PlayerEvent::ActivePlayerChanged {
             source: source.clone(),
-            player_id: source.player_id,
+            player_id: source.player_id().to_string(),
         });
         true
     }
@@ -331,18 +331,6 @@ impl AudioController {
             return Some(self.controllers[*active_idx].clone());
         }
         None
-    }
-
-    /// Send a command to the active player controller
-    ///
-    /// Returns true if the command was sent successfully, false if there is no active controller.
-    pub fn send_command(&self, command: PlayerCommand) -> bool {
-        let active_idx = self.active_index.read();
-        if *active_idx < self.controllers.len() {
-            let controller = self.controllers[*active_idx].read();
-            return controller.send_command(command);
-        }
-        false
     }
 
     /// Send a command to all inactive player controllers
