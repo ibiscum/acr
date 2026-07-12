@@ -3,7 +3,6 @@
 export DH_VERBOSE=1
 export SKIP_BUILD
 export CARGO_HOME = $(CURDIR)/debian/cargo_home
-export RUSTUP_HOME = $(CURDIR)/debian/rustup_home
 
 # Optimize Rust compilation for space efficiency
 export CARGO_BUILD_JOBS = 1
@@ -14,13 +13,23 @@ export RUST_BACKTRACE = 0
 	dh $@
 
 override_dh_auto_configure:
-	# Install Rust via rustup if not available or if cargo version is too old
-	if ! which cargo >/dev/null 2>&1 || ! cargo --version | grep -q "1\.[8-9][0-9]\|1\.[0-9][0-9][0-9]"; then \
-		mkdir -p $(RUSTUP_HOME) $(CARGO_HOME); \
-		curl https://sh.rustup.rs -sSf | \
-		RUSTUP_HOME=$(RUSTUP_HOME) CARGO_HOME=$(CARGO_HOME) \
-		sh -s -- -y --no-modify-path; \
+	# Verify a sufficiently new Rust toolchain (>= 1.85) is available.
+	# When the backports repo is available, try to install newer rustc/cargo from there.
+	# This helps CI/backport builds that need a newer toolchain than the base distribution.
+	apt-get update -qq 2>/dev/null || true
+	DIST_CODENAME=$$(. /etc/os-release && echo $$VERSION_CODENAME); \
+	if apt-cache policy | grep -q "$${DIST_CODENAME}-backports"; then \
+		echo "Checking for rustc/cargo in $${DIST_CODENAME}-backports..."; \
+		apt-cache policy rustc | head -5; \
+		echo "Attempting to install from backports..."; \
+		DEBIAN_FRONTEND=noninteractive apt-get -y -t $${DIST_CODENAME}-backports install --no-install-recommends rustc cargo || \
+		DEBIAN_FRONTEND=noninteractive apt-get -y install --no-install-recommends rustc cargo || true; \
 	fi
+	@cargo --version >/dev/null 2>&1 || \
+		{ echo "ERROR: cargo not found. Install rustc/cargo >= 1.85 (from backports if needed)."; exit 1; }
+	@cargo --version | grep -qE 'cargo 1\.([89][0-9]|[0-9]{3,})|cargo 1\.8[5-9]' || \
+		{ echo "ERROR: $$(cargo --version) is too old; version >= 1.85 required."; exit 1; }
+	@echo "Rust toolchain: $$(cargo --version)"
 
 override_dh_auto_build:
 	if [ "$$SKIP_BUILD" = "1" ]; then \
@@ -61,7 +70,7 @@ override_dh_auto_install:
 		exit 1; \
 	fi
 	# Install CLI tools if they exist
-	for tool in audiocontrol_lms_client audiocontrol_musicbrainz_client audiocontrol_send_update audiocontrol_dump_store acr_dump_cache audiocontrol_notify_librespot audiocontrol_player_event_client audiocontrol_list_mpris_players audiocontrol_get_mpris_state audiocontrol_monitor_mpris_state audiocontrol_listen_shairportsync audiocontrol_favourites; do \
+	for tool in audiocontrol_lms_client audiocontrol_musicbrainz_client audiocontrol_send_update audiocontrol_dump_store acr_dump_cache audiocontrol_notify_librespot audiocontrol_player_event_client audiocontrol_list_mpris_players audiocontrol_get_mpris_state audiocontrol_monitor_mpris_state audiocontrol_listen_shairportsync audiocontrol_favourites audiocontrol_scan_library; do \
 		if [ -f "target/release/$$tool" ]; then \
 			cp "target/release/$$tool" "debian/hifiberry-audiocontrol/usr/bin/$$tool"; \
 			chmod +x "debian/hifiberry-audiocontrol/usr/bin/$$tool"; \
@@ -94,7 +103,6 @@ override_dh_auto_clean:
 	# Comprehensive cleanup to free space
 	rm -rf target/
 	rm -rf $(CARGO_HOME)
-	rm -rf $(RUSTUP_HOME)
 	rm -rf $(CURDIR)/build_tmp
 	rm -rf $(CURDIR)/build_home
 	rm -rf debian/.debhelper/

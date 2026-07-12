@@ -3,7 +3,8 @@ use std::sync::Arc;
 use parking_lot::RwLock;
 use std::collections::HashMap;
 use crate::data::album::Album;
-use std::time::Duration;
+use std::time::{Duration, Instant};
+use std::thread;
 
 const CACHE_KEY_PREFIX: &str = "album::genres::";
 const MUSICBRAINZ_REQUEST_DELAY_MS: u64 = 1000;
@@ -31,7 +32,8 @@ pub fn load_cached_genres(album_id: &str) -> Option<Vec<String>> {
 }
 
 /// Persist genres for an album to the attribute cache.
-fn store_cached_genres(album_id: &str, genres: &[String]) {
+fn store_cached_genres(album_id: &str, genres: &[String]) {    // Check if a library scan is running before writing to the database
+    wait_for_library_scan_to_complete();
     let genres_vec = genres.to_vec();
     match crate::helpers::attribute_cache::set(&cache_key(album_id), &genres_vec) {
         Ok(_) => debug!("Stored genres for album {} in attribute cache", album_id),
@@ -179,6 +181,54 @@ pub fn update_library_albums_genres_in_background(
         let _ = crate::helpers::background_jobs::complete_job(&job_id);
     });
 }
+
+/// Wait for any active library scan jobs to complete before writing metadata.
+///
+/// Library scans (MPD or LMS) lock the database while performing operations.
+/// This function checks if either library_scan_mpd or library_scan_lms jobs are running,
+/// and if so, waits for them to complete before returning. This prevents database
+/// write conflicts between the album updater and library scanner.
+///
+/// This ensures that metadata writes don't fail with "readonly database" errors.
+fn wait_for_library_scan_to_complete() {
+    const CHECK_INTERVAL_MS: u64 = 100; // Check every 100ms (more frequent than updater polling)
+    const MAX_WAIT_SECS: u64 = 300; // But still have a timeout
+
+    // Check for both MPD and LMS library scan jobs
+    let scan_jobs = ["library_scan_mpd", "library_scan_lms"];
+
+    for scan_job_id in &scan_jobs {
+        if let Ok(Some(job)) = crate::helpers::background_jobs::get_job(scan_job_id) {
+            if !job.finished {
+                debug!("Library scan ({}) is active. Waiting for it to complete before writing metadata...", scan_job_id);
+
+                let start = Instant::now();
+                let timeout = Duration::from_secs(MAX_WAIT_SECS);
+
+                loop {
+                    if start.elapsed() > timeout {
+                        warn!("Library scan ({}) did not complete within {} seconds. Proceeding with metadata write anyway.", scan_job_id, MAX_WAIT_SECS);
+                        break;
+                    }
+
+                    if let Ok(Some(updated_job)) = crate::helpers::background_jobs::get_job(scan_job_id) {
+                        if updated_job.finished {
+                            debug!("Library scan ({}) completed. Proceeding with metadata write.", scan_job_id);
+                            break;
+                        }
+                    } else {
+                        // Job no longer exists or error checking
+                        debug!("Library scan ({}) is no longer running. Proceeding with metadata write.", scan_job_id);
+                        break;
+                    }
+
+                    thread::sleep(Duration::from_millis(CHECK_INTERVAL_MS));
+                }
+            }
+        }
+    }
+}
+
 
 #[cfg(test)]
 mod tests {

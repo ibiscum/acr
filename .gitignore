@@ -41,6 +41,7 @@ debian/acr/
 debian/debhelper-build-stamp
 debian/files
 debian/acr.postrm.debhelper
+*.build
 
 # Sample cache files
 # These are generated during debuggiong and are not needed in the repository

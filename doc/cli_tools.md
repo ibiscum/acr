@@ -4,6 +4,126 @@ AudioControl REST (Audiocontrol) includes several command-line tools for interac
 
 ## Available Tools
 
+### audiocontrol_scan_library
+
+The `audiocontrol_scan_library` tool scans and updates music libraries from MPD (Music Player Daemon) or LMS (Lyrion Music Server). It provides a command-line interface to perform full library refreshes and display statistics about the loaded library.
+
+**Key Features:**
+
+- Scan libraries from MPD or LMS servers
+- Synchronous blocking library refresh for reliable operation
+- Display detailed library statistics (albums, artists, tracks)
+- Support for both local and remote servers
+- Configurable server hostname and port
+
+**Usage:**
+
+```bash
+audiocontrol_scan_library [OPTIONS]
+```
+
+**Options:**
+
+- `-t, --server-type <TYPE>` - Music server type: "mpd" or "lms" (default: `mpd`)
+- `-H, --host <HOST>` - Server hostname or IP address (default: `localhost`)
+- `-p, --port <PORT>` - Server port (optional; defaults: 6600 for MPD, 9000 for LMS)
+- `-s, --stats` - Display statistics after scanning
+- `--help` - Show help information
+
+**Examples:**
+
+```bash
+# Scan default MPD library on localhost:6600
+audiocontrol_scan_library
+
+# Scan MPD library on remote server
+audiocontrol_scan_library -H 192.168.1.100 -p 6600
+
+# Scan LMS library with statistics
+audiocontrol_scan_library -t lms -H 192.168.1.50 -p 9000 --stats
+
+# Scan with verbose logging
+RUST_LOG=debug audiocontrol_scan_library -t mpd --stats
+```
+
+**Output Example:**
+
+```
+[INFO] Connecting to MPD server at localhost:6600
+[INFO] No album updater job detected. Database writes are available.
+[INFO] No artist updater job detected. Database writes are available.
+[INFO] Scanning MPD library...
+[INFO] Library scan completed in 12.34s
+[INFO] Library Statistics:
+[INFO]   Total Albums: 2543
+[INFO]   Total Artists: 1205
+[INFO]   Total Tracks: 28567
+[INFO]   Artists:
+[INFO]     - Pink Floyd
+[INFO]     - Led Zeppelin
+[INFO]     - The Beatles
+[INFO]     - Queen
+[INFO]     - David Bowie
+```
+
+**Output Example (with running updaters):**
+
+```
+[INFO] Connecting to MPD server at localhost:6600
+[INFO] Album updater job is running. Allowing database writes to complete...
+[INFO] Job progress: Processing 2543 albums
+[INFO] Album updater progress: Processed 1250/2543 albums
+[INFO] Album updater job completed. Proceeding with library scan.
+[INFO] Artist updater job is running. Allowing database writes to complete...
+[INFO] Job progress: Fetching metadata for artists
+[INFO] Artist updater progress: Processed 850/1205 artists
+[INFO] Artist updater job completed. Proceeding with library scan.
+[INFO] Scanning MPD library...
+[INFO] Library scan completed in 12.34s
+```
+
+**Use Cases:**
+
+- Periodically refresh music library from a music server
+- Monitor library size and artist count
+- Verify music server connectivity
+- Integrate with cron jobs or systemd timers for automatic library updates
+- Debug library loading issues with verbose logging
+
+**Database Coordination (Two-Way):**
+
+The `audiocontrol_scan_library` tool implements **bidirectional coordination** with metadata updaters to prevent database write conflicts:
+
+**When the scan starts:**
+- Detects and waits for any running album genre updater to complete
+- Detects and waits for any running artist metadata updater to complete
+- Registers itself as an active library scan job (library_scan_mpd or library_scan_lms)
+- Performs the library refresh while this job is active
+- Completes the job when finished
+
+**When metadata updaters run:**
+- The album updater checks if a library scan is active before writing genres
+- The artist updater checks if a library scan is active before writing metadata
+- If a scan is detected, they wait up to 5 minutes for it to complete
+- Only perform database writes after the scan job completes
+- This prevents "readonly database" errors from concurrent write attempts
+
+**Coordination Sequence:**
+1. Scan tool checks for running updaters (album, then artist)
+2. Scan tool registers its own library scan job
+3. Scan tool performs library refresh
+4. (If updaters are triggered during scan) Updaters detect scan job and wait
+5. Scan tool completes its job
+6. Updaters resume and perform metadata writes
+
+**Timeout and Error Handling:**
+- Each coordination check has a 5-minute timeout to prevent indefinite blocking
+- If timeouts occur, operations proceed with a warning log
+- Failed coordination checks don't block operations (graceful degradation)
+- All coordination events are logged for troubleshooting
+
+This ensures smooth concurrent operation between library scanning and all metadata update operations.
+
 ### audiocontrol_send_update
 
 The `audiocontrol_send_update` tool allows you to send player state updates to the AudioControl API from the command line using a subcommand-based interface.
@@ -226,7 +346,7 @@ audiocontrol_notify_librespot
 
 # Verbose output
 audiocontrol_notify_librespot --verbose
-# Output: 
+# Output:
 # Received event: track_changed
 # Sending event to: http://127.0.0.1:1080/api/player/librespot/update
 # Payload: {

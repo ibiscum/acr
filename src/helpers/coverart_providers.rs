@@ -304,15 +304,17 @@ pub fn register_all_providers() {
     }
 
     // Register LastFM cover art provider
-    info!("Creating LastFM coverart provider...");
-    let lastfm_coverart = Arc::new(LastfmCoverartProvider::new());
-    info!("Registering LastFM coverart provider: {} ({})", lastfm_coverart.name(), lastfm_coverart.display_name());
-    info!("LastFM coverart supported methods: {:?}", lastfm_coverart.supported_methods());
-    if existing_provider_names.insert(lastfm_coverart.name().to_string()) {
-        manager_lock.register_provider(lastfm_coverart);
-    } else {
-        info!("Skipping LastFM coverart provider registration (already present)");
-    }
+    // Since valid LastFM API key is not available, we will skip its registration for now
+
+    // info!("Creating LastFM coverart provider...");
+    // let lastfm_coverart = Arc::new(LastfmCoverartProvider::new());
+    // info!("Registering LastFM coverart provider: {} ({})", lastfm_coverart.name(), lastfm_coverart.display_name());
+    // info!("LastFM coverart supported methods: {:?}", lastfm_coverart.supported_methods());
+    // if existing_provider_names.insert(lastfm_coverart.name().to_string()) {
+    //     manager_lock.register_provider(lastfm_coverart);
+    // } else {
+    //     info!("Skipping LastFM coverart provider registration (already present)");
+    // }
 
     // Register TheAudioDB cover art provider
     info!("Creating TheAudioDB coverart provider...");

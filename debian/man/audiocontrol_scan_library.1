@@ -1,0 +1,246 @@
+.TH AUDIOCONTROL_SCAN_LIBRARY 1 "July 2025" "audiocontrol" "Audio Control Manual"
+.SH NAME
+audiocontrol_scan_library \- scan and update music library from MPD or LMS
+.SH SYNOPSIS
+.B audiocontrol_scan_library
+[\fIOPTIONS\fR]
+.SH DESCRIPTION
+.B audiocontrol_scan_library
+is a command-line tool for scanning and updating music libraries from MPD (Music Player Daemon) or LMS (Lyrion Music Server). It performs a full library refresh and optionally displays statistics about the loaded library including album count, artist count, and total tracks.
+.PP
+This tool is useful for:
+.RS
+.IP \(bu 2
+Periodically refreshing music library data in audiocontrol
+.IP \(bu 2
+Verifying music server connectivity and library availability
+.IP \(bu 2
+Monitoring library size and artist count
+.IP \(bu 2
+Debugging library loading issues
+.IP \(bu 2
+Integration with cron jobs or systemd timers
+.RE
+.SS Background Job Coordination
+The tool implements bidirectional coordination with audiocontrol metadata updater background jobs to prevent database write conflicts and ensure smooth concurrent operation:
+.TP
+.B Scan tool waits for updaters:
+When the scan tool starts, it checks for and waits for any running album or artist metadata updater jobs to complete before proceeding with the library scan.
+.TP
+.B Updaters wait for scan tool:
+When metadata updaters (album or artist) attempt to write to the database, they automatically detect if a library scan is running. If detected, they wait up to 5 minutes for the scan to complete before writing their metadata.
+.TP
+.B Job registration:
+The scan tool registers itself as an active library scan job (library_scan_mpd or library_scan_lms) during the refresh operation. Metadata updaters monitor for these jobs to coordinate their writes.
+.TP
+.B Timeout behavior (5 minutes):
+If an updater or scan takes longer than expected, the coordination times out and operations proceed with a warning log to prevent indefinite blocking.
+.TP
+.B Error handling:
+If coordination checks fail, operations proceed gracefully to ensure robustness. All coordination events are logged for troubleshooting.
+.PP
+This two-way coordination mechanism is transparent to the user and happens automatically without additional configuration or flags. It prevents "readonly database" errors that occur when multiple processes try to write concurrently.
+.SH OPTIONS
+.TP
+.BR \-t ", " \-\-server-type " " \fITYPE\fR
+Specify the music server type: \fBmpd\fR or \fBlms\fR (default: mpd)
+.TP
+.BR \-H ", " \-\-host " " \fIHOST\fR
+Specify the server hostname or IP address (default: localhost)
+.TP
+.BR \-p ", " \-\-port " " \fIPORT\fR
+Specify the server port. If not provided, defaults to:
+.RS
+.IP \(bu 2
+6600 for MPD
+.IP \(bu 2
+9000 for LMS
+.RE
+.TP
+.BR \-s ", " \-\-stats
+Display library statistics after scanning (album count, artist count, track count, and artist listing)
+.TP
+.BR \-h ", " \-\-help
+Display help information and exit
+.TP
+.BR \-V ", " \-\-version
+Display version information and exit
+.SH EXAMPLES
+.TP
+Scan default local MPD library:
+.B audiocontrol_scan_library
+.TP
+Scan MPD library on remote server:
+.B audiocontrol_scan_library --host 192.168.1.100 --port 6600
+.TP
+Scan LMS library with statistics:
+.B audiocontrol_scan_library --server-type lms --host 192.168.1.50 --port 9000 --stats
+.TP
+Scan with debug logging output:
+.B RUST_LOG=debug audiocontrol_scan_library --stats
+.TP
+Scan LMS library and display statistics:
+.B audiocontrol_scan_library -t lms -H 192.168.1.50 -s
+.SH OUTPUT
+When successful, the tool outputs:
+.RS
+.IP \(bu 2
+Connection status to the music server
+.IP \(bu 2
+Album updater coordination status (if running)
+.IP \(bu 2
+Library scan progress and completion time
+.IP \(bu 2
+(With \fB--stats\fR) Detailed statistics including album count, artist count, track count, and a list of up to 20 artists
+.RE
+.PP
+Example output when album and artist updaters are running:
+.RS
+.B [INFO] Connecting to MPD server at localhost:6600
+.B [INFO] Album updater job is running. Allowing database writes to complete...
+.B [INFO] Job progress: Processing 2543 albums
+.B [INFO] Album updater progress: Processed 1250/2543 albums
+.B [INFO] Album updater job completed. Proceeding with library scan.
+.B [INFO] Artist updater job is running. Allowing database writes to complete...
+.B [INFO] Job progress: Fetching metadata for 1205 artists
+.B [INFO] Artist updater progress: Processed 600/1205 artists
+.B [INFO] Artist updater job completed. Proceeding with library scan.
+.B [INFO] Scanning MPD library...
+.B [INFO] Library scan completed in 12.34s
+.RE
+.SH ENVIRONMENT VARIABLES
+.TP
+.B RUST_LOG
+Control logging verbosity. Set to \fBdebug\fR for detailed output, or \fBinfo\fR (default) for standard output
+.SH EXIT STATUS
+.TP
+.B 0
+Success
+.TP
+.B 1
+Error (connection failure, invalid server type, etc.)
+.SH INTEGRATION EXAMPLES
+.TP
+Refresh library hourly via cron:
+.B 0 * * * * /usr/bin/audiocontrol_scan_library --server-type mpd --stats > /var/log/audiocontrol_scan.log 2>&1
+.TP
+Refresh library via systemd timer (one-shot service):
+.nf
+[Unit]
+Description=AudioControl Library Scan
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/audiocontrol_scan_library --server-type mpd --stats
+StandardOutput=journal
+StandardError=journal
+.fi
+.TP
+Use with remote LMS server:
+.B audiocontrol_scan_library --server-type lms --host music.example.com --port 9000 --stats
+.SH CONFIGURATION
+The tool does not require a configuration file. It connects directly to the specified music server using the provided hostname and port options.
+.SH SEE ALSO
+.BR audiocontrol (1),
+.BR audiocontrol_lms_client (1)
+.SH NOTES
+The library scan is a blocking operation. For large libraries, the scan may take several minutes to complete. Consider running this tool during off-peak hours or as a background job.
+.PP
+If the album updater or artist updater is running, the tool will automatically wait for them to complete (up to 5 minutes each). This is normal behavior and ensures consistency between library scans and metadata updates.
+.SH AUTHOR
+HifiBerry Audiocontrol Development Team
+.SH BUGS
+Report bugs to the HifiBerry development team.
+.TP
+.BR \-t ", " \-\-server-type " " \fITYPE\fR
+Specify the music server type: \fBmpd\fR or \fBlms\fR (default: mpd)
+.TP
+.BR \-H ", " \-\-host " " \fIHOST\fR
+Specify the server hostname or IP address (default: localhost)
+.TP
+.BR \-p ", " \-\-port " " \fIPORT\fR
+Specify the server port. If not provided, defaults to:
+.RS
+.IP \(bu 2
+6600 for MPD
+.IP \(bu 2
+9000 for LMS
+.RE
+.TP
+.BR \-s ", " \-\-stats
+Display library statistics after scanning (album count, artist count, track count, and artist listing)
+.TP
+.BR \-h ", " \-\-help
+Display help information and exit
+.TP
+.BR \-V ", " \-\-version
+Display version information and exit
+.SH EXAMPLES
+.TP
+Scan default local MPD library:
+.B audiocontrol_scan_library
+.TP
+Scan MPD library on remote server:
+.B audiocontrol_scan_library --host 192.168.1.100 --port 6600
+.TP
+Scan LMS library with statistics:
+.B audiocontrol_scan_library --server-type lms --host 192.168.1.50 --port 9000 --stats
+.TP
+Scan with debug logging output:
+.B RUST_LOG=debug audiocontrol_scan_library --stats
+.TP
+Scan LMS library and display statistics:
+.B audiocontrol_scan_library -t lms -H 192.168.1.50 -s
+.SH OUTPUT
+When successful, the tool outputs:
+.RS
+.IP \(bu 2
+Connection status to the music server
+.IP \(bu 2
+Library scan progress and completion time
+.IP \(bu 2
+(With \fB--stats\fR) Detailed statistics including album count, artist count, track count, and a list of up to 20 artists
+.RE
+.SH ENVIRONMENT VARIABLES
+.TP
+.B RUST_LOG
+Control logging verbosity. Set to \fBdebug\fR for detailed output, or \fBinfo\fR (default) for standard output
+.SH EXIT STATUS
+.TP
+.B 0
+Success
+.TP
+.B 1
+Error (connection failure, invalid server type, etc.)
+.SH INTEGRATION EXAMPLES
+.TP
+Refresh library hourly via cron:
+.B 0 * * * * /usr/bin/audiocontrol_scan_library --server-type mpd --stats > /var/log/audiocontrol_scan.log 2>&1
+.TP
+Refresh library via systemd timer (one-shot service):
+.nf
+[Unit]
+Description=AudioControl Library Scan
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/audiocontrol_scan_library --server-type mpd --stats
+StandardOutput=journal
+StandardError=journal
+.fi
+.TP
+Use with remote LMS server:
+.B audiocontrol_scan_library --server-type lms --host music.example.com --port 9000 --stats
+.SH CONFIGURATION
+The tool does not require a configuration file. It connects directly to the specified music server using the provided hostname and port options.
+.SH SEE ALSO
+.BR audiocontrol (1),
+.BR audiocontrol_lms_client (1)
+.SH NOTES
+The library scan is a blocking operation. For large libraries, the scan may take several minutes to complete. Consider running this tool during off-peak hours or as a background job.
+.SH AUTHOR
+HifiBerry Audiocontrol Development Team
+.SH BUGS
+Report bugs to the HifiBerry development team.
